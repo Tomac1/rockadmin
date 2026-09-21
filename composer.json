@@ -1,0 +1,47 @@
+{
+    "name": "tomac1/rockadmin",
+    "description": "A dependency-free PHP administration SDK. Mount it on a URL, describe your pages in configuration, and get a working admin.",
+    "keywords": ["admin", "administration", "crud", "datagrid", "backend", "sdk", "framework-agnostic"],
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/tomac1/rockadmin",
+    "authors": [
+        {
+            "name": "Tomas Hruby",
+            "homepage": "https://github.com/tomac1"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5",
+        "phpstan/phpstan": "^2.1",
+        "friendsofphp/php-cs-fixer": "^3.68"
+    },
+    "autoload": {
+        "psr-4": {
+            "RockAdmin\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "RockAdmin\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "stan": "phpstan analyse",
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "check": ["@cs", "@stan", "@test"]
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

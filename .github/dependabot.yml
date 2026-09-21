@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # RockAdmin has no runtime dependencies by design, so only the CI toolchain
+  # is watched here. Development dependencies are updated deliberately.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

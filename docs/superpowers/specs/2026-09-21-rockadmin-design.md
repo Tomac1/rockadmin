@@ -652,7 +652,31 @@ slower, visibly flickering, and broken without JS. With a query parameter the
 server renders both grid and populated offcanvas, and JS merely opens it.
 `core.js` listens to `popstate`, so closing the overlay is a history step back.
 
-### 8.9 Flash messages
+### 8.9 Editable cells (reserved for v1.1)
+
+Cells will gain in-place editing: click a pencil and the text is replaced by
+an input, a select, or — for booleans — a checkbox that saves on change. This
+is not in v1, but the v1 structures must not block it, so the shape is fixed
+now:
+
+- A column type is already a pair of "value class + display template". Editing
+  adds a third part, an optional `region/list/cell/edit/{type}.php` template.
+  A type without one is simply not editable.
+- Configuration gains `'editable' => true` per column, plus the existing
+  `'options' => '@enum:...'` for select and checkbox variants.
+- Saving reuses the existing action route, `/a/{page}/inline-update`, with the
+  same `WriteHandler`, the same transaction and the same audit log as a full
+  form save. There must be no second write path.
+- Permission granularity is `page.update`, with room for a later
+  `page.update.{column}` when column-level permissions arrive.
+- Behaviour is delegated (`data-ra-action="cell-edit"`), so editable cells
+  work inside fragments re-rendered after a filter change without any
+  initialisation.
+- Validation is server-side and reuses the field definition from `form`. The
+  response returns the re-rendered cell, so the grid always shows what was
+  actually stored, not what was typed.
+
+### 8.10 Flash messages
 
 Flash messages live in the session, survive redirects, render once as
 Bootstrap toasts and are then discarded. On a fragment request they travel
@@ -963,6 +987,8 @@ must not hand the database schema to the first person who gets in.
 **Out of v1, with space reserved:**
 
 - OIDC (Google, Keycloak) — columns and config shape already present
+- inline cell editing (see 8.9) — cell type registry and action route already
+  shaped for it
 - `chart` and `tree` regions
 - row-level and column-level permissions — attach to `WHERE`, nothing rewritten
 - SQLite and MSSQL — another dialect
