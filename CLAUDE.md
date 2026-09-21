@@ -4,7 +4,7 @@ RockAdmin is a dependency-free PHP administration SDK. A project installs it,
 mounts it on a URL, and describes its admin pages in configuration files kept
 in git.
 
-**Read [`docs/superpowers/specs/2026-09-21-rockadmin-design.md`](docs/superpowers/specs/2026-09-21-rockadmin-design.md)
+**Read [`docs/design/2026-09-21-rockadmin-design.md`](docs/design/2026-09-21-rockadmin-design.md)
 before making any structural change.** It is the agreed design and records why
 each decision was made. When code and specification disagree, say so rather
 than silently following one of them.

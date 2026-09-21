@@ -11,7 +11,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 - Design specification for v1: architecture, request lifecycle, configuration
   model, data layer, view layer, authentication, workspaces, installation and
-  scope (`docs/superpowers/specs/2026-09-21-rockadmin-design.md`).
+  scope (`docs/design/2026-09-21-rockadmin-design.md`).
 - Open-source project scaffolding: contribution guide, security policy, code
   of conduct, issue and pull request templates, CI across PHP 8.4 and 8.5 on
   MySQL and PostgreSQL, coding standards and static analysis configuration.

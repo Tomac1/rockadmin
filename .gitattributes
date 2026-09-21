@@ -5,10 +5,12 @@
 *.js    text
 *.md    text
 
-# Keep the distributed package small: development files are not shipped.
+# Development files are not shipped in the Composer package.
+# docs/ deliberately is: configuration is written largely by AI agents, and
+# documentation sitting in vendor/ is offline and matches the installed
+# version, which a web page does not guarantee.
 /.github             export-ignore
 /tests               export-ignore
-/docs/superpowers    export-ignore
 /.editorconfig       export-ignore
 /.gitattributes      export-ignore
 /.gitignore          export-ignore

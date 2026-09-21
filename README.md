@@ -8,7 +8,7 @@ describe your pages in configuration files, and get a working admin.
 > repository or read [the design specification][spec] if you want to follow
 > along or shape it.
 
-[spec]: docs/superpowers/specs/2026-09-21-rockadmin-design.md
+[spec]: docs/design/2026-09-21-rockadmin-design.md
 
 ## Why another admin package
 

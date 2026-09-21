@@ -6,7 +6,7 @@ constraints are not style preferences — they are the reason the project
 exists, and a pull request that breaks one will be asked to change regardless
 of how good the feature is.
 
-Read the [design specification](docs/superpowers/specs/2026-09-21-rockadmin-design.md)
+Read the [design specification](docs/design/2026-09-21-rockadmin-design.md)
 before proposing anything structural. It records what was decided and why.
 
 ## The constraints

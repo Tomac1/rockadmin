@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * beyond PHP itself and a handful of core extensions. This test enforces it,
  * so a dependency cannot be added without deliberately changing this file.
  *
- * See docs/superpowers/specs/2026-09-21-rockadmin-design.md, section 3.
+ * See docs/design/2026-09-21-rockadmin-design.md, section 3.
  */
 #[CoversNothing]
 final class ComposerConstraintsTest extends TestCase

@@ -397,7 +397,13 @@ through which a query can be issued inside a row loop.
 
 **Counting is a choice.** `'count' => 'exact' | 'cached' | 'estimate' | 'none'`.
 `COUNT(*)` over ten million rows is the most expensive thing on the page.
-Default is `exact`, with a documented note on when to change it. Keyset
+
+The default stays `exact`, because a silently approximate total is a worse
+default than a slow one: it is the kind of wrongness nobody notices until it
+matters. Large tables are handled where the information exists instead —
+`make:page` inspects the table size while scaffolding and writes
+`'count' => 'cached'` with a comment when the table is large, and the
+development console flags a counting query that takes too long. Keyset
 pagination (`WHERE id < ? ORDER BY id DESC LIMIT 50`) is available for very
 large tables and stays fast on page 100 000.
 
@@ -781,8 +787,10 @@ dangerous `raw_condition`, which may never accept request input.
 ### 9.4 Audit log
 
 Every write is recorded with a value diff. It can be disabled, but defaults to
-on: in an admin used by several people, "who changed this" is the most
-frequently asked question.
+on. The write volume in an admin is a few rows per minute, so one extra INSERT
+is not measurable, whereas history you did not collect cannot be recovered
+later — and "who changed this" gets asked even in a one-person team, just six
+months afterwards.
 
 ### 9.5 Deferred to v1.1+
 
