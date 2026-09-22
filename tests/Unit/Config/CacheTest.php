@@ -91,6 +91,27 @@ final class CacheTest extends TestCase
         $this->assertSame('Active', $restored->enums()->options('ad_state')['active']->label);
     }
 
+    public function testADatabaseBackedEnumerationSurvivesTheRoundTrip(): void
+    {
+        $cache = new Cache($this->file);
+        $cache->write(new Config(
+            ['debug' => true],
+            Enums::fromConfig([
+                'categories' => [
+                    'source' => ['table' => 'categories', 'value' => 'id', 'label' => 'name'],
+                ],
+            ]),
+        ));
+
+        $restored = $cache->read();
+
+        $this->assertNotNull($restored);
+        $this->assertTrue(
+            $restored->enums()->has('categories'),
+            'a cached configuration must not lose its database-backed enumerations',
+        );
+    }
+
     public function testAClosureIsRefusedWithItsPath(): void
     {
         $this->expectException(ConfigException::class);
