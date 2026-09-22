@@ -27,20 +27,13 @@ final class QueryBuilder
         $bindings = [];
         $joins = [];
 
-        /** @var array<string, string> $expressions alias => SQL expression, for filters to reuse */
-        $expressions = [];
+        $expressions = $this->columnExpressions($query, $joins);
 
         foreach ($query->columns as $alias => $source) {
             $path = SourcePath::parse($source);
-
-            foreach ($path->joins() as $join) {
-                $joins[$join] = true;
-            }
-
             $expression = $this->expression($query->entity, $path);
             $bindings = [...$bindings, ...$expression->bindings];
-            $expressions[(string) $alias] = $expression->text;
-            $selects[] = $expression->text . ' AS ' . $this->dialect->quoteIdentifier((string) $alias);
+            $selects[] = $expressions[(string) $alias] . ' AS ' . $this->dialect->quoteIdentifier((string) $alias);
         }
 
         $where = $this->where($query, $expressions);
@@ -277,5 +270,70 @@ final class QueryBuilder
         }
 
         return " LIMIT {$page->limit}" . ($page->offset > 0 ? " OFFSET {$page->offset}" : '');
+    }
+
+    /**
+     * The statement that yields the total, or null when none was asked for.
+     *
+     * An estimate reads table metadata, which knows nothing about a WHERE, so
+     * a query that narrows its result falls back to an exact count rather than
+     * reporting the size of the whole table.
+     */
+    public function count(Query $query): ?Sql
+    {
+        if ($query->count === CountStrategy::None) {
+            return null;
+        }
+
+        if ($query->count === CountStrategy::Cached) {
+            throw new DbException(
+                'A cached count needs a cache store, which arrives in milestone 10. '
+                . "Use 'exact', 'estimate' or 'none' until then.",
+            );
+        }
+
+        if ($query->count === CountStrategy::Estimate && !$this->isNarrowed($query)) {
+            return $this->dialect->estimatedCount($query->entity->table);
+        }
+
+        $joins = [];
+        $where = $this->where($query, $this->columnExpressions($query, $joins));
+
+        return new Sql(
+            'SELECT COUNT(*) FROM ' . $this->dialect->quoteIdentifier($query->entity->table)
+            . $this->joins($query->entity, array_keys($joins))
+            . ($where->text === '' ? '' : ' WHERE ' . $where->text),
+            $where->bindings,
+        );
+    }
+
+    private function isNarrowed(Query $query): bool
+    {
+        return $query->scope !== []
+            || $query->filters !== []
+            || ($query->search !== null && $query->search->term !== '');
+    }
+
+    /**
+     * alias => SQL expression, plus the joins those expressions need.
+     *
+     * @param  array<string, bool>  $joins collected by reference, keyed to deduplicate
+     * @return array<string, string>
+     */
+    private function columnExpressions(Query $query, array &$joins): array
+    {
+        $expressions = [];
+
+        foreach ($query->columns as $alias => $source) {
+            $path = SourcePath::parse($source);
+
+            foreach ($path->joins() as $join) {
+                $joins[$join] = true;
+            }
+
+            $expressions[(string) $alias] = $this->expression($query->entity, $path)->text;
+        }
+
+        return $expressions;
     }
 }

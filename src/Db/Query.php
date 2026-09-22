@@ -27,6 +27,7 @@ final class Query
         public readonly ?Search $search = null,
         public readonly array $sort = [],
         public readonly ?Page $page = null,
+        public readonly CountStrategy $count = CountStrategy::Exact,
     ) {
     }
 }
