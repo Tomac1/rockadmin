@@ -73,6 +73,18 @@ final class Request
 
         $method = \is_string($_SERVER['REQUEST_METHOD'] ?? null) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
+        $query = [];
+
+        foreach ($_GET as $name => $value) {
+            $query[(string) $name] = $value;
+        }
+
+        $body = [];
+
+        foreach ($_POST as $name => $value) {
+            $body[(string) $name] = $value;
+        }
+
         $cookies = [];
 
         foreach ($_COOKIE as $name => $value) {
@@ -80,12 +92,6 @@ final class Request
                 $cookies[(string) $name] = $value;
             }
         }
-
-        /** @var array<string, mixed> $query */
-        $query = $_GET;
-
-        /** @var array<string, mixed> $body */
-        $body = $_POST;
 
         return new self($method, $path, $query, $body, $cookies, $headers);
     }

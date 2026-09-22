@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Tests\Unit\Http;
 
+use PHPUnit\Framework\Attributes\BackupGlobals;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -70,5 +71,30 @@ final class RequestTest extends TestCase
         $this->assertSame('abc', $request->header('x-csrf-token'));
         $this->assertSame('abc', $request->header('X-CSRF-TOKEN'));
         $this->assertNull($request->header('x-other'));
+    }
+
+    #[BackupGlobals(true)]
+    public function testFromGlobalsReadsTheSuperglobals(): void
+    {
+        $_SERVER = [
+            'REQUEST_METHOD' => 'post',
+            'HTTP_X_CSRF_TOKEN' => 'abc',
+            'HTTP_ACCEPT_LANGUAGE' => 'cs',
+            'DOCUMENT_ROOT' => '/var/www',
+        ];
+        $_GET = ['page' => '3'];
+        $_POST = ['title' => 'Bike'];
+        $_COOKIE = ['session' => 'xyz', 'array_cookie' => ['not', 'a', 'string']];
+
+        $request = Request::fromGlobals('/p/ads/');
+
+        $this->assertSame('POST', $request->method);
+        $this->assertSame('p/ads', $request->path);
+        $this->assertSame('3', $request->query('page'));
+        $this->assertSame('Bike', $request->input('title'));
+        $this->assertSame('abc', $request->header('X-CSRF-TOKEN'));
+        $this->assertSame('cs', $request->header('accept-language'));
+        $this->assertNull($request->header('document-root'));
+        $this->assertSame(['session' => 'xyz'], $request->cookies);
     }
 }
