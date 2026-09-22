@@ -44,12 +44,20 @@ final class QueryBuilder
         }
 
         $where = $this->where($query, $expressions);
+        $conditions = $where->text === '' ? [] : [$where->text];
         $bindings = [...$bindings, ...$where->bindings];
+
+        if ($query->page?->isKeyset() === true && $query->page->after !== null) {
+            $conditions[] = $this->dialect->qualify($query->entity->table, $query->entity->key) . ' < ?';
+            $bindings[] = $query->page->after;
+        }
 
         $text = 'SELECT ' . implode(', ', $selects)
             . ' FROM ' . $this->dialect->quoteIdentifier($query->entity->table)
             . $this->joins($query->entity, array_keys($joins))
-            . ($where->text === '' ? '' : ' WHERE ' . $where->text);
+            . ($conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions))
+            . $this->order($query, $expressions)
+            . $this->limit($query->page);
 
         return new Sql($text, $bindings);
     }
@@ -230,5 +238,44 @@ final class QueryBuilder
         }
 
         return $sql;
+    }
+
+    /**
+     * Keyset paging orders by the key and nothing else: a cursor is only
+     * meaningful against the order it was taken from, so honouring another
+     * sort alongside it would silently skip rows.
+     *
+     * @param array<string, string> $expressions alias => SQL expression
+     */
+    private function order(Query $query, array $expressions): string
+    {
+        if ($query->page?->isKeyset() === true) {
+            return ' ORDER BY '
+                . $this->dialect->qualify($query->entity->table, $query->entity->key) . ' DESC';
+        }
+
+        $parts = [];
+
+        foreach ($query->sort as $sort) {
+            if (isset($expressions[$sort->column])) {
+                $parts[] = $expressions[$sort->column] . ' ' . $sort->direction->keyword();
+            }
+        }
+
+        return $parts === [] ? '' : ' ORDER BY ' . implode(', ', $parts);
+    }
+
+    /**
+     * The limit is interpolated rather than bound, which is safe because both
+     * values are integers this class produced — and necessary, because several
+     * databases refuse a placeholder in LIMIT.
+     */
+    private function limit(?Page $page): string
+    {
+        if ($page === null) {
+            return '';
+        }
+
+        return " LIMIT {$page->limit}" . ($page->offset > 0 ? " OFFSET {$page->offset}" : '');
     }
 }

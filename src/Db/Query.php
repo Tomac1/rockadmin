@@ -17,6 +17,7 @@ final class Query
      * @param array<string, string> $columns alias => source path
      * @param array<string, mixed>  $scope   column of the entity's own table => value
      * @param list<Filter>          $filters
+     * @param list<Sort>            $sort
      */
     public function __construct(
         public readonly Entity $entity,
@@ -24,6 +25,8 @@ final class Query
         public readonly array $scope = [],
         public readonly array $filters = [],
         public readonly ?Search $search = null,
+        public readonly array $sort = [],
+        public readonly ?Page $page = null,
     ) {
     }
 }
