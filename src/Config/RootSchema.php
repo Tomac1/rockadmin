@@ -74,8 +74,20 @@ final class RootSchema
                 ValueType::Array,
                 description: 'Project CSS and JS, loaded after the SDK’s so they override it.',
                 children: new Schema([
-                    'css' => new SchemaKey(ValueType::Array, default: [], example: ['/css/admin.css']),
-                    'js' => new SchemaKey(ValueType::Array, default: [], example: ['/js/admin.js']),
+                    'css' => new SchemaKey(
+                        ValueType::Array,
+                        default: [],
+                        description: 'Stylesheet URLs a project adds on top of the SDK’s own, for '
+                            . 'branding or overriding the default look.',
+                        example: ['/css/admin.css'],
+                    ),
+                    'js' => new SchemaKey(
+                        ValueType::Array,
+                        default: [],
+                        description: 'Script URLs a project adds on top of the SDK’s own, for '
+                            . 'custom widgets or page behaviour.',
+                        example: ['/js/admin.js'],
+                    ),
                 ]),
             ),
         ]);

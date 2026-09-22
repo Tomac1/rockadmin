@@ -46,4 +46,12 @@ final class ConfigTest extends TestCase
     {
         $this->assertArrayHasKey('paths', $this->config()->all());
     }
+
+    public function testGetReturnsTheDefaultWhenAPathRunsPastAScalar(): void
+    {
+        // 'paths.logs' is a string, so 'paths.logs.x' has nowhere to go. This is a
+        // different branch from an absent key, which fails on its first segment.
+        $this->assertSame('fallback', $this->config()->get('paths.logs.x', 'fallback'));
+        $this->assertFalse($this->config()->has('paths.logs.x'));
+    }
 }

@@ -92,4 +92,21 @@ final class LoaderTest extends TestCase
 
         $this->assertSame([], $loader->warnings(), 'the valid fixture uses no secret-looking name');
     }
+
+    public function testWarningsFromEnumsAreCollectedToo(): void
+    {
+        $loader = $this->loader('warnings', ['PROVIDER_API_KEY' => 'secret-value']);
+        $loader->load();
+
+        $this->assertCount(1, $loader->warnings());
+        $this->assertStringContainsString('PROVIDER_API_KEY', $loader->warnings()[0]);
+    }
+
+    public function testAFileThatDoesNotReturnAnArrayIsRefusedByName(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('rockadmin.php');
+
+        $this->loader('not-an-array')->load();
+    }
 }

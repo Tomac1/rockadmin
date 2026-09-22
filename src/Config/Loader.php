@@ -38,7 +38,6 @@ final class Loader
 
         $resolver = new Resolver($this->env, $root);
         $resolved = $resolver->resolve($expanded);
-        $this->warnings = $resolver->warnings();
 
         $errors = (new Validator())->validate($resolved, RootSchema::create());
 
@@ -47,8 +46,10 @@ final class Loader
         }
 
         $enums = $definitions->expand($this->read('enums.php'));
+        $resolvedEnums = $resolver->resolve($enums);
+        $this->warnings = $resolver->warnings();
 
-        return new Config($resolved, Enums::fromConfig($resolver->resolve($enums)));
+        return new Config($resolved, Enums::fromConfig($resolvedEnums));
     }
 
     /** @return list<string> */
@@ -66,7 +67,6 @@ final class Loader
             return [];
         }
 
-        /** @var mixed $contents */
         $contents = require $path;
 
         if (!\is_array($contents)) {
@@ -75,7 +75,7 @@ final class Loader
             );
         }
 
-        /** @var array<string, mixed> $contents */
+        /** @var array<string, mixed> $contents narrows array<mixed, mixed> — return.type without it */
         return $contents;
     }
 
@@ -114,9 +114,9 @@ final class Loader
     {
         foreach ($overrides as $name => $value) {
             if (\is_array($value) && \is_array($base[$name] ?? null)) {
-                /** @var array<string, mixed> $existing */
+                /** @var array<string, mixed> $existing narrows array<mixed, mixed> — argument.type without it */
                 $existing = $base[$name];
-                /** @var array<string, mixed> $value */
+                /** @var array<string, mixed> $value narrows array<mixed, mixed> — argument.type without it */
                 $base[$name] = $this->merge($existing, $value);
 
                 continue;
