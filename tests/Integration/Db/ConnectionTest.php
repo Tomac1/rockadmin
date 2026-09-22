@@ -119,9 +119,17 @@ final class ConnectionTest extends DatabaseTestCase
     {
         $connection = $this->requireConnection($connection);
 
-        $this->expectException(DbException::class);
-        $this->expectExceptionMessage('ra_test_nonexistent');
+        // The marker appears in the statement we sent and nowhere in either
+        // server's own "table not found" text, so it can only reach the message
+        // through the SQL the exception carries.
+        $sql = new Sql('SELECT 1 AS ra_marker_xyz FROM ra_test_nonexistent');
 
-        $connection->select(new Sql('SELECT * FROM ra_test_nonexistent'));
+        try {
+            $connection->select($sql);
+            $this->fail('Expected the missing table to raise a DbException.');
+        } catch (DbException $e) {
+            $this->assertStringContainsString('ra_marker_xyz', $e->getMessage());
+            $this->assertStringContainsString($sql->text, $e->getMessage());
+        }
     }
 }

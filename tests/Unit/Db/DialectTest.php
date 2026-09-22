@@ -58,7 +58,20 @@ final class DialectTest extends TestCase
         $pgsql = (new PgDialect())->jsonPath('"ads"."stats"', ['daily', 'views']);
 
         $this->assertStringContainsString('"ads"."stats" #>> ?', $pgsql->text);
-        $this->assertSame(['{daily,views}'], $pgsql->bindings);
+        $this->assertSame(['{"daily","views"}'], $pgsql->bindings);
+    }
+
+    public function testJsonPathEscapesAKeyContainingQuotesBackslashesAndCommas(): void
+    {
+        // A key is data, not a delimiter: a comma, brace, quote or backslash
+        // inside one must not silently change the path or break the syntax.
+        $key = 'a"b\\c,d}e';
+
+        $mysql = (new MySqlDialect())->jsonPath('`ads`.`stats`', [$key]);
+        $this->assertSame(['$."a\\"b\\\\c,d}e"'], $mysql->bindings);
+
+        $pgsql = (new PgDialect())->jsonPath('"ads"."stats"', [$key]);
+        $this->assertSame(['{"a\\"b\\\\c,d}e"}'], $pgsql->bindings);
     }
 
     public function testEstimatedCountBindsTheTableName(): void

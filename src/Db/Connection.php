@@ -6,6 +6,7 @@ namespace RockAdmin\Db;
 
 use PDO;
 use PDOException;
+use PDOStatement;
 
 /**
  * Executes a Sql. It never composes one — that is the builder's job, and
@@ -73,7 +74,7 @@ final class Connection
         return $this->run($sql)->rowCount();
     }
 
-    private function run(Sql $sql): \PDOStatement
+    private function run(Sql $sql): PDOStatement
     {
         try {
             $statement = $this->pdo->prepare($sql->text);

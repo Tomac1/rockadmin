@@ -28,7 +28,12 @@ final class PgDialect implements Dialect
 
     public function jsonPath(string $expression, array $path): Sql
     {
-        return new Sql("({$expression} #>> ?::text[])", ['{' . implode(',', $path) . '}']);
+        $quoted = array_map(
+            static fn (string $key): string => '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $key) . '"',
+            $path,
+        );
+
+        return new Sql("({$expression} #>> ?::text[])", ['{' . implode(',', $quoted) . '}']);
     }
 
     public function estimatedCount(string $table): Sql

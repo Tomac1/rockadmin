@@ -30,7 +30,7 @@ final class MySqlDialect implements Dialect
     public function jsonPath(string $expression, array $path): Sql
     {
         $pointer = '$' . implode('', array_map(
-            static fn (string $key): string => '."' . str_replace('"', '\\"', $key) . '"',
+            static fn (string $key): string => '."' . str_replace(['\\', '"'], ['\\\\', '\\"'], $key) . '"',
             $path,
         ));
 
