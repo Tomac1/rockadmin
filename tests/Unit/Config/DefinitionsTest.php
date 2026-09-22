@@ -146,4 +146,33 @@ final class DefinitionsTest extends TestCase
 
         $this->assertSame($config, $this->definitions()->expand($config));
     }
+
+    public function testListValuesPassThroughUnmangled(): void
+    {
+        $expanded = $this->definitions()->expand([
+            'fields' => ['email' => ['use' => '@field:email', 'placeholder' => 'you@example.com']],
+            'assets' => ['css' => ['/a.css', '/b.css']],
+        ]);
+
+        /** @var array<string, mixed> $fields */
+        $fields = $expanded['fields'];
+        /** @var array<string, mixed> $email */
+        $email = $fields['email'];
+
+        /** @var array<string, mixed> $assets */
+        $assets = $expanded['assets'];
+        /** @var array<int, string> $css */
+        $css = $assets['css'];
+
+        $this->assertSame(['email'], $email['validate']);
+        $this->assertSame(['/a.css', '/b.css'], $css);
+    }
+
+    public function testANonStringUseValueIsRefused(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('array');
+
+        $this->definitions()->expand(['columns' => ['x' => ['use' => ['@column:id']]]]);
+    }
 }

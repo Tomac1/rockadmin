@@ -25,7 +25,6 @@ final class Definitions
      */
     public function expand(array $config): array
     {
-        /** @var array<string, mixed> $expanded */
         $expanded = $this->node($config, []);
 
         return $expanded;
