@@ -97,6 +97,18 @@ final class KernelTest extends TestCase
         $this->assertSame(500, $response->status);
     }
 
+    public function testErrorsThatAreNotExceptionsAlsoBecome500(): void
+    {
+        $handlers = new HandlerRegistry();
+        $handlers->register('page.index', $this->handler(
+            static fn (): Response => throw new \TypeError('a handler mistyped something'),
+        ));
+
+        $response = $this->kernel($handlers)->handle(new Request('GET', 'p/ads'));
+
+        $this->assertSame(500, $response->status);
+    }
+
     public function testRegisteringTheSameRouteTwiceReplacesTheHandler(): void
     {
         $handlers = new HandlerRegistry();
