@@ -17,5 +17,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   MySQL and PostgreSQL, coding standards and static analysis configuration.
 - `ComposerConstraintsTest`, which fails the build if RockAdmin gains a
   runtime dependency beyond PHP and its core extensions.
+- HTTP foundation: request and response value objects, the route table and
+  matcher, URL generation in path and query modes, the session abstraction,
+  CSRF tokens, HTTP exceptions and the kernel.
 
 [Unreleased]: https://github.com/tomac1/rockadmin/commits/main
