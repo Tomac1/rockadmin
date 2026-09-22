@@ -236,12 +236,37 @@ final class EscaperTest extends TestCase
         $this->escaper->attributes(['0' => 'x']);
     }
 
-    public function testAttributesRefusesEventHandlerAttributeName(): void
+    /** @return array<string, array{string}> */
+    public static function eventHandlerNames(): array
     {
-        // Event handler attributes are unsafe even with escaped values.
-        $this->expectException(ViewException::class);
-        $this->expectExceptionMessage('onclick');
+        return [
+            'onclick' => ['onclick'],
+            'onerror' => ['onerror'],
+            'onmouseover' => ['onmouseover'],
+            'onload' => ['onload'],
+            'shouted' => ['ONCLICK'],
+            'mixed case' => ['OnClick'],
+            'onanything at all' => ['onwhatevercomesnext'],
+        ];
+    }
 
-        $this->escaper->attributes(['onclick' => 'alert(1)']);
+    #[DataProvider('eventHandlerNames')]
+    public function testAttributesRefusesAnEventHandlerAttributeName(string $name): void
+    {
+        // Escaping the value does not make one safe: a browser entity-decodes
+        // an event handler's value before executing it as JavaScript. The list
+        // is deliberately more than one name — a check for 'onclick' alone
+        // would pass a single test and leave every other handler open.
+        $this->expectException(ViewException::class);
+        $this->expectExceptionMessage($name);
+
+        $this->escaper->attributes([$name => 'alert(1)']);
+    }
+
+    public function testAnAttributeStartingWithOnIsNotRefusedWhenItIsNotAHandler(): void
+    {
+        // 'on' alone is an attribute name nobody writes, but the pattern has
+        // to draw its line somewhere and this is where: 'on' plus nothing.
+        $this->assertSame(' on="x"', $this->escaper->attributes(['on' => 'x']));
     }
 }

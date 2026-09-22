@@ -54,6 +54,11 @@ final class Escaper
     public function url(mixed $value): string
     {
         $url = $this->stringify($value);
+
+        if ($this->isSchemeRelative($url)) {
+            throw new ViewException("Refusing a scheme-relative URL: '{$url}' leads off this site.");
+        }
+
         $scheme = $this->scheme($url);
 
         if ($scheme !== null && !\in_array($scheme, self::ALLOWED_SCHEMES, true)) {
@@ -136,18 +141,19 @@ final class Escaper
         };
     }
 
+    /**
+     * Whether the URL leads off this site without naming a scheme. //evil.com
+     * is an open redirect, and nothing in this admin needs one. It is asked
+     * separately from scheme() because it has no scheme to return.
+     */
+    private function isSchemeRelative(string $url): bool
+    {
+        return str_starts_with($this->strip($url), '//');
+    }
+
     private function scheme(string $url): ?string
     {
-        // Strip C0 control characters and space from anywhere in the URL before
-        // reading the scheme. A browser does this too, so "java\tscript:" is a
-        // working link. Stripping everywhere catches leading control bytes that
-        // hide the scheme from the parser but not from the browser.
-        $candidate = preg_replace('/[\x00-\x20]/', '', $url) ?? $url;
-
-        // A scheme-relative URL like //evil.com is an open redirect and refused.
-        if (strpos($candidate, '//') === 0) {
-            return 'scheme-relative';
-        }
+        $candidate = $this->strip($url);
 
         $colon = strpos($candidate, ':');
 
@@ -164,5 +170,17 @@ final class Escaper
         }
 
         return strtolower($scheme);
+    }
+
+    /**
+     * The URL as a browser reads it when deciding what it is. C0 controls and
+     * spaces are removed from everywhere, not only from the ends: a browser
+     * ignores them inside a scheme too, so "java\tscript:" is a working link
+     * and a leading control byte hides a scheme from a naive parser without
+     * hiding it from the browser.
+     */
+    private function strip(string $url): string
+    {
+        return preg_replace('/[\x00-\x20]/', '', $url) ?? $url;
     }
 }
