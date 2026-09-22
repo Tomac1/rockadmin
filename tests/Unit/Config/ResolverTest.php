@@ -150,4 +150,41 @@ final class ResolverTest extends TestCase
 
         $this->assertSame(['x' => 'foobar'], $resolved);
     }
+
+    public function testAConfigPlaceholderPointingAtADeferredOneYieldsAPlaceholder(): void
+    {
+        $resolved = $this->resolver(raw: ['tenant' => '{{workspace.site_id}}'])
+            ->resolve(['scope' => '{{config.tenant}}']);
+
+        $this->assertInstanceOf(Placeholder::class, $resolved['scope']);
+        $this->assertSame('workspace', $resolved['scope']->namespace);
+        $this->assertSame('site_id', $resolved['scope']->name);
+    }
+
+    public function testADeferredPlaceholderReachedThroughConfigIsStillRefusedInsideText(): void
+    {
+        $resolver = $this->resolver(raw: ['tenant' => '{{workspace.site_id}}']);
+
+        $this->expectException(ConfigException::class);
+
+        $resolver->resolve(['label' => 'site-{{config.tenant}}']);
+    }
+
+    public function testAConfigPlaceholderResolvesAnEnvironmentValueThroughIt(): void
+    {
+        $resolved = $this->resolver(['MAIL_HOST' => 'smtp.example.com'], ['host' => '{{env.MAIL_HOST}}'])
+            ->resolve(['mail' => '{{config.host}}']);
+
+        $this->assertSame(['mail' => 'smtp.example.com'], $resolved);
+    }
+
+    public function testAConfigPlaceholderCycleIsReportedWithItsChain(): void
+    {
+        $resolver = $this->resolver(raw: ['a' => '{{config.b}}', 'b' => '{{config.a}}']);
+
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('a -> b -> a');
+
+        $resolver->resolve(['x' => '{{config.a}}']);
+    }
 }

@@ -32,6 +32,16 @@ final class Resolver
     private array $warnings = [];
 
     /**
+     * The {{config.*}} paths currently being resolved, innermost last.
+     *
+     * A config placeholder may point at another one, so resolution re-enters
+     * itself; the chain is what turns an endless loop into a named error.
+     *
+     * @var list<string>
+     */
+    private array $chain = [];
+
+    /**
      * @param Closure(string): ?string $env reads the environment
      * @param array<string, mixed>     $raw the merged configuration, for {{config.x}}
      */
@@ -130,12 +140,38 @@ final class Resolver
         }
 
         if ($namespace === 'config') {
-            return $this->fromRaw($name);
+            return $this->fromConfig($name);
         }
 
         $this->warnIfSecret($name);
 
         return ($this->env)($name);
+    }
+
+    /**
+     * Resolves what a {{config.x}} placeholder points at.
+     *
+     * The value is read from the raw, pre-resolution store — that is what makes
+     * a single pass predictable — and then resolved in turn. Without that second
+     * step a raw '{{workspace.site_id}}' would come back as text, which would let
+     * {{config.*}} walk around the refusal to interpolate a deferred placeholder
+     * into a longer string.
+     */
+    private function fromConfig(string $name): mixed
+    {
+        if (\in_array($name, $this->chain, true)) {
+            $printedChain = implode(' -> ', [...$this->chain, $name]);
+
+            throw new ConfigException("Configuration placeholder cycle: {$printedChain}.");
+        }
+
+        $this->chain[] = $name;
+
+        try {
+            return $this->value($this->fromRaw($name));
+        } finally {
+            array_pop($this->chain);
+        }
     }
 
     /** Reads a dotted path out of the raw, pre-resolution configuration. */
