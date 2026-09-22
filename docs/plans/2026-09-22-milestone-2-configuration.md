@@ -126,7 +126,13 @@ tests/Fixtures/config/   real configuration directories the loader reads
     `Bool`, `Array`, `Mixed`
   - `SchemaKey` with readonly `ValueType $type`, `mixed $default`,
     `string $description`, `mixed $example`, `bool $required`,
-    `?string $performance`, `?Schema $children`, `?Schema $each`
+    `bool $nullable`, `?string $performance`, `?Schema $children`, `?Schema $each`
+
+`nullable` exists because a missing environment variable resolves to `null`.
+A key backed by an optional variable — an SMTP host when the driver is `log` —
+must accept that; one that is not must report it. Making every key tolerate
+null would hide real mistakes, and making none tolerate it would break every
+optional setting.
   - `Schema` with `__construct(array<string, SchemaKey> $keys)`,
     `key(string): ?SchemaKey`, `names(): list<string>`,
     `nearest(string): ?string`
@@ -278,6 +284,7 @@ final class SchemaKey
         public readonly string $description = '',
         public readonly mixed $example = null,
         public readonly bool $required = false,
+        public readonly bool $nullable = false,
         public readonly ?string $performance = null,
         public readonly ?Schema $children = null,
         public readonly ?Schema $each = null,
@@ -413,6 +420,7 @@ final class ValidatorTest extends TestCase
                 'label' => new SchemaKey(ValueType::String, required: true),
                 'color' => new SchemaKey(ValueType::String),
             ])),
+            'smtp_host' => new SchemaKey(ValueType::String, nullable: true),
         ]);
     }
 
@@ -468,6 +476,13 @@ final class ValidatorTest extends TestCase
 
         $this->assertCount(1, $errors);
         $this->assertStringContainsString('null', $errors[0]->message);
+    }
+
+    public function testANullableKeyAcceptsNull(): void
+    {
+        // An optional setting backed by an environment variable that is not
+        // set — an SMTP host while the mail driver is 'log', for instance.
+        $this->assertSame([], (new Validator())->validate(['smtp_host' => null], $this->schema()));
     }
 
     public function testAMissingRequiredKeyIsReportedAtItsParentPath(): void
@@ -567,6 +582,18 @@ final class Validator
 
             if ($key === null) {
                 $errors[] = new ValidationError($path, $this->unknownKeyMessage((string) $name, $schema));
+
+                continue;
+            }
+
+            if ($value === null) {
+                if (!$key->nullable) {
+                    $errors[] = new ValidationError($path, \sprintf(
+                        'Expected %s, got null. A placeholder for an unset environment '
+                        . 'variable resolves to null; declare the key nullable if that is intended.',
+                        $key->type->value,
+                    ));
+                }
 
                 continue;
             }
@@ -2119,7 +2146,12 @@ final class RootSchema
                         description: 'log, smtp, sendmail or callback.',
                         example: 'smtp',
                     ),
-                    'host' => new SchemaKey(ValueType::String, description: 'SMTP host.', example: '{{env.MAIL_HOST}}'),
+                    'host' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP host. Null while the driver does not need one.',
+                        example: '{{env.MAIL_HOST}}',
+                        nullable: true,
+                    ),
                     'port' => new SchemaKey(ValueType::Int, default: 587, description: 'SMTP port.', example: 587),
                 ]),
             ),
@@ -2611,3 +2643,68 @@ Verified by running each command and reading its output:
 - `rockadmin validate` and `rockadmin schema --json` — milestone 10, which
   builds the CLI runner; both will call this layer
 - Wiring the loader into the kernel — milestone 10
+
+---
+
+## Amendments made during execution
+
+The task descriptions above are what was dispatched. Review changed seven
+things; in each case the shipped code is right and the plan text was wrong.
+
+**A `{{config.*}}` placeholder resolves what it points at.** The plan's
+`Resolver` read the raw store and returned what it found verbatim. That quietly
+defeated the layer's one security guard: a deferred `{{workspace.*}}` reached
+through `{{config.*}}` came back as the literal string, and the refusal to
+interpolate a deferred placeholder into longer text then accepted it. A
+workspace value must reach a query as a bound parameter, never as text. The
+shipped resolver re-enters itself on the raw value and carries a chain so a
+`{{config.a}}` → `{{config.b}}` → `{{config.a}}` cycle is reported with its
+chain. Nothing else changed: it still reads the raw store, which is what keeps
+one pass predictable.
+
+**Declared defaults are applied.** The plan declared `default` on `SchemaKey`,
+populated it six times in `RootSchema`, and never read it — so a configuration
+omitting `url_mode` got null rather than `path`. A `Defaults` pass now runs
+after validation, so the validator still judges what the project wrote while
+`Config::get()` returns the effective value. It fills only absent keys, leaves
+an explicit null alone, and never synthesises a parent the project did not
+write.
+
+**A list override replaces; a map override merges.** Both merge
+implementations recursed into any two arrays, so overriding `['email',
+'max:255']` with `['url']` produced `['url', 'max:255']` — a value neither
+author wrote and which could only be removed with `null`. A map is a set of
+named settings and merging it is useful; a list is one value.
+
+**`SchemaKey` gained `deferrable`.** Spec section 6 shows a field default of
+`{{workspace.site_id}}` on an int-typed key. After resolution that is a
+`Placeholder`, which the validator called a type error, leaving `ValueType::Mixed`
+as the only escape and discarding the type check entirely. Settled before
+milestones 6 to 8 write four schemas against the old rule.
+
+**The cache write is hardened.** `file_put_contents()` was checked only for
+`false`, so a short write on a full disk renamed a truncated file into place —
+the readable partial file the atomic rename existed to prevent. The temporary
+file is also `chmod`ed to 0600 before the rename, because the compiled cache
+can hold resolved `{{env.*}}` values.
+
+**The secret-name warning was case-sensitive** against uppercase hints, so
+`{{env.db_password}}` warned about nothing. It is the only signal this layer
+gives that a secret may be reaching rendered configuration.
+
+**"Did you mean" lives in one place.** Two classes were building a throwaway
+`Schema` purely to reach `nearest()`, in identical copy-pasted form and with
+different phrasing. `Schema::nearestOf()` now serves all three call sites.
+
+## Known limitations at the end of this milestone
+
+- `Enums` decides a definition is database-backed from a lone `source` key
+  holding an array — which is exactly the shape of an enumeration whose only
+  option happens to be named `source`. The multi-option case is handled; the
+  singleton is not. A discriminator exists (a real option carries a `label`)
+  and is worth writing in milestone 3, when the database-backed `source` shape
+  is defined and the rule can be written against something real.
+- The truncated-write guard in `Cache::write()` has no test. One is available:
+  an unqualified `file_put_contents()` inside the namespace resolves to a
+  namespaced function first, so a test-only override returning a short count
+  would exercise it without a stream wrapper and without touching `rename()`.
