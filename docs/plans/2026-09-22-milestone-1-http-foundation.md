@@ -869,6 +869,24 @@ final class UrlGeneratorTest extends TestCase
 
         new UrlGenerator('/admin', 'magic');
     }
+
+    public function testDotSegmentsInParametersSurvive(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame('/admin/p/ads/..', $urls->route('page.detail', ['page' => 'ads', 'id' => '..']));
+        $this->assertSame('/admin/p/ads/.', $urls->route('page.detail', ['page' => 'ads', 'id' => '.']));
+    }
+
+    public function testToStripsDotSegmentsFromAHandWrittenPath(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        // Dot segments are discarded, not resolved: if they were resolved this
+        // would be /admin/detail. Compare testDotSegmentsInParametersSurvive(),
+        // where route() leaves an encoded ".." parameter intact.
+        $this->assertSame('/admin/p/ads/detail', $urls->to('p/ads/../.././detail'));
+    }
 }
 ```
 
@@ -916,17 +934,7 @@ final class UrlGenerator
     /** @param array<string, string|int> $query */
     public function to(string $path, array $query = []): string
     {
-        $path = Request::normalizePath($path);
-
-        if ($this->mode === self::MODE_QUERY) {
-            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
-
-            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
-        }
-
-        $url = rtrim($this->base, '/') . '/' . $path;
-
-        return $url . ($query === [] ? '' : '?' . http_build_query($query));
+        return $this->build(Request::normalizePath($path), $query);
     }
 
     /**
@@ -940,8 +948,8 @@ final class UrlGenerator
         $path = preg_replace_callback(
             '/\{(\w+)(\.\.\.)?}/',
             static function (array $match) use ($name, $params): string {
-                /** @var array{0: string, 1: string, 2?: string} $match */
-                if (!array_key_exists($match[1], $params)) {
+                /** @var array{0: non-empty-string, 1: non-empty-string, 2?: '...'} $match */
+                if (!\array_key_exists($match[1], $params)) {
                     throw new InvalidArgumentException(
                         "Route {$name} needs the parameter '{$match[1]}'.",
                     );
@@ -956,15 +964,50 @@ final class UrlGenerator
                 return rawurlencode($value);
             },
             $pattern,
-        ) ?? $pattern;
+        ) ?? throw new RuntimeException("Failed to build a URL for route {$name}.");
 
-        return $this->to($path, $query);
+        return $this->build($path, $query);
+    }
+
+    /**
+     * Joins an already-prepared path to the base, in whichever mode is active.
+     *
+     * The path is used as given. Callers that accept a path from outside
+     * normalise it first; `route()` must not, because its segments are already
+     * encoded and a value such as ".." would otherwise be read as a
+     * parent-directory segment and dropped.
+     *
+     * @param array<string, string|int> $query
+     */
+    private function build(string $path, array $query): string
+    {
+        if ($this->mode === self::MODE_QUERY) {
+            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
+
+            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
+        }
+
+        $url = rtrim($this->base, '/') . '/' . $path;
+
+        return $url . ($query === [] ? '' : '?' . http_build_query($query));
     }
 }
 ```
 
-Note on `to('')` in path mode: `rtrim('/admin', '/') . '/' . ''` gives
-`/admin/`, which is what the dashboard test expects.
+Two notes on this shape, both of which cost a review round to discover:
+
+`to()` normalises its argument and `route()` does not, which looks like an
+inconsistency and is not. `Request::normalizePath()` discards `.` and `..`
+segments because its job is sanitising a path that arrived from the network.
+`rawurlencode()` leaves a dot untouched, so a parameter whose value is `..`
+survives encoding — and if `route()` then handed its finished path to `to()`,
+that parameter would be read as a parent-directory segment and silently
+dropped, turning `route('page.detail', ['id' => '..'])` into `/admin/p/ads`.
+A path this class assembled from validated parameters is not untrusted input
+and must not be sanitised a second time.
+
+`to('')` in path mode gives `rtrim('/admin', '/') . '/' . ''`, which is
+`/admin/` — what the dashboard test expects.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
