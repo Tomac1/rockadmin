@@ -44,4 +44,14 @@ final class ResponseTest extends TestCase
         $this->assertSame('noindex', $modified->headers['x-robots-tag']);
         $this->assertSame('text/html; charset=utf-8', $modified->headers['content-type']);
     }
+
+    public function testWithHeaderReplacesAnExistingHeader(): void
+    {
+        $original = Response::html('x');
+        $modified = $original->withHeader('Content-Type', 'application/json');
+
+        $this->assertSame('application/json', $modified->headers['content-type']);
+        $this->assertSame('text/html; charset=utf-8', $original->headers['content-type']);
+        $this->assertCount(1, $modified->headers);
+    }
 }
