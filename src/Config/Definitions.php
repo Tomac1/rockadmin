@@ -25,9 +25,7 @@ final class Definitions
      */
     public function expand(array $config): array
     {
-        $expanded = $this->node($config, []);
-
-        return $expanded;
+        return $this->node($config, []);
     }
 
     /**
@@ -37,13 +35,13 @@ final class Definitions
      */
     private function node(array $node, array $chain): array
     {
-        if (isset($node['use'])) {
+        if (\array_key_exists('use', $node)) {
             $node = $this->applyUse($node, $chain);
         }
 
         foreach ($node as $name => $value) {
             if (\is_array($value)) {
-                /** @var array<string, mixed> $value */
+                /** @var array<string, mixed> $value narrows array<mixed, mixed> — argument.type without it */
                 $node[$name] = $this->node($value, $chain);
             }
         }
@@ -94,10 +92,7 @@ final class Definitions
         }
 
         if (!isset($this->definitions[$namespace][$key])) {
-            $nearest = (new Schema(array_map(
-                static fn (): SchemaKey => new SchemaKey(ValueType::Mixed),
-                $this->definitions[$namespace],
-            )))->nearest($key);
+            $nearest = Schema::nearestOf(array_keys($this->definitions[$namespace]), $key);
 
             $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
 
@@ -128,9 +123,9 @@ final class Definitions
             // neither author intended -- ['url'] over ['email', 'max:255'] would
             // leave ['url', 'max:255'], which nobody wrote and null cannot remove.
             if (\is_array($value) && !array_is_list($value) && \is_array($base[$name] ?? null)) {
-                /** @var array<string, mixed> $existing */
+                /** @var array<string, mixed> $existing narrows array<mixed, mixed> — argument.type without it */
                 $existing = $base[$name];
-                /** @var array<string, mixed> $value */
+                /** @var array<string, mixed> $value narrows array<mixed, mixed> — argument.type without it */
                 $base[$name] = $this->merge($existing, $value);
 
                 continue;

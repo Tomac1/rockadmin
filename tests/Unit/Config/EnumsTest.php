@@ -10,6 +10,7 @@ use RockAdmin\Config\ConfigException;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Config\EnumReference;
 use RockAdmin\Config\Enums;
+use RockAdmin\Config\Placeholder;
 
 #[CoversClass(Enums::class)]
 #[CoversClass(EnumOption::class)]
@@ -107,5 +108,25 @@ final class EnumsTest extends TestCase
         $this->expectExceptionMessage('ad_state.active');
 
         Enums::fromConfig(['ad_state' => ['active' => ['label' => 'Active', 'color' => 123]]]);
+    }
+
+    public function testAnOptionKeyedSourceIsNotMistakenForADatabaseBackedEnumeration(): void
+    {
+        $enums = Enums::fromConfig(['origin' => [
+            'source' => ['label' => 'Source'],
+            'manual' => ['label' => 'Manual'],
+        ]]);
+
+        $this->assertSame('Source', $enums->options('origin')['source']->label);
+    }
+
+    public function testAPlaceholderLabelIsRefusedAndSaysWhy(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('placeholder');
+
+        Enums::fromConfig(['ad_state' => [
+            'active' => ['label' => new Placeholder('workspace', 'name')],
+        ]]);
     }
 }

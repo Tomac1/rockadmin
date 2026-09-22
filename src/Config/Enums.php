@@ -30,7 +30,9 @@ final class Enums
                 );
             }
 
-            if (\array_key_exists('source', $definition)) {
+            // A database-backed definition is nothing but its source array, so an
+            // option that happens to be keyed 'source' is not mistaken for one.
+            if (self::isDatabaseBacked($definition)) {
                 throw new ConfigException(
                     "Enumeration '{$key}' reads its options from the database, which "
                     . 'arrives in milestone 3. Until then, list the options here.',
@@ -50,6 +52,24 @@ final class Enums
     }
 
     /**
+     * A database-backed definition is a lone 'source' entry and nothing else.
+     *
+     * An enumeration may legitimately have an option keyed 'source' -- a list of
+     * where something came from -- and that must not be diagnosed as a milestone 3
+     * feature. Requiring it to be the only entry tells the two apart. A null
+     * source is still database-backed: it is a source somebody started writing
+     * and left empty, and reading it as an option would name the wrong problem.
+     *
+     * @param array<int|string, mixed> $definition
+     */
+    private static function isDatabaseBacked(array $definition): bool
+    {
+        return \count($definition) === 1
+            && \array_key_exists('source', $definition)
+            && (\is_array($definition['source']) || $definition['source'] === null);
+    }
+
+    /**
      * @param  array<int|string, mixed>   $definition
      * @return array<string, EnumOption>
      */
@@ -61,7 +81,11 @@ final class Enums
             $path = "{$enum}.{$value}";
 
             if (!\is_array($option) || !isset($option['label']) || !\is_string($option['label'])) {
-                throw new ConfigException("Enumeration option '{$path}' needs a string label.");
+                throw new ConfigException(
+                    "Enumeration option '{$path}' needs a string label. A "
+                    . '{{workspace.*}} or {{user.*}} placeholder cannot be one: it is not '
+                    . 'known until a request, and the option list is built at load.',
+                );
             }
 
             $color = $option['color'] ?? null;
@@ -87,10 +111,7 @@ final class Enums
         $key = $enum instanceof EnumReference ? $enum->key : $enum;
 
         if (!isset($this->enums[$key])) {
-            $nearest = (new Schema(array_map(
-                static fn (): SchemaKey => new SchemaKey(ValueType::Mixed),
-                $this->enums,
-            )))->nearest($key);
+            $nearest = Schema::nearestOf(array_keys($this->enums), $key);
 
             $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
 

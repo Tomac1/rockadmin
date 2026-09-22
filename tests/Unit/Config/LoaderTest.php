@@ -85,7 +85,7 @@ final class LoaderTest extends TestCase
         }
     }
 
-    public function testSecretLookingPlaceholdersAreCollectedAsWarnings(): void
+    public function testAConfigurationWithNoSecretLookingNameWarnsAboutNothing(): void
     {
         $loader = $this->loader('valid');
         $loader->load();

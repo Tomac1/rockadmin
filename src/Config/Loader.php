@@ -102,7 +102,7 @@ final class Loader
                     throw new ConfigException("Definition '@{$namespace}:{$key}' must be an array.");
                 }
 
-                /** @var array<string, mixed> $definition */
+                /** @var array<string, mixed> $definition narrows array<mixed, mixed> — return.type without it */
                 $definitions[$namespace][(string) $key] = $definition;
             }
         }

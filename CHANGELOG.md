@@ -20,10 +20,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - HTTP foundation: request and response value objects, the route table and
   matcher, URL generation in path and query modes, the session abstraction,
   CSRF tokens, HTTP exceptions and the kernel.
-- Configuration layer: schema with documentation for every key, a validator
-  that reports paths and suggests near misses, shared definitions with deep
-  merge, placeholders that resolve at load or bind per request, shared
-  enumerations, the directory loader with its local override, and a compiled
-  cache.
+- Configuration layer: schema with documentation and a default for every key,
+  a validator that reports paths and suggests near misses, shared definitions
+  with deep merge, placeholders that resolve at load or bind per request,
+  shared enumerations, the directory loader with its local override, and a
+  compiled cache.
 
 [Unreleased]: https://github.com/tomac1/rockadmin/commits/main

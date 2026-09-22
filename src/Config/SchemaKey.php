@@ -22,6 +22,16 @@ final class SchemaKey
         public readonly mixed $example = null,
         public readonly bool $required = false,
         public readonly bool $nullable = false,
+        /**
+         * Allows a {{workspace.*}} or {{user.*}} placeholder as the value.
+         *
+         * Such a value binds per request, so what it will hold is unknown at
+         * load and its type cannot be checked here. Declaring the key
+         * deferrable admits the Placeholder without giving up the type check
+         * for every other value the key may take, which is what ValueType::Mixed
+         * would cost.
+         */
+        public readonly bool $deferrable = false,
         public readonly ?string $performance = null,
         public readonly ?Schema $children = null,
         public readonly ?Schema $each = null,

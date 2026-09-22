@@ -35,10 +35,22 @@ final class Schema
      */
     public function nearest(string $name): ?string
     {
+        return self::nearestOf($this->names(), $name);
+    }
+
+    /**
+     * The same suggestion for names that are not a schema: definition keys,
+     * enumeration keys. Without it each caller builds a throwaway Schema of
+     * Mixed keys purely to reach the instance method.
+     *
+     * @param list<string> $candidates
+     */
+    public static function nearestOf(array $candidates, string $name): ?string
+    {
         $best = null;
         $shortest = PHP_INT_MAX;
 
-        foreach ($this->names() as $candidate) {
+        foreach ($candidates as $candidate) {
             $distance = levenshtein($name, $candidate);
 
             if ($distance < $shortest) {

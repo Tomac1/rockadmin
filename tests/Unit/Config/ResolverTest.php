@@ -187,4 +187,21 @@ final class ResolverTest extends TestCase
 
         $resolver->resolve(['x' => '{{config.a}}']);
     }
+
+    public function testALowercaseSecretLookingVariableIsWarnedAboutToo(): void
+    {
+        $resolver = $this->resolver(['db_password' => 'hunter2']);
+        $resolver->resolve(['db' => ['password' => '{{env.db_password}}']]);
+
+        $this->assertCount(1, $resolver->warnings());
+        $this->assertStringContainsString('db_password', $resolver->warnings()[0]);
+    }
+
+    public function testTheSameVariableIsWarnedAboutOnlyOnce(): void
+    {
+        $resolver = $this->resolver(['API_KEY' => 'k']);
+        $resolver->resolve(['a' => '{{env.API_KEY}}', 'b' => '{{env.API_KEY}}', 'c' => '{{env.API_KEY}}']);
+
+        $this->assertCount(1, $resolver->warnings());
+    }
 }

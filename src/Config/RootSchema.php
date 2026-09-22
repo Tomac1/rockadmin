@@ -45,7 +45,8 @@ final class RootSchema
                     ),
                     'cache' => new SchemaKey(
                         ValueType::String,
-                        description: 'Where the compiled configuration is written.',
+                        description: 'Where the compiled configuration is written. It can hold '
+                            . 'resolved {{env.*}} values, so it must be outside the document root.',
                         example: 'storage/cache/rockadmin',
                         performance: 'Without it the configuration is read and validated on every request.',
                     ),

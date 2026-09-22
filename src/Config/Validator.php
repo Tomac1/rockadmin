@@ -42,6 +42,18 @@ final class Validator
                 continue;
             }
 
+            if ($value instanceof Placeholder) {
+                if (!$key->deferrable) {
+                    $errors[] = new ValidationError($path, \sprintf(
+                        'Expected %s, got Placeholder. A workspace or user placeholder '
+                        . 'binds per request; declare the key deferrable if that is intended.',
+                        $key->type->value,
+                    ));
+                }
+
+                continue;
+            }
+
             if (!$this->matches($value, $key->type)) {
                 $errors[] = new ValidationError($path, \sprintf(
                     'Expected %s, got %s.',
@@ -67,7 +79,7 @@ final class Validator
     private function descend(array $value, SchemaKey $key, string $path): array
     {
         if ($key->children !== null) {
-            /** @var array<string, mixed> $value */
+            /** @var array<string, mixed> $value narrows array<mixed, mixed> — argument.type without it */
             return $this->validate($value, $key->children, $path);
         }
 
@@ -89,7 +101,7 @@ final class Validator
                 continue;
             }
 
-            /** @var array<string, mixed> $entry */
+            /** @var array<string, mixed> $entry narrows array<mixed, mixed> — argument.type without it */
             $errors = [...$errors, ...$this->validate($entry, $key->each, $entryPath)];
         }
 
@@ -122,7 +134,7 @@ final class Validator
 
         return $nearest === null
             ? 'Unknown key.'
-            : "Unknown key — did you mean '{$nearest}'?";
+            : "Unknown key. Did you mean '{$nearest}'?";
     }
 
     private function matches(mixed $value, ValueType $type): bool

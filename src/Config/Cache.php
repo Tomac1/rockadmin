@@ -24,7 +24,6 @@ final class Cache
             return null;
         }
 
-        /** @var mixed $restored */
         $restored = require $this->file;
 
         if (!$restored instanceof Config) {
@@ -53,9 +52,20 @@ final class Cache
 
         $temporary = $this->file . '.' . bin2hex(random_bytes(6)) . '.tmp';
 
-        if (file_put_contents($temporary, $source, LOCK_EX) === false) {
+        $written = file_put_contents($temporary, $source, LOCK_EX);
+
+        // A short write -- a full disk -- returns a byte count, not false. Renaming
+        // a truncated file into place would make every request fatal on a parse
+        // error, which is the failure the atomic rename exists to prevent.
+        if ($written !== \strlen($source)) {
+            @unlink($temporary);
+
             throw new ConfigException("Cannot write the configuration cache: {$temporary}");
         }
+
+        // The compiled cache can hold resolved {{env.*}} values, which is to say
+        // secrets, so it is not left at whatever the umask allows.
+        chmod($temporary, 0o600);
 
         // Renaming within a directory is atomic, so a request served during a deploy
         // includes either the whole old file or the whole new one. Writing in place

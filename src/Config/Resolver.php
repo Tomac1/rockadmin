@@ -31,6 +31,9 @@ final class Resolver
     /** @var list<string> */
     private array $warnings = [];
 
+    /** @var list<string> environment names already warned about */
+    private array $warnedAbout = [];
+
     /**
      * The {{config.*}} paths currently being resolved, innermost last.
      *
@@ -75,7 +78,7 @@ final class Resolver
     private function value(mixed $value): mixed
     {
         if (\is_array($value)) {
-            /** @var array<string, mixed> $value */
+            /** @var array<string, mixed> $value narrows array<mixed, mixed> — argument.type without it */
             return $this->resolve($value);
         }
 
@@ -190,10 +193,22 @@ final class Resolver
         return $value;
     }
 
+    /**
+     * The hints are uppercase and the name may not be: {{env.db_password}} is as
+     * much of a secret as {{env.DB_PASSWORD}}. One warning per variable, however
+     * many times it is used, so the list stays readable.
+     */
     private function warnIfSecret(string $name): void
     {
+        if (\in_array($name, $this->warnedAbout, true)) {
+            return;
+        }
+
+        $upper = strtoupper($name);
+
         foreach (self::SECRET_HINTS as $hint) {
-            if (str_contains($name, $hint)) {
+            if (str_contains($upper, $hint)) {
+                $this->warnedAbout[] = $name;
                 $this->warnings[] = "{{env.{$name}}} looks like a secret. Configuration "
                     . 'values can end up rendered, so check this one is meant to be visible.';
 

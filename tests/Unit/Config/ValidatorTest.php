@@ -6,6 +6,7 @@ namespace RockAdmin\Tests\Unit\Config;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Config\Placeholder;
 use RockAdmin\Config\Schema;
 use RockAdmin\Config\SchemaKey;
 use RockAdmin\Config\ValidationError;
@@ -69,7 +70,7 @@ final class ValidatorTest extends TestCase
         $errors = (new Validator())->validate(['x' => 1], $this->schema());
 
         $this->assertCount(1, $errors);
-        $this->assertStringNotContainsString('did you mean', $errors[0]->message);
+        $this->assertStringNotContainsString('Did you mean', $errors[0]->message);
     }
 
     public function testAWrongTypeNamesBothTypes(): void
@@ -154,5 +155,32 @@ final class ValidatorTest extends TestCase
         $this->assertSame('enums.active', $errors[0]->path);
         $this->assertStringContainsString('array', $errors[0]->message);
         $this->assertStringContainsString('string', $errors[0]->message);
+    }
+
+    public function testADeferredPlaceholderIsAcceptedOnADeferrableKey(): void
+    {
+        $schema = new Schema(['site_id' => new SchemaKey(ValueType::Int, deferrable: true)]);
+
+        $errors = (new Validator())->validate(
+            ['site_id' => new Placeholder('workspace', 'site_id')],
+            $schema,
+        );
+
+        $this->assertSame([], $this->messages($errors));
+    }
+
+    public function testADeferredPlaceholderOnAnOrdinaryKeyIsATypeErrorNamingIt(): void
+    {
+        $schema = new Schema(['site_id' => new SchemaKey(ValueType::Int)]);
+
+        $errors = (new Validator())->validate(
+            ['site_id' => new Placeholder('workspace', 'site_id')],
+            $schema,
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('site_id', $errors[0]->path);
+        $this->assertStringContainsString('Placeholder', $errors[0]->message);
+        $this->assertStringContainsString('deferrable', $errors[0]->message);
     }
 }
