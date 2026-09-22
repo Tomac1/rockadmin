@@ -12,7 +12,7 @@ use RockAdmin\Config\ValueType;
 #[CoversClass(RootSchema::class)]
 final class RootSchemaTest extends TestCase
 {
-    public function testTemplatPathsKeyExists(): void
+    public function testTemplatePathsIsDeclaredSoTheReferenceCanDocumentIt(): void
     {
         $schema = RootSchema::create();
         $key = $schema->key('template_paths');

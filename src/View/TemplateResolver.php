@@ -116,15 +116,34 @@ final class TemplateResolver
             throw new ViewException("An empty {$what} cannot resolve to a file.");
         }
 
-        if (str_contains($clean, "\0") || str_contains($clean, '\\')) {
-            throw new ViewException("Refusing '{$name}' as a {$what}.");
+        // Each refusal says which rule was broken. This error reaches a person
+        // who wrote a name in configuration, and "refused" without "why" sends
+        // them reading the source to find out.
+        if (str_contains($clean, "\0")) {
+            throw new ViewException("Refusing '{$name}' as a {$what}: it contains a null byte.");
         }
 
-        $segments = explode('/', $clean);
+        if (str_contains($clean, '\\')) {
+            throw new ViewException(
+                "Refusing '{$name}' as a {$what}: separate segments with '/', on every platform.",
+            );
+        }
 
-        foreach ($segments as $segment) {
-            if ($segment === '' || $segment === '.' || $segment === '..' || str_contains($segment, ':')) {
-                throw new ViewException("Refusing '{$name}' as a {$what}.");
+        foreach (explode('/', $clean) as $segment) {
+            if ($segment === '') {
+                throw new ViewException("Refusing '{$name}' as a {$what}: it has an empty segment.");
+            }
+
+            if ($segment === '.' || $segment === '..') {
+                throw new ViewException(
+                    "Refusing '{$name}' as a {$what}: a name is relative to a template path and cannot leave it.",
+                );
+            }
+
+            if (str_contains($segment, ':')) {
+                throw new ViewException(
+                    "Refusing '{$name}' as a {$what}: a name is relative, so it names no drive or stream wrapper.",
+                );
             }
         }
 

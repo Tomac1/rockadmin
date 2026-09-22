@@ -177,22 +177,29 @@ final class TemplateResolverTest extends TestCase
     public static function malformedNames(): array
     {
         return [
-            'parent directory' => ['../secrets'],
-            'parent directory inside' => ['ui/../../secrets'],
-            'absolute' => ['/etc/passwd'],
-            'windows absolute' => ['C:/windows/win.ini'],
-            'backslash' => ['ui\\button'],
-            'null byte' => ["ui/button\0.php"],
-            'empty' => [''],
-            'trailing slash' => ['ui/'],
-            'double slash' => ['ui//button'],
+            'parent directory' => ['../secrets', 'cannot leave it'],
+            'parent directory inside' => ['ui/../../secrets', 'cannot leave it'],
+            'single dot' => ['ui/./button', 'cannot leave it'],
+            'absolute' => ['/etc/passwd', 'empty segment'],
+            'windows absolute' => ['C:/windows/win.ini', 'drive or stream wrapper'],
+            'stream wrapper' => ['php://filter/resource=x', 'drive or stream wrapper'],
+            'backslash' => ['ui\\button', 'every platform'],
+            'null byte' => ["ui/button\0.php", 'null byte'],
+            'empty' => ['', 'An empty'],
+            'trailing slash' => ['ui/', 'empty segment'],
+            'double slash' => ['ui//button', 'empty segment'],
         ];
     }
 
     #[DataProvider('malformedNames')]
-    public function testAMalformedNameIsRefused(string $name): void
+    public function testAMalformedNameIsRefusedAndSaysWhy(string $name, string $reason): void
     {
+        // Each guard carries its own message. Asserting only the exception
+        // class would let the guards be merged or reordered with no test
+        // noticing, and would leave whoever wrote the name in configuration
+        // reading the source to find out which rule they broke.
         $this->expectException(ViewException::class);
+        $this->expectExceptionMessage($reason);
 
         $this->resolver()->resolve($name);
     }
@@ -200,8 +207,10 @@ final class TemplateResolverTest extends TestCase
     public function testAMalformedOverrideValueIsRefusedToo(): void
     {
         // The override comes from configuration, so it is the more likely of
-        // the two to carry something odd.
+        // the two to carry something odd — and it must not be a way past the
+        // rules the name itself is held to.
         $this->expectException(ViewException::class);
+        $this->expectExceptionMessage('cannot leave it');
 
         $this->resolver(['ui/button' => '../../etc/passwd'])->resolve('ui/button');
     }
