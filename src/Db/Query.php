@@ -13,10 +13,17 @@ namespace RockAdmin\Db;
  */
 final class Query
 {
-    /** @param array<string, string> $columns alias => source path */
+    /**
+     * @param array<string, string> $columns alias => source path
+     * @param array<string, mixed>  $scope   column of the entity's own table => value
+     * @param list<Filter>          $filters
+     */
     public function __construct(
         public readonly Entity $entity,
         public readonly array $columns,
+        public readonly array $scope = [],
+        public readonly array $filters = [],
+        public readonly ?Search $search = null,
     ) {
     }
 }
