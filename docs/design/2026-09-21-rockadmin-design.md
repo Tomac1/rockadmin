@@ -1037,7 +1037,71 @@ elements, so small adjustments need neither a template override nor CSS.
 
 A template without `ra-` classes violates the standard.
 
-### 8.8 Project assets
+### 8.8 The default theme
+
+Bootstrap supplies the components; it does not supply the look. RockAdmin
+ships its own `rockadmin.css` on top, and the result should not read as a
+Bootstrap template. Bootstrap 5.3 is built on CSS custom properties, so this
+needs no fork and no overridden component classes — the theme redefines
+`--bs-*` tokens and adds its own `--ra-*` ones.
+
+What the default theme sets, and why each matters more in an admin than on a
+website:
+
+- **Density.** Bootstrap's default row height suits a marketing page; an admin
+  table wants more rows on screen. This is the single biggest difference
+  between something that looks like a website and something that looks like a
+  tool.
+- **Typography.** A system font stack, a smaller base size and a firmer scale.
+- **Colour.** A palette of its own rather than Bootstrap's blue, defined as
+  tokens so a project replaces it in one file.
+- **Radius and shadow.** These are what make stock Bootstrap recognisable.
+- **The shell** — navbar with the brand and the workspace switcher, side menu,
+  content area. Bootstrap does not address this at all.
+
+The look stays plain and white, as the brief asks. Restrained is not the same
+as default.
+
+**Dark mode ships with the first theme, not after it.** Bootstrap 5.3 supports
+it natively through `data-bs-theme`, so the cost now is small — whereas
+retrofitting it across fifty templates later means revisiting every one. Every
+template is therefore reviewed in both states from the beginning, the way
+milestone 1's templates were reviewed against both URL modes.
+
+### 8.9 Designing against something real
+
+A visual layer cannot be judged from unit tests, so two things exist to look
+at, with different jobs.
+
+**`demo/` in this repository** is the primary design surface: a small
+application served with PHP's built-in server against the same fixture tables
+the data layer's tests use. It runs for anyone who clones the repository, it
+needs nobody's private data, and it is what documentation screenshots and any
+future visual regression check are taken from.
+
+**A real project, mounted through a Composer path repository,** is the reality
+check:
+
+```json
+"repositories": [{"type": "path", "url": "../rockadmin"}],
+"require": {"tomac1/rockadmin": "@dev"}
+```
+
+Editing the SDK then shows up immediately in that project. Real data surfaces
+what a demo never will — long titles, empty columns, a table with a hundred
+thousand rows, names with diacritics.
+
+The division matters. Tuning the default theme only against one project bakes
+that project's quirks into the SDK: its column counts, its proportions, its
+palette. The demo keeps the default honest to the general case; the real
+project says where the general case is not enough.
+
+Neither is useful before there is something to render. The view layer builds
+the shell, but the first screen worth designing is the grid, so visual work
+belongs to the milestone that delivers it rather than the one that delivers
+the renderer.
+
+### 8.10 Project assets
 
 ```php
 'assets' => ['css' => ['/css/admin-theme.css'], 'js' => ['/js/admin-extra.js']],
@@ -1045,7 +1109,7 @@ A template without `ra-` classes violates the standard.
 
 Project CSS loads after the SDK's, so it overrides without `!important`.
 
-### 8.9 Grid state and shareable URLs
+### 8.11 Grid state and shareable URLs
 
 **Grid state lives in the URL, never in the session.** Shareable links then
 come for free.
@@ -1085,7 +1149,7 @@ slower, visibly flickering, and broken without JS. With a query parameter the
 server renders both grid and populated offcanvas, and JS merely opens it.
 `core.js` listens to `popstate`, so closing the overlay is a history step back.
 
-### 8.10 Editable cells (reserved for v1.1)
+### 8.12 Editable cells (reserved for v1.1)
 
 Cells will gain in-place editing: click a pencil and the text is replaced by
 an input, a select, or — for booleans — a checkbox that saves on change. This
@@ -1109,7 +1173,7 @@ now:
   response returns the re-rendered cell, so the grid always shows what was
   actually stored, not what was typed.
 
-### 8.11 Flash messages
+### 8.13 Flash messages
 
 Flash messages live in the session, survive redirects, render once as
 Bootstrap toasts and are then discarded. On a fragment request they travel
