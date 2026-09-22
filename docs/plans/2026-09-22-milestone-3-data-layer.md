@@ -4111,3 +4111,70 @@ Each verified by running the command and reading its output:
   how configuration reaches the builder, which is milestone 6; designing them
   now would be designing against an imagined caller. The third, a custom
   `RowSource`, ships here because it is an interface rather than a syntax.
+
+## Amendments made during execution
+
+Written after the fact. The plan above is what was dispatched; this section
+records where reality differed, so a reader comparing plan to branch is not
+left guessing.
+
+**The integration harness could not skip.** The plan promised that a machine
+with no database configured would skip the integration tests. It would not
+have: a PHPUnit data provider that yields nothing makes the test an *error*,
+and a `setUp()` guard never runs because providers are collected first.
+`DatabaseTestCase`'s provider now yields a single null case when nothing is
+configured, every provider-driven test takes `?Connection`, and
+`requireConnection()` skips on that sentinel. A DSN that is set but
+unreachable still fails loudly — configuration claiming a server exists is a
+claim worth failing on.
+
+**A test that proved nothing.** The plan's test for "a failed statement
+carries its SQL" matched on the table name, which both MySQL and PostgreSQL
+already put in their own error text; it passed with the append deleted. It now
+asserts on a marker only the appended SQL can contain. The PostgreSQL leg
+still passes without the append, because PDO's pgsql driver echoes
+`LINE 1: <query>` — the behaviour is pinned by the MySQL leg. Anyone tempted
+to level the MySQL assertion down to match PostgreSQL would silently retire
+the only test that proves the wrapping.
+
+**Three assertions in the plan were impossible or wrong.** A wildcard
+integration test filtered on a column the page did not select, so the discard
+rule dropped the filter — fixed by selecting the column, not by weakening the
+rule. A `mixed ...$rest` spread in a unit helper fails PHPStan at level max.
+And `assertSame(['2', '1'], array_keys($options))` can never pass, because PHP
+coerces a numeric-string key to an integer unconditionally.
+
+**JSON keys are escaped.** A key containing a comma, brace, quote or backslash
+produced a wrong path rather than failing. The dialects now escape it.
+
+**Malformed source paths are distinguishable.** The plan's tests asserted only
+the exception class, so the three guards could have been merged or reordered
+with no test noticing. Each now carries its own message.
+
+**`Enums::__set_state()` carries `$sources`.** Added beyond the plan, with a
+test that a database-backed enumeration survives the config cache round trip —
+the existing cache test only exercised static enumerations, so a cached
+configuration could have lost every database-backed enumeration silently.
+
+**Column expressions carry their bindings.** The largest amendment, and the
+one defect that survived every per-task review. `columnExpressions()` returned
+a map of alias to expression *text*, discarding the bound parameters. A JSON
+column carries its pointer as a bound parameter, never as inlined SQL — so the
+moment such a column was filtered, sorted, searched or counted, the statement
+had one more placeholder than it had values. The map now carries `Sql` objects
+(text plus bindings) to all of its consumers, in placeholder order. This also
+retired the double-parsing inefficiency the plan's Task 6 extraction left in
+`rows()`.
+
+Three further defects were fixed in the same wave:
+
+- A page that aliases a collection's key differently from its entity key used
+  to produce a silently empty collection. It is now an error, refused in
+  `Query`'s constructor — the only place that sees both the collection and the
+  entity it hangs off.
+- `count()` joined every selected column's relations rather than only the ones
+  its own conditions use. A to-many join inflates `COUNT(*)` past the row
+  count, which reads as a data problem rather than a query problem.
+- PostgreSQL reports `reltuples = -1` for a never-analysed table, which
+  `SqlRowSource` turned into a negative total and a pager with negative page
+  numbers. The estimate is clamped at zero.
