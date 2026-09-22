@@ -104,7 +104,7 @@ final class Enums
             );
         }
 
-        /** @var array<string, mixed> $source */
+        /** @var array<string, mixed> $source narrows array<mixed, mixed> — return.type without it */
         return $source;
     }
 
@@ -163,7 +163,13 @@ final class Enums
         }
 
         if (!isset($this->enums[$key])) {
-            $nearest = Schema::nearestOf(array_keys($this->enums), $key);
+            // Both kinds are candidates: a typo near a database-backed key is
+            // exactly as likely as one near a static key, and suggesting only
+            // half of what exists is worse than suggesting nothing.
+            $nearest = Schema::nearestOf(
+                [...array_keys($this->enums), ...array_keys($this->sources)],
+                $key,
+            );
 
             $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
 

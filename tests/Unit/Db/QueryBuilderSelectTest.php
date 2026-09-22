@@ -6,6 +6,8 @@ namespace RockAdmin\Tests\Unit\Db;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Db\Collection;
+use RockAdmin\Db\CountStrategy;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\JoinType;
@@ -17,6 +19,7 @@ use RockAdmin\Db\Relation;
 
 #[CoversClass(QueryBuilder::class)]
 #[CoversClass(Query::class)]
+#[CoversClass(Collection::class)]
 final class QueryBuilderSelectTest extends TestCase
 {
     private function entity(): Entity
@@ -122,5 +125,25 @@ final class QueryBuilderSelectTest extends TestCase
         $this->expectExceptionMessage('user');
 
         $this->builder()->rows(new Query($this->entity(), ['x' => 'usr.name']));
+    }
+
+    public function testACollectionNamedAfterTheEntityKeyIsRefused(): void
+    {
+        // Attaching under the key's own name overwrites it on every row, so a
+        // second collection would find no key and attach empty lists in silence.
+        $this->expectException(DbException::class);
+        $this->expectExceptionMessage("named after the key of 'ads'");
+
+        new Query(
+            $this->entity(),
+            ['id' => 'id'],
+            [],
+            [],
+            null,
+            [],
+            null,
+            CountStrategy::Exact,
+            [new Collection('id', 'tags', 'ad_id', 'label')],
+        );
     }
 }

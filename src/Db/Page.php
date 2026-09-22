@@ -27,8 +27,17 @@ final class Page
         self::assertPerPage($perPage);
 
         $number = max(1, $number);
+        $pagesBefore = $number - 1;
 
-        return new self($perPage, ($number - 1) * $perPage, null, false);
+        // An absurd page number makes the multiplication overflow to a float,
+        // which surfaces as a TypeError from somewhere else entirely rather than
+        // as this layer's own exception. A page that far past the end returns
+        // nothing whichever offset it carries, so the offset is clamped instead.
+        $offset = $pagesBefore > intdiv(\PHP_INT_MAX, $perPage)
+            ? \PHP_INT_MAX
+            : $pagesBefore * $perPage;
+
+        return new self($perPage, $offset, null, false);
     }
 
     /** @param mixed $key the last key of the previous page, or null to start */

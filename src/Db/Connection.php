@@ -55,7 +55,7 @@ final class Connection
     {
         $statement = $this->run($sql);
 
-        /** @var list<array<string, mixed>> $rows */
+        /** @var list<array<string, mixed>> $rows narrows PDO's array — return.type without it */
         $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         return $rows;

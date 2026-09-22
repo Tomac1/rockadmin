@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RockAdmin\Db;
 
+use RockAdmin\Config\Placeholder;
+
 /**
  * Composes SQL. It never executes, and it never reads a request.
  *
@@ -29,11 +31,9 @@ final class QueryBuilder
 
         $expressions = $this->columnExpressions($query, $joins);
 
-        foreach ($query->columns as $alias => $source) {
-            $path = SourcePath::parse($source);
-            $expression = $this->expression($query->entity, $path);
+        foreach ($expressions as $alias => $expression) {
             $bindings = [...$bindings, ...$expression->bindings];
-            $selects[] = $expressions[(string) $alias] . ' AS ' . $this->dialect->quoteIdentifier((string) $alias);
+            $selects[] = $expression->text . ' AS ' . $this->dialect->quoteIdentifier($alias);
         }
 
         $where = $this->where($query, $expressions);
@@ -45,14 +45,16 @@ final class QueryBuilder
             $bindings[] = $query->page->after;
         }
 
+        $order = $this->order($query, $expressions);
+
         $text = 'SELECT ' . implode(', ', $selects)
             . ' FROM ' . $this->dialect->quoteIdentifier($query->entity->table)
-            . $this->joins($query->entity, array_keys($joins))
+            . $this->joins($query->entity, $this->joinNames($joins))
             . ($conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions))
-            . $this->order($query, $expressions)
+            . $order->text
             . $this->limit($query->page);
 
-        return new Sql($text, $bindings);
+        return new Sql($text, [...$bindings, ...$order->bindings]);
     }
 
     /**
@@ -62,7 +64,7 @@ final class QueryBuilder
      * filter, because it is the boundary a workspace draws. A filter naming a
      * column the page did not select is dropped: filters arrive from a URL.
      *
-     * @param array<string, string> $expressions alias => SQL expression
+     * @param array<string, Sql> $expressions alias => SQL expression
      */
     private function where(Query $query, array $expressions): Sql
     {
@@ -94,7 +96,15 @@ final class QueryBuilder
                     continue;
                 }
 
-                $alternatives[] = $expressions[$alias] . ' ' . $this->dialect->caseInsensitiveLike() . ' ?';
+                $expression = $expressions[$alias];
+
+                $alternatives[] = $expression->text . ' ' . $this->dialect->caseInsensitiveLike() . ' ?';
+                // These bindings are pushed here, inside the loop, while the group
+                // they belong to is appended below. That is only correct because
+                // search is the last clause of this WHERE: anything appended after
+                // it -- a raw condition, say -- must push its bindings after these,
+                // or text and values stop lining up.
+                $bindings = [...$bindings, ...$expression->bindings];
                 $bindings[] = '%' . $this->escapeLike($query->search->term) . '%';
             }
 
@@ -106,7 +116,29 @@ final class QueryBuilder
         return new Sql(implode(' AND ', $conditions), $bindings);
     }
 
-    private function condition(string $expression, Filter $filter): Sql
+    /**
+     * One filter, with the expression's own bindings spliced in ahead of the
+     * condition's.
+     *
+     * A JSON source resolves to text holding a placeholder, and that
+     * placeholder comes first in the text, so its value comes first too.
+     */
+    private function condition(Sql $expression, Filter $filter): Sql
+    {
+        if ($filter->operator === FilterOperator::In && $filter->value === []) {
+            // "IN ()" is a syntax error, and dropping the condition would make
+            // an empty selection match every row -- the opposite of the ask.
+            // The expression is discarded along with it, so its bindings are
+            // not spliced in: there is no placeholder left standing for them.
+            return new Sql('1 = 0');
+        }
+
+        $condition = $this->operator($expression->text, $filter);
+
+        return new Sql($condition->text, [...$expression->bindings, ...$condition->bindings]);
+    }
+
+    private function operator(string $expression, Filter $filter): Sql
     {
         $like = $this->dialect->caseInsensitiveLike();
 
@@ -156,8 +188,8 @@ final class QueryBuilder
         $values = array_values($filter->value);
 
         if ($values === []) {
-            // "IN ()" is a syntax error, and dropping the condition would make
-            // an empty selection match every row — the opposite of the ask.
+            // condition() answers an empty list before the expression is spent,
+            // so this arm is only reached if that guard is ever moved.
             return new Sql('1 = 0');
         }
 
@@ -187,7 +219,7 @@ final class QueryBuilder
 
     private function assertBound(mixed $value, string $column): void
     {
-        if ($value instanceof \RockAdmin\Config\Placeholder) {
+        if ($value instanceof Placeholder) {
             throw new DbException(
                 "The scope on '{$column}' is still {$value}. A workspace or user placeholder "
                 . 'must be bound to the request before it reaches a query, so that it arrives '
@@ -238,24 +270,38 @@ final class QueryBuilder
      * meaningful against the order it was taken from, so honouring another
      * sort alongside it would silently skip rows.
      *
-     * @param array<string, string> $expressions alias => SQL expression
+     * It answers with an Sql rather than a bare string because sorting on a
+     * JSON column puts a placeholder into ORDER BY, and the pointer it stands
+     * for has to travel with it.
+     *
+     * @param array<string, Sql> $expressions alias => SQL expression
      */
-    private function order(Query $query, array $expressions): string
+    private function order(Query $query, array $expressions): Sql
     {
         if ($query->page?->isKeyset() === true) {
-            return ' ORDER BY '
-                . $this->dialect->qualify($query->entity->table, $query->entity->key) . ' DESC';
+            return new Sql(
+                ' ORDER BY '
+                . $this->dialect->qualify($query->entity->table, $query->entity->key) . ' DESC',
+            );
         }
 
         $parts = [];
+        $bindings = [];
 
         foreach ($query->sort as $sort) {
-            if (isset($expressions[$sort->column])) {
-                $parts[] = $expressions[$sort->column] . ' ' . $sort->direction->keyword();
+            if (!isset($expressions[$sort->column])) {
+                continue;
             }
+
+            $expression = $expressions[$sort->column];
+
+            $parts[] = $expression->text . ' ' . $sort->direction->keyword();
+            $bindings = [...$bindings, ...$expression->bindings];
         }
 
-        return $parts === [] ? '' : ' ORDER BY ' . implode(', ', $parts);
+        return $parts === []
+            ? new Sql('')
+            : new Sql(' ORDER BY ' . implode(', ', $parts), $bindings);
     }
 
     /**
@@ -297,11 +343,20 @@ final class QueryBuilder
         }
 
         $joins = [];
-        $where = $this->where($query, $this->columnExpressions($query, $joins));
+        $expressions = $this->columnExpressions($query, $joins);
+        $where = $this->where($query, $expressions);
+
+        // Every column keeps its expression, because a filter may name any alias
+        // the page selected. Only the joins narrow: a count selects nothing, so a
+        // relation no condition mentions is wasted work at best, and a LEFT JOIN
+        // to a to-many relation would multiply rows and inflate COUNT(*) past the
+        // number of rows the grid shows. Scope needs no join either -- it is
+        // applied to the entity's own table.
+        $names = $this->joinNames($joins, $this->conditionAliases($query, $expressions));
 
         return new Sql(
             'SELECT COUNT(*) FROM ' . $this->dialect->quoteIdentifier($query->entity->table)
-            . $this->joins($query->entity, array_keys($joins))
+            . $this->joins($query->entity, $names)
             . ($where->text === '' ? '' : ' WHERE ' . $where->text),
             $where->bindings,
         );
@@ -315,25 +370,78 @@ final class QueryBuilder
     }
 
     /**
-     * alias => SQL expression, plus the joins those expressions need.
+     * The aliases this query's conditions actually reference.
      *
-     * @param  array<string, bool>  $joins collected by reference, keyed to deduplicate
-     * @return array<string, string>
+     * @param  array<string, Sql> $expressions alias => SQL expression
+     * @return list<string>
+     */
+    private function conditionAliases(Query $query, array $expressions): array
+    {
+        $aliases = [];
+
+        foreach ($query->filters as $filter) {
+            if (isset($expressions[$filter->column])) {
+                $aliases[$filter->column] = true;
+            }
+        }
+
+        if ($query->search !== null && $query->search->term !== '') {
+            foreach ($query->search->columns as $alias) {
+                if (isset($expressions[$alias])) {
+                    $aliases[$alias] = true;
+                }
+            }
+        }
+
+        return array_keys($aliases);
+    }
+
+    /**
+     * alias => SQL expression, plus the relations each alias needs.
+     *
+     * The whole expression is returned, not its text: a JSON source resolves to
+     * text holding a placeholder, so a WHERE or an ORDER BY that reuses that
+     * text has to re-supply the pointer it stands for.
+     *
+     * @param  array<string, list<string>> $joins collected by reference, alias => relation paths
+     * @return array<string, Sql>
      */
     private function columnExpressions(Query $query, array &$joins): array
     {
         $expressions = [];
+        $joins = [];
 
         foreach ($query->columns as $alias => $source) {
             $path = SourcePath::parse($source);
 
-            foreach ($path->joins() as $join) {
-                $joins[$join] = true;
-            }
-
-            $expressions[(string) $alias] = $this->expression($query->entity, $path)->text;
+            $joins[(string) $alias] = $path->joins();
+            $expressions[(string) $alias] = $this->expression($query->entity, $path);
         }
 
         return $expressions;
+    }
+
+    /**
+     * The relations to join, deduplicated and outermost first.
+     *
+     * @param  array<string, list<string>> $joins   alias => relation paths
+     * @param  ?list<string>               $aliases the aliases to consider, or null for every one
+     * @return list<string>
+     */
+    private function joinNames(array $joins, ?array $aliases = null): array
+    {
+        $names = [];
+
+        foreach ($joins as $alias => $paths) {
+            if ($aliases !== null && !\in_array($alias, $aliases, true)) {
+                continue;
+            }
+
+            foreach ($paths as $path) {
+                $names[$path] = true;
+            }
+        }
+
+        return array_keys($names);
     }
 }

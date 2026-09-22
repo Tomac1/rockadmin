@@ -26,10 +26,12 @@ final class SqlRowSource implements RowSource
         if ($countSql !== null) {
             $statements[] = $countSql;
             $scalar = $this->connection->scalar($countSql);
-            $total = (int) (\is_scalar($scalar) ? $scalar : 0);
+            // PostgreSQL reports reltuples as -1 for a table that has never been
+            // analysed. A negative total would become a pager with negative page
+            // numbers, so an estimate that says "unknown" is read as zero.
+            $total = max(0, (int) (\is_scalar($scalar) ? $scalar : 0));
         }
 
-        /** @var Collection $collection */
         foreach ($query->collections as $collection) {
             $rows = $this->attach($rows, $collection, $query->entity->key, $statements);
         }
@@ -47,11 +49,27 @@ final class SqlRowSource implements RowSource
     private function attach(array $rows, Collection $collection, string $key, array &$statements): array
     {
         $keys = [];
+        $carried = false;
 
         foreach ($rows as $row) {
-            if (\array_key_exists($key, $row) && $row[$key] !== null) {
-                $keys[] = $row[$key];
+            if (\array_key_exists($key, $row)) {
+                $carried = true;
+
+                if ($row[$key] !== null) {
+                    $keys[] = $row[$key];
+                }
             }
+        }
+
+        if ($rows !== [] && !$carried) {
+            // Without this the attach would find no keys, take the early return
+            // and hand every row an empty list -- no query issued, no complaint,
+            // and a grid that looks like it is working while showing nothing.
+            throw new DbException(
+                "No row carries the key '{$key}', so the collection '{$collection->alias}' has "
+                . "nothing to attach to. A query must select the entity's key, under that name, "
+                . 'for collections to attach to its rows.',
+            );
         }
 
         if ($keys === []) {
@@ -74,7 +92,6 @@ final class SqlRowSource implements RowSource
 
         $statements[] = $sql;
 
-        /** @var array<string, list<mixed>> $grouped */
         $grouped = [];
 
         foreach ($this->connection->select($sql) as $child) {

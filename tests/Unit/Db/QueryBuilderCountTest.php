@@ -16,6 +16,7 @@ use RockAdmin\Db\Page;
 use RockAdmin\Db\Query;
 use RockAdmin\Db\QueryBuilder;
 use RockAdmin\Db\Relation;
+use RockAdmin\Db\Search;
 use RockAdmin\Db\Sort;
 use RockAdmin\Db\SortDirection;
 
@@ -178,5 +179,44 @@ final class QueryBuilderCountTest extends TestCase
 
         $this->assertNotNull($sql);
         $this->assertStringStartsWith('SELECT COUNT(*)', $sql->text);
+    }
+
+    public function testACountJoinsOnlyTheRelationsItsConditionsUse(): void
+    {
+        // A count selects nothing, so a join no condition needs is wasted work --
+        // and a LEFT JOIN to a to-many relation would multiply rows and inflate
+        // COUNT(*) past the number of rows the grid shows.
+        $sql = $this->builder()->count(new Query(
+            $this->entity(),
+            ['id' => 'id', 'author' => 'user.name'],
+            [],
+            [new Filter('id', FilterOperator::Equals, 3)],
+            null,
+            [],
+            null,
+            CountStrategy::Exact,
+        ));
+
+        $this->assertNotNull($sql);
+        $this->assertStringNotContainsString('JOIN', $sql->text);
+        $this->assertSame('SELECT COUNT(*) FROM `ads` WHERE `ads`.`id` = ?', $sql->text);
+        $this->assertSame([3], $sql->bindings);
+    }
+
+    public function testACountStillJoinsForARelationItSearches(): void
+    {
+        $sql = $this->builder()->count(new Query(
+            $this->entity(),
+            ['id' => 'id', 'author' => 'user.name'],
+            [],
+            [],
+            new Search('Jana', ['author']),
+            [],
+            null,
+            CountStrategy::Exact,
+        ));
+
+        $this->assertNotNull($sql);
+        $this->assertStringContainsString('LEFT JOIN `users`', $sql->text);
     }
 }

@@ -131,4 +131,36 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
 
         $this->dropFixtures($connection);
     }
+
+    /** The drivers disagree on whether an integer column arrives as int or string. */
+    private function asText(mixed $value): string
+    {
+        return \is_scalar($value) ? (string) $value : get_debug_type($value);
+    }
+
+    #[DataProvider('connections')]
+    public function testAFilterOnAJsonColumnRuns(?Connection $connection): void
+    {
+        // The JSON pointer is bound, not inlined, so the expression carries a
+        // placeholder of its own. Reusing it in a WHERE has to carry the value
+        // with it, or the server is handed more placeholders than values.
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        $sql = (new QueryBuilder($connection->dialect()))->rows(new Query(
+            $this->entity(),
+            ['id' => 'id', 'views' => 'stats->daily->views'],
+            [],
+            [new Filter('views', FilterOperator::Equals, '42')],
+        ));
+
+        $rows = $connection->select($sql);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('1', $this->asText($rows[0]['id']));
+        $this->assertSame('42', $this->asText($rows[0]['views']));
+
+        $this->dropFixtures($connection);
+    }
 }

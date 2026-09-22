@@ -19,6 +19,10 @@ final class EnumSource
         public readonly string $value,
         public readonly string $label,
         public readonly ?string $order = null,
+        // @todo milestone 10: read this. It is parsed and stored but never
+        // consulted, because caching across requests needs the cache store that
+        // a cached row count also waits for. Dropping it would mean rejecting
+        // configuration the spec describes, so it is kept, unread, on purpose.
         public readonly ?int $cache = null,
     ) {
     }
@@ -38,7 +42,6 @@ final class EnumSource
         $order = $definition['order'] ?? null;
         $cache = $definition['cache'] ?? null;
 
-        /** @var array{table: string, value: string, label: string} $definition */
         return new self(
             $definition['table'],
             $definition['value'],

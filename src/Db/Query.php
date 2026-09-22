@@ -31,5 +31,23 @@ final class Query
         public readonly CountStrategy $count = CountStrategy::Exact,
         public readonly array $collections = [],
     ) {
+        foreach ($collections as $collection) {
+            // A collection is written onto each row under its alias. Using the
+            // entity's key for that overwrites the key on every row, so a second
+            // collection would find nothing to group by and attach empty lists
+            // to a grid that looks like it is working.
+            //
+            // Collection cannot refuse this itself -- it is told an alias, a
+            // table and two columns, never which entity it hangs off -- so the
+            // refusal lives here, where both names are in hand and every
+            // RowSource, not just the SQL one, is covered by it.
+            if ($collection->alias === $entity->key) {
+                throw new DbException(
+                    "The collection '{$collection->alias}' is named after the key of "
+                    . "'{$entity->table}'. Attaching it would overwrite that key on every row, "
+                    . 'so give the collection a name of its own.',
+                );
+            }
+        }
     }
 }

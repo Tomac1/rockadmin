@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Db\Collection;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\CountStrategy;
+use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\Page;
 use RockAdmin\Db\Query;
@@ -138,5 +139,62 @@ final class SqlRowSourceTest extends DatabaseTestCase
         $connection = $this->requireConnection($connection);
 
         $this->assertInstanceOf(RowSource::class, new SqlRowSource($connection));
+    }
+
+    #[DataProvider('connections')]
+    public function testACollectionOnAQueryThatHidesTheKeyIsRefused(?Connection $connection): void
+    {
+        // Selecting the key under another alias used to make every row get an
+        // empty list, with no query issued and no complaint -- a grid showing
+        // empty tags that looks exactly like a grid with no tags.
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        try {
+            $this->expectException(DbException::class);
+            $this->expectExceptionMessage("No row carries the key 'id'");
+
+            (new SqlRowSource($connection))->fetch(new Query(
+                new Entity('ra_test_ads', 'id'),
+                ['ad_id' => 'id', 'title' => 'title'],
+                [],
+                [],
+                null,
+                [],
+                null,
+                CountStrategy::None,
+                [new Collection('tags', 'ra_test_tags', 'ad_id', 'label')],
+            ));
+        } finally {
+            $this->dropFixtures($connection);
+        }
+    }
+
+    #[DataProvider('connections')]
+    public function testAnEstimatedTotalIsNeverNegative(?Connection $connection): void
+    {
+        // PostgreSQL reports reltuples as -1 for a table that has never been
+        // analysed, and a negative total would become a pager with negative
+        // page numbers.
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        $result = (new SqlRowSource($connection))->fetch(new Query(
+            new Entity('ra_test_ads', 'id'),
+            ['id' => 'id'],
+            [],
+            [],
+            null,
+            [],
+            null,
+            CountStrategy::Estimate,
+        ));
+
+        $this->assertNotNull($result->total);
+        $this->assertGreaterThanOrEqual(0, $result->total);
+
+        $this->dropFixtures($connection);
     }
 }
