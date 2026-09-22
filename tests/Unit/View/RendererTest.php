@@ -130,19 +130,51 @@ final class RendererTest extends TestCase
         $this->assertSame('none', $this->renderer()->render('outer', 'outer view'));
     }
 
-    public function testATemplateCannotSeeTheRendererOrTheResolver(): void
+    public function testATemplateSeesEveryHelperAndNothingItCouldWorkBackwardsFrom(): void
     {
-        // Rule 4 of the project: no layer reaches two levels down. If $this or
-        // a resolver is in scope, a template can build a query eventually.
-        $this->template('x', '<?= isset($this) ? "this" : "no-this" ?>|<?= get_defined_vars() === [] ? "none" : implode(",", array_keys(get_defined_vars())) ?>');
+        // Rule 4 of the project: no layer reaches two levels down. What makes
+        // that true is not the number of variables in scope — it is that none
+        // of them is an object leading anywhere. The template's own file path
+        // is in scope, because `require` needs a variable to require; it leads
+        // nowhere, and naming it awkwardly is what stops a template using it
+        // by accident.
+        $this->template('x', '<?= isset($this) ? "this" : "no-this" ?>|<?= implode(",", array_keys(get_defined_vars())) ?>');
 
         $out = $this->renderer()->render('x');
+        $names = $this->definedVariables($out);
 
         $this->assertStringStartsWith('no-this|', $out);
+
+        foreach (['attr', 'attrs', 'e', 'href', 'partial', 'raw', 'route', 'url', 'view'] as $helper) {
+            $this->assertContains($helper, $names, "The helper \${$helper} is missing from a template's scope.");
+        }
+
         $this->assertSame(
-            ['attr', 'attrs', 'e', 'href', 'partial', 'raw', 'route', 'url', 'view'],
-            $this->definedVariables($out),
+            ['raRockAdminTemplateFile'],
+            array_values(array_diff($names, ['attr', 'attrs', 'e', 'href', 'partial', 'raw', 'route', 'url', 'view'])),
+            'A template gained a variable nobody documented.',
         );
+    }
+
+    public function testNothingInATemplatesScopeIsAnObjectExceptTheViewItself(): void
+    {
+        // The helpers are closures bound to nothing, and the one remaining
+        // variable is a string. A Renderer, a TemplateResolver, an Escaper, a
+        // UrlGenerator or a Config in scope would each be a way to reach the
+        // configuration or the database from a template someone overrode.
+        $this->template('x', '<?php $types = []; foreach (get_defined_vars() as $name => $value) { $types[] = $name . ":" . get_debug_type($value); } ?><?= implode(",", $types) ?>');
+
+        $types = explode(',', $this->renderer()->render('x'));
+
+        foreach ($types as $pair) {
+            [$name, $type] = explode(':', $pair, 2);
+
+            $this->assertContains(
+                $type,
+                ['string', 'Closure', 'null', 'array'],
+                "The variable \${$name} in a template's scope is a {$type}.",
+            );
+        }
     }
 
     /** @return list<string> */
@@ -152,6 +184,29 @@ final class RendererTest extends TestCase
         sort($names);
 
         return $names;
+    }
+
+    public function testAttrsNamesTheAttributeWhoseValueCannotBeWritten(): void
+    {
+        // A view object holding an array where a string belongs is a bug in
+        // the view object. Saying which attribute it was is the difference
+        // between a five-minute fix and a hunt.
+        $this->template('x', '<tr<?= $attrs(["data-id" => [1, 2]]) ?>>');
+
+        $this->expectException(ViewException::class);
+        $this->expectExceptionMessage('data-id');
+
+        $this->renderer()->render('x');
+    }
+
+    public function testUrlNamesTheParameterThatHasNoSpellingInAUrl(): void
+    {
+        $this->template('x', '<?= $e($url("p/ads", ["page" => [2]])) ?>');
+
+        $this->expectException(ViewException::class);
+        $this->expectExceptionMessage('page');
+
+        $this->renderer()->render('x');
     }
 
     public function testAThrowingTemplateLeavesNoOutputBufferBehind(): void

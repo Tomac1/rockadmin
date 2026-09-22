@@ -41,22 +41,68 @@ final class Renderer
             // reaches a template from a data column is not something the
             // admin built.
             'href' => static fn (mixed $value): string => $escaper->url($value),
-            /**
-             * @param array<int|string, scalar|null> $attributes
-             */
-            'attrs' => static fn (array $attributes): string => $escaper->attributes($attributes),
-            /**
-             * @param array<string, int|string> $query
-             */
-            'url' => static fn (string $path, array $query = []): string => $urls->to($path, $query),
-            /**
-             * @param array<string, int|string> $params
-             * @param array<string, int|string> $query
-             */
+            'attrs' => static fn (array $attributes): string
+                => $escaper->attributes(self::attributeValues($attributes)),
+            'url' => static fn (string $path, array $query = []): string
+                => $urls->to($path, self::urlParameters($query, 'query')),
             'route' => static fn (string $name, array $params = [], array $query = []): string
-                => $urls->route($name, $params, $query),
+                => $urls->route($name, self::urlParameters($params, 'parameters'), self::urlParameters($query, 'query')),
             'partial' => fn (string $template, mixed $view = null): string => $this->render($template, $view),
         ];
+    }
+
+    /**
+     * A template hands these helpers whatever a view object holds, so the
+     * array arriving here is `array<mixed, mixed>` however it was declared
+     * upstream. Checking each value is the honest way to reach the narrower
+     * type the escaper asks for — and it turns a TypeError somewhere inside
+     * the escaper into a message naming the attribute.
+     *
+     * @param  array<mixed, mixed>                $attributes
+     * @return array<int|string, scalar|null>
+     */
+    private static function attributeValues(array $attributes): array
+    {
+        $clean = [];
+
+        foreach ($attributes as $name => $value) {
+            if ($value !== null && !\is_scalar($value)) {
+                throw new ViewException(
+                    "The attribute '" . (\is_string($name) ? $name : (string) $name) . "' holds a "
+                    . get_debug_type($value) . '. An attribute value is a string, a number, a boolean or null.',
+                );
+            }
+
+            $clean[\is_int($name) ? $name : (string) $name] = $value;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * The same narrowing for the two places a template passes values into a
+     * URL. A query value that is not a string or a number has no spelling in
+     * a URL, so there is nothing sensible to do but say so.
+     *
+     * @param  array<mixed, mixed>        $values
+     * @return array<string, int|string>
+     */
+    private static function urlParameters(array $values, string $what): array
+    {
+        $clean = [];
+
+        foreach ($values as $name => $value) {
+            if (!\is_string($value) && !\is_int($value)) {
+                throw new ViewException(
+                    "The URL {$what} '" . (\is_string($name) ? $name : (string) $name) . "' holds a "
+                    . get_debug_type($value) . '. A URL carries strings and numbers.',
+                );
+            }
+
+            $clean[(string) $name] = $value;
+        }
+
+        return $clean;
     }
 
     public function render(string $template, mixed $view = null): string
@@ -87,15 +133,20 @@ final class Renderer
      */
     private function execute(string $file, mixed $view): string
     {
-        // Declared with no parameters on purpose. A named parameter would be
-        // a variable in the template's scope, and the whole point of this
-        // closure is that the template sees exactly the nine documented
-        // names and nothing else — func_get_arg() leaves no variable behind.
+        // The two parameters are named so oddly because they are variables in
+        // the template's scope for as long as they exist. $raRockAdminScope is
+        // unset the moment it has been extracted; $raRockAdminTemplateFile has
+        // to survive until the require, so a template can see it — which is
+        // harmless, and cheaper than the alternatives. What a template must
+        // never see is an object it could work backwards from, and the scope
+        // test pins that.
         $run = Closure::bind(
-            static function (): void {
-                extract(func_get_arg(1), EXTR_OVERWRITE);
+            /** @param array<string, mixed> $raRockAdminScope */
+            static function (string $raRockAdminTemplateFile, array $raRockAdminScope): void {
+                extract($raRockAdminScope, EXTR_OVERWRITE);
+                unset($raRockAdminScope);
 
-                require func_get_arg(0);
+                require $raRockAdminTemplateFile;
             },
             null,
             null,
