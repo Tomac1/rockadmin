@@ -71,8 +71,18 @@ final class UrlGenerator
                 }
 
                 $value = (string) $params[$match[1]];
+                $isWildcard = ($match[2] ?? '') === '...';
 
-                $segments = ($match[2] ?? '') === '...' ? explode('/', $value) : [$value];
+                if (!$isWildcard && str_contains($value, '/')) {
+                    throw new InvalidArgumentException(
+                        "Route {$name} cannot use a value containing '/' as the parameter "
+                        . "'{$match[1]}': a slash is a separator again the moment the host "
+                        . 'decodes the path, so the link would resolve to a different route. '
+                        . 'Only a {…...} wildcard may span segments.',
+                    );
+                }
+
+                $segments = $isWildcard ? explode('/', $value) : [$value];
 
                 foreach ($segments as $segment) {
                     if ($segment === '.' || $segment === '..') {

@@ -31,7 +31,15 @@ final class ErrorHandler
     public function toResponse(Throwable $e): Response
     {
         if ($this->logger !== null) {
-            ($this->logger)($e);
+            try {
+                ($this->logger)($e);
+            } catch (Throwable) {
+                // A logger that fails must not replace the throwable it was
+                // called to record: reporting "the log disk is full" instead of
+                // the actual error is worse than losing the log line. There is
+                // nowhere left to report the logger's own failure, so it is
+                // dropped deliberately.
+            }
         }
 
         $status = $e instanceof HttpException ? $e->status : 500;

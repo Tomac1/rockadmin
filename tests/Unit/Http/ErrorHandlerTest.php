@@ -119,4 +119,20 @@ final class ErrorHandlerTest extends TestCase
 
         $this->assertSame(500, $response->status);
     }
+
+    public function testAFailingLoggerDoesNotReplaceTheThrowableItWasRecording(): void
+    {
+        $handler = new ErrorHandler(
+            debug: true,
+            logger: static fn (\Throwable $e): never => throw new \RuntimeException('the log disk is full'),
+        );
+
+        $response = $handler->toResponse(new NotFoundException('no such page'));
+
+        // The original throwable still decides the status and the body; the
+        // logger's own failure is dropped rather than reported in its place.
+        $this->assertSame(404, $response->status);
+        $this->assertStringContainsString('no such page', $response->body);
+        $this->assertStringNotContainsString('log disk', $response->body);
+    }
 }

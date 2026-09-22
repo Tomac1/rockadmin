@@ -50,15 +50,14 @@ final class UrlGeneratorTest extends TestCase
     {
         $urls = new UrlGenerator('/admin');
 
-        // Encoding happens once, per segment, in build(). A slash inside a
-        // non-wildcard value is a separator, not a character: the previous
-        // %2F was cosmetic, because a host decodes it back to a separator
-        // before the router ever sees it. Both forms reach the router as
-        // "p/ads/a/b c", which matches no route — see roundTripValues(),
-        // where "a/b" is absent for exactly this reason.
+        // Encoding happens once, per segment, in build(). Everything that is
+        // not a separator survives as a character, whatever it is — see
+        // testASlashInANonWildcardParameterIsRefused() for the one value that
+        // cannot, because a slash becomes a separator again the moment the
+        // host decodes the path.
         $this->assertSame(
-            '/admin/p/ads/a/b%20c',
-            $urls->route('page.detail', ['page' => 'ads', 'id' => 'a/b c']),
+            '/admin/p/ads/a%20b%3Fc%23d',
+            $urls->route('page.detail', ['page' => 'ads', 'id' => 'a b?c#d']),
         );
         $this->assertSame(
             '/admin/p/ads/u%C5%BEivatel%C3%A9',
@@ -158,6 +157,25 @@ final class UrlGeneratorTest extends TestCase
         $this->expectExceptionMessage("Route assets cannot use '..' as the parameter 'path'");
 
         $urls->route('assets', ['path' => 'css/../../etc/passwd']);
+    }
+
+    public function testASlashInANonWildcardParameterIsRefused(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Route page.detail cannot use a value containing '/' as the parameter 'id'");
+
+        $urls->route('page.detail', ['page' => 'ads', 'id' => 'a/b']);
+    }
+
+    public function testTheWildcardParameterStillCarriesSlashes(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        // The refusal above is about a slash appearing where one segment was
+        // expected. A wildcard is the one place slashes are structural.
+        $this->assertSame('/admin/_assets/css/core.css', $urls->route('assets', ['path' => 'css/core.css']));
     }
 
     public function testToStripsDotSegmentsFromAHandWrittenPath(): void

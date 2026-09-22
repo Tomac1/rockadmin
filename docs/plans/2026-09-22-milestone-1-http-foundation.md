@@ -1972,16 +1972,19 @@ constructor.
 switching the workspace was a GET, which browsers prefetch on hover. It is a POST
 in the spec and in the code.
 
-## Known limitations at the end of this milestone
+## Residual findings, resolved after the merge
 
-Two residual findings were recorded rather than fixed, and both want a decision
-before milestone 3 binds to them:
+Both limitations recorded here at merge time were closed immediately afterwards.
 
-- A non-wildcard route parameter containing `/` splits into extra path segments
-  instead of being carried as one, so it produces a 404 rather than an error.
-  Neither the old nor the new design could carry such a value; the open question
-  is whether `route()` should refuse it, mirroring the dot guard, or whether
-  `build()` should receive a segment list so it can tell a structural slash from
-  one inside a value.
-- `ErrorHandler` invokes its logger without isolation, so a logger that throws
-  would replace the throwable it was called to record.
+- A non-wildcard route parameter containing `/` is now refused with an
+  `InvalidArgumentException`, the same way `.` and `..` already were. The
+  alternative — teaching `build()` to tell a structural slash from one inside a
+  value — turned out to be a dead end: encoding it as `%2F` does not help,
+  because the host decodes it back into a separator before the router sees it,
+  and decoding later in the router is exactly what would reopen the traversal
+  hole `normalizePath()` closes. A value that cannot be carried should fail
+  where the link is built.
+- `ErrorHandler` now calls its logger inside a `try`/`catch`. A logger that
+  throws must not replace the throwable it was called to record: reporting
+  "the log disk is full" in place of the real error is worse than losing the
+  log line.
