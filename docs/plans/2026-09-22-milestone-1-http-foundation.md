@@ -869,6 +869,24 @@ final class UrlGeneratorTest extends TestCase
 
         new UrlGenerator('/admin', 'magic');
     }
+
+    public function testDotSegmentsInParametersSurvive(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame('/admin/p/ads/..', $urls->route('page.detail', ['page' => 'ads', 'id' => '..']));
+        $this->assertSame('/admin/p/ads/.', $urls->route('page.detail', ['page' => 'ads', 'id' => '.']));
+    }
+
+    public function testToStripsDotSegmentsFromAHandWrittenPath(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        // Dot segments are discarded, not resolved: if they were resolved this
+        // would be /admin/detail. Compare testDotSegmentsInParametersSurvive(),
+        // where route() leaves an encoded ".." parameter intact.
+        $this->assertSame('/admin/p/ads/detail', $urls->to('p/ads/../.././detail'));
+    }
 }
 ```
 
@@ -916,17 +934,7 @@ final class UrlGenerator
     /** @param array<string, string|int> $query */
     public function to(string $path, array $query = []): string
     {
-        $path = Request::normalizePath($path);
-
-        if ($this->mode === self::MODE_QUERY) {
-            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
-
-            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
-        }
-
-        $url = rtrim($this->base, '/') . '/' . $path;
-
-        return $url . ($query === [] ? '' : '?' . http_build_query($query));
+        return $this->build(Request::normalizePath($path), $query);
     }
 
     /**
@@ -940,8 +948,8 @@ final class UrlGenerator
         $path = preg_replace_callback(
             '/\{(\w+)(\.\.\.)?}/',
             static function (array $match) use ($name, $params): string {
-                /** @var array{0: string, 1: string, 2?: string} $match */
-                if (!array_key_exists($match[1], $params)) {
+                /** @var array{0: non-empty-string, 1: non-empty-string, 2?: '...'} $match */
+                if (!\array_key_exists($match[1], $params)) {
                     throw new InvalidArgumentException(
                         "Route {$name} needs the parameter '{$match[1]}'.",
                     );
@@ -956,15 +964,50 @@ final class UrlGenerator
                 return rawurlencode($value);
             },
             $pattern,
-        ) ?? $pattern;
+        ) ?? throw new RuntimeException("Failed to build a URL for route {$name}.");
 
-        return $this->to($path, $query);
+        return $this->build($path, $query);
+    }
+
+    /**
+     * Joins an already-prepared path to the base, in whichever mode is active.
+     *
+     * The path is used as given. Callers that accept a path from outside
+     * normalise it first; `route()` must not, because its segments are already
+     * encoded and a value such as ".." would otherwise be read as a
+     * parent-directory segment and dropped.
+     *
+     * @param array<string, string|int> $query
+     */
+    private function build(string $path, array $query): string
+    {
+        if ($this->mode === self::MODE_QUERY) {
+            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
+
+            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
+        }
+
+        $url = rtrim($this->base, '/') . '/' . $path;
+
+        return $url . ($query === [] ? '' : '?' . http_build_query($query));
     }
 }
 ```
 
-Note on `to('')` in path mode: `rtrim('/admin', '/') . '/' . ''` gives
-`/admin/`, which is what the dashboard test expects.
+Two notes on this shape, both of which cost a review round to discover:
+
+`to()` normalises its argument and `route()` does not, which looks like an
+inconsistency and is not. `Request::normalizePath()` discards `.` and `..`
+segments because its job is sanitising a path that arrived from the network.
+`rawurlencode()` leaves a dot untouched, so a parameter whose value is `..`
+survives encoding — and if `route()` then handed its finished path to `to()`,
+that parameter would be read as a parent-directory segment and silently
+dropped, turning `route('page.detail', ['id' => '..'])` into `/admin/p/ads`.
+A path this class assembled from validated parameters is not untrusted input
+and must not be sanitised a second time.
+
+`to('')` in path mode gives `rtrim('/admin', '/') . '/' . ''`, which is
+`/admin/` — what the dashboard test expects.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1597,11 +1640,17 @@ final class KernelTest extends TestCase
         return new Kernel(new Router(), $handlers, new ErrorHandler($debug));
     }
 
-    private function handler(callable $callback): Handler
+    /**
+     * `callable` is not a legal property type in PHP, and an untyped property
+     * fails PHPStan at level max, so the double holds a Closure.
+     *
+     * @param \Closure(Route, Request): Response $callback
+     */
+    private function handler(\Closure $callback): Handler
     {
         return new class ($callback) implements Handler {
-            /** @param callable(Route, Request): Response $callback */
-            public function __construct(private $callback)
+            /** @param \Closure(Route, Request): Response $callback */
+            public function __construct(private readonly \Closure $callback)
             {
             }
 
@@ -1876,3 +1925,63 @@ the same specification, in this order:
 | 10 | CLI and installation | `init`, `doctor`, `migrate`, `user:create`, `make:page`, cache commands, `/_setup`, `/_diagnostics`, dev console |
 | 11 | Built-in pages | dashboard, profile, user management, help |
 | 12 | Documentation | generated reference, written guides, first release |
+
+---
+
+## Amendments made during execution
+
+The task descriptions above are what was dispatched. Review changed four things
+in ways worth recording, because in each case the code that shipped is right and
+the plan text was wrong.
+
+**Task 1 — the superglobal type.** The plan suggested annotating `$_GET` and
+`$_POST` where PHPStan objected. That was backwards: the constructor's docblock
+claimed `array<string, mixed>`, but PHP turns a numeric query key such as `?0=x`
+into an integer, so the honest type is `array<array-key, mixed>`. Widening it
+removed the need for any annotation or any copying.
+
+**Task 4 — encoding belongs to the mode, not to substitution.** Two rounds of
+review landed here. First, `route()` handed its assembled path to `to()`, which
+sanitises untrusted input by discarding `.` and `..` segments — so a parameter
+value of `..` vanished from the link. Then the whole-branch review found the
+deeper half: `route()` percent-encoded parameters and `build()` encoded the
+result again, while a host decodes only once, so query-mode links carried an
+extra encoding layer into the router and resolved to a different parameter than
+the identical link in path mode.
+
+The shipped shape: `route()` substitutes raw values, `build()` encodes according
+to the active mode, and only `to()` normalises. A parameter that is exactly `.`
+or `..` is refused with an exception, because `Request::normalizePath()` discards
+dot segments from every incoming path and such a value therefore cannot
+round-trip in either mode.
+
+The lesson generalises: a link builder and a request parser are two halves of one
+contract, and nothing in the plan tested them against each other. The round-trip
+tests added in the fix wave — build a link, decode it the way the host would,
+parse it back, compare the parameter — are what would have caught both defects on
+the first day.
+
+**Task 6 — spec 5.6 requires logging.** "In production: logged, with a neutral
+page for the user." The plan implemented the neutral page and dropped the
+logging. `ErrorHandler` is the only class that ever sees the throwable, so the
+seam had to exist in this milestone even though the log path itself comes from
+configuration in milestone 10. It ships as an optional closure on the
+constructor.
+
+**Task 7 — a route table is a security artefact.** Drawing it out surfaced that
+switching the workspace was a GET, which browsers prefetch on hover. It is a POST
+in the spec and in the code.
+
+## Known limitations at the end of this milestone
+
+Two residual findings were recorded rather than fixed, and both want a decision
+before milestone 3 binds to them:
+
+- A non-wildcard route parameter containing `/` splits into extra path segments
+  instead of being carried as one, so it produces a 404 rather than an error.
+  Neither the old nor the new design could carry such a value; the open question
+  is whether `route()` should refuse it, mirroring the dot guard, or whether
+  `build()` should receive a segment list so it can tell a structural slash from
+  one inside a value.
+- `ErrorHandler` invokes its logger without isolation, so a logger that throws
+  would replace the throwable it was called to record.
