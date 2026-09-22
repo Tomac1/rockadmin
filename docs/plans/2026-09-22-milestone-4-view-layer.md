@@ -220,7 +220,8 @@ final class EscaperTest extends TestCase
     {
         // htmlspecialchars() without ENT_SUBSTITUTE returns '' on malformed
         // input, which silently deletes a label instead of showing it broken.
-        $this->assertSame("\u{FFFD}", $this->escaper->text("\xC3\x28"));
+        // The lone 0xC3 is replaced; the '(' after it is valid and survives.
+        $this->assertSame("\u{FFFD}(", $this->escaper->text("\xC3\x28"));
     }
 
     /** @return array<string, array{mixed, string}> */
@@ -601,7 +602,9 @@ final class TemplateResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/ra-templates-' . bin2hex(random_bytes(6));
+        // The resolver reports forward slashes, so the expectations must use
+        // them too — sys_get_temp_dir() returns backslashes on Windows.
+        $this->root = str_replace('\', '/', sys_get_temp_dir()) . '/ra-templates-' . bin2hex(random_bytes(6));
         $this->write('sdk/ui/button.php', 'sdk button');
         $this->write('sdk/layout/base.php', 'sdk base');
         $this->write('project/ui/button.php', 'project button');
@@ -689,13 +692,18 @@ final class TemplateResolverTest extends TestCase
     {
         // The error a project hits most often. It has to say where to put the
         // file, not merely that one is absent.
-        $this->expectException(ViewException::class);
-        $this->expectExceptionMessage('ui/nothing');
-        $this->expectExceptionMessage($this->root . '/project');
-        $this->expectExceptionMessage($this->root . '/theme');
-        $this->expectExceptionMessage($this->root . '/sdk');
-
-        $this->resolver()->resolve('ui/nothing');
+        // Asserted by catching rather than with expectExceptionMessage(),
+        // because a second call to that method replaces the first and three
+        // of these four checks would silently not happen.
+        try {
+            $this->resolver()->resolve('ui/nothing');
+            $this->fail('A missing template should throw.');
+        } catch (ViewException $e) {
+            $this->assertStringContainsString('ui/nothing', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/project', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/theme', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/sdk', $e->getMessage());
+        }
     }
 
     public function testAnOverrideRedirectsOneNameToAnother(): void
@@ -1257,6 +1265,7 @@ final class RendererTest extends TestCase
 
     public function testWithOverridesScopesTheResolver(): void
     {
+        mkdir($this->root . '/sdk/ui', 0o777, true);
         $this->template('ui/button', 'default');
         mkdir($this->root . '/sdk/ads', 0o777, true);
         file_put_contents($this->root . '/sdk/ads/button.php', 'ads');
@@ -1269,6 +1278,8 @@ final class RendererTest extends TestCase
 
         unlink($this->root . '/sdk/ads/button.php');
         rmdir($this->root . '/sdk/ads');
+        unlink($this->root . '/sdk/ui/button.php');
+        rmdir($this->root . '/sdk/ui');
     }
 }
 ```
@@ -1365,12 +1376,15 @@ final class Renderer
      */
     private function execute(string $file, mixed $view): string
     {
+        // Declared with no parameters on purpose. A named parameter would be
+        // a variable in the template's scope, and the whole point of this
+        // closure is that the template sees exactly the eight documented
+        // names and nothing else — func_get_arg() leaves no variable behind.
         $run = Closure::bind(
-            static function (string $raRockAdminTemplateFile, array $raRockAdminScope): void {
-                extract($raRockAdminScope, EXTR_OVERWRITE);
-                unset($raRockAdminScope);
+            static function (): void {
+                extract(func_get_arg(1), EXTR_OVERWRITE);
 
-                require $raRockAdminTemplateFile;
+                require func_get_arg(0);
             },
             null,
             null,
@@ -1396,10 +1410,12 @@ final class Renderer
 }
 ```
 
-**Note on the variable names inside the closure:** `$raRockAdminTemplateFile`
-and `$raRockAdminScope` are deliberately ugly. They are in scope while the
-template runs, so they have to be names no template would ever use. `$file`
-and `$scope` would collide with a view that happens to be about files.
+**Why `func_get_arg()` and not parameters.** Any parameter name would be a
+variable the template can see, and `testATemplateCannotSeeTheRendererOrTheResolver`
+enumerates that scope. `extract()` before the `require` is what puts the eight
+documented names there; nothing else may join them. This is the one place in
+the project where `func_get_arg()` is the clearer choice, so it carries the
+comment explaining why.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
