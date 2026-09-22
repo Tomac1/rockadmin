@@ -52,7 +52,10 @@ final class SourcePath
 
         foreach ($segments as $segment) {
             if ($segment === '') {
-                throw new DbException("Source path '{$source}' has an empty segment.");
+                throw new DbException(
+                    "Source path '{$source}' has an empty segment: dots separate a relation path from a column, "
+                    . 'and each part between them must be non-empty.',
+                );
             }
         }
 

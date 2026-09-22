@@ -61,24 +61,25 @@ final class SourcePathTest extends TestCase
         $this->assertSame(['user'], $path->joins());
     }
 
-    /** @return array<string, array{string}> */
+    /** @return array<string, array{string, string}> */
     public static function malformed(): array
     {
         return [
-            'empty' => [''],
-            'trailing dot' => ['user.'],
-            'leading dot' => ['.name'],
-            'double dot' => ['user..name'],
-            'trailing arrow' => ['stats->'],
-            'empty json key' => ['stats->->views'],
-            'arrow before dot' => ['stats->daily.views'],
+            'empty' => ['', 'empty segment'],
+            'trailing dot' => ['user.', 'empty segment'],
+            'leading dot' => ['.name', 'empty segment'],
+            'double dot' => ['user..name', 'empty segment'],
+            'trailing arrow' => ['stats->', 'empty JSON key'],
+            'empty json key' => ['stats->->views', 'empty JSON key'],
+            'arrow before dot' => ['stats->daily.views', 'cannot appear after an arrow'],
         ];
     }
 
     #[DataProvider('malformed')]
-    public function testAMalformedPathIsRefused(string $source): void
+    public function testAMalformedPathIsRefused(string $source, string $expected): void
     {
         $this->expectException(DbException::class);
+        $this->expectExceptionMessage($expected);
 
         SourcePath::parse($source);
     }

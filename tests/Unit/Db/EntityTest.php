@@ -84,4 +84,15 @@ final class EntityTest extends TestCase
 
         new Entity('ads', 'id', ['user' => new Relation('author', 'users', 'users.id = ads.user_id')]);
     }
+
+    public function testTheKeyCheckRunsForEveryRelationNotJustTheFirst(): void
+    {
+        $this->expectException(DbException::class);
+        $this->expectExceptionMessage('company');
+
+        new Entity('ads', 'id', [
+            'user' => new Relation('user', 'users', 'users.id = ads.user_id'),
+            'company' => new Relation('employer', 'companies', 'companies.id = users.company_id'),
+        ]);
+    }
 }
