@@ -1925,3 +1925,63 @@ the same specification, in this order:
 | 10 | CLI and installation | `init`, `doctor`, `migrate`, `user:create`, `make:page`, cache commands, `/_setup`, `/_diagnostics`, dev console |
 | 11 | Built-in pages | dashboard, profile, user management, help |
 | 12 | Documentation | generated reference, written guides, first release |
+
+---
+
+## Amendments made during execution
+
+The task descriptions above are what was dispatched. Review changed four things
+in ways worth recording, because in each case the code that shipped is right and
+the plan text was wrong.
+
+**Task 1 — the superglobal type.** The plan suggested annotating `$_GET` and
+`$_POST` where PHPStan objected. That was backwards: the constructor's docblock
+claimed `array<string, mixed>`, but PHP turns a numeric query key such as `?0=x`
+into an integer, so the honest type is `array<array-key, mixed>`. Widening it
+removed the need for any annotation or any copying.
+
+**Task 4 — encoding belongs to the mode, not to substitution.** Two rounds of
+review landed here. First, `route()` handed its assembled path to `to()`, which
+sanitises untrusted input by discarding `.` and `..` segments — so a parameter
+value of `..` vanished from the link. Then the whole-branch review found the
+deeper half: `route()` percent-encoded parameters and `build()` encoded the
+result again, while a host decodes only once, so query-mode links carried an
+extra encoding layer into the router and resolved to a different parameter than
+the identical link in path mode.
+
+The shipped shape: `route()` substitutes raw values, `build()` encodes according
+to the active mode, and only `to()` normalises. A parameter that is exactly `.`
+or `..` is refused with an exception, because `Request::normalizePath()` discards
+dot segments from every incoming path and such a value therefore cannot
+round-trip in either mode.
+
+The lesson generalises: a link builder and a request parser are two halves of one
+contract, and nothing in the plan tested them against each other. The round-trip
+tests added in the fix wave — build a link, decode it the way the host would,
+parse it back, compare the parameter — are what would have caught both defects on
+the first day.
+
+**Task 6 — spec 5.6 requires logging.** "In production: logged, with a neutral
+page for the user." The plan implemented the neutral page and dropped the
+logging. `ErrorHandler` is the only class that ever sees the throwable, so the
+seam had to exist in this milestone even though the log path itself comes from
+configuration in milestone 10. It ships as an optional closure on the
+constructor.
+
+**Task 7 — a route table is a security artefact.** Drawing it out surfaced that
+switching the workspace was a GET, which browsers prefetch on hover. It is a POST
+in the spec and in the code.
+
+## Known limitations at the end of this milestone
+
+Two residual findings were recorded rather than fixed, and both want a decision
+before milestone 3 binds to them:
+
+- A non-wildcard route parameter containing `/` splits into extra path segments
+  instead of being carried as one, so it produces a 404 rather than an error.
+  Neither the old nor the new design could carry such a value; the open question
+  is whether `route()` should refuse it, mirroring the dot guard, or whether
+  `build()` should receive a segment list so it can tell a structural slash from
+  one inside a value.
+- `ErrorHandler` invokes its logger without isolation, so a logger that throws
+  would replace the throwable it was called to record.
