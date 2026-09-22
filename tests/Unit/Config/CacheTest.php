@@ -28,6 +28,10 @@ final class CacheTest extends TestCase
         if (is_file($this->file)) {
             unlink($this->file);
         }
+
+        foreach (glob($this->file . '.*.tmp') ?: [] as $leftover) {
+            unlink($leftover);
+        }
     }
 
     private function config(mixed $extra = null): Config
@@ -93,6 +97,30 @@ final class CacheTest extends TestCase
         $this->expectExceptionMessage('extra');
 
         (new Cache($this->file))->write($this->config(static fn (): int => 1));
+    }
+
+    public function testWritingOverAnExistingCacheReplacesIt(): void
+    {
+        $cache = new Cache($this->file);
+        $cache->write($this->config());
+        $cache->write(new Config(['debug' => false], Enums::fromConfig([])));
+
+        $restored = $cache->read();
+
+        $this->assertNotNull($restored);
+        $this->assertFalse($restored->get('debug'));
+        $this->assertNull($restored->get('per_page'), 'the first write must be gone, not merged');
+        $this->assertCount(0, glob($this->file . '.*.tmp') ?: []);
+    }
+
+    public function testReadingAFileThatIsNotACompiledConfigurationIsRefused(): void
+    {
+        file_put_contents($this->file, "<?php\n\nreturn ['not' => 'a config'];\n");
+
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage($this->file);
+
+        (new Cache($this->file))->read();
     }
 
     public function testClearRemovesTheFile(): void

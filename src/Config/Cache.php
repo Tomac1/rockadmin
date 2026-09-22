@@ -51,8 +51,19 @@ final class Cache
             throw new ConfigException("Cannot create the cache directory: {$directory}");
         }
 
-        if (file_put_contents($this->file, $source, LOCK_EX) === false) {
-            throw new ConfigException("Cannot write the configuration cache: {$this->file}");
+        $temporary = $this->file . '.' . bin2hex(random_bytes(6)) . '.tmp';
+
+        if (file_put_contents($temporary, $source, LOCK_EX) === false) {
+            throw new ConfigException("Cannot write the configuration cache: {$temporary}");
+        }
+
+        // Renaming within a directory is atomic, so a request served during a deploy
+        // includes either the whole old file or the whole new one. Writing in place
+        // would let it include a half-written one, and `require` ignores the lock.
+        if (!rename($temporary, $this->file)) {
+            @unlink($temporary);
+
+            throw new ConfigException("Cannot replace the configuration cache: {$this->file}");
         }
     }
 
