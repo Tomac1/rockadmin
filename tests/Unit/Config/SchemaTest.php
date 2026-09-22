@@ -79,4 +79,31 @@ final class SchemaTest extends TestCase
         $this->assertTrue($key->example);
         $this->assertSame('Sorting an unindexed column causes a filesort.', $key->performance);
     }
+
+    public function testAKeyCannotDeclareBothChildrenAndEach(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new SchemaKey(
+            ValueType::Array,
+            children: new Schema([]),
+            each: new Schema([]),
+        );
+    }
+
+    public function testAKeyMayDeclareEitherAlone(): void
+    {
+        $children = new SchemaKey(ValueType::Array, children: new Schema([]));
+        $each = new SchemaKey(ValueType::Array, each: new Schema([]));
+
+        $this->assertNotNull($children->children);
+        $this->assertNull($children->each);
+        $this->assertNotNull($each->each);
+        $this->assertNull($each->children);
+    }
+
+    public function testNearestOnAnEmptySchemaSuggestsNothing(): void
+    {
+        $this->assertNull((new Schema([]))->nearest('anything'));
+    }
 }
