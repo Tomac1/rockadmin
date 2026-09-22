@@ -157,7 +157,7 @@ URLs use fixed prefixes by kind. Routing is unambiguous and stable.
 | `/p/{page}/{id}/copy` | form prefilled from a row, saving as a new one |
 | `/r/{page}/{region}` | **HTML fragment of one region** (AJAX) |
 | `/a/{page}/{action}` | POST only — create, update, delete, custom |
-| `/w/{workspace}` | switch workspace |
+| `/w/{workspace}` | POST only — switch workspace |
 | `/_assets/{file}` | CSS, JS, icons from the SDK |
 | `/_diagnostics` | environment check (requires `dev.console`) |
 | `/_setup` | first-run setup, token-gated (see 11.4) |
@@ -170,6 +170,11 @@ all follow links without a user ever clicking them. Deletion is a POST to
 
 Copy and create therefore have `/p/` routes — they only render a form —
 while saving either goes to `/a/{page}/create`.
+
+Switching the workspace is a POST for the same reason. It changes what the
+user sees for the rest of the session, and browsers prefetch links on hover;
+a GET route would let a hover over the workspace menu quietly change the
+active workspace. The switcher submits instead of linking.
 
 ### 5.2 Lifecycle
 
