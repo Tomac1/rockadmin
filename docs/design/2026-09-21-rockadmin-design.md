@@ -314,7 +314,7 @@ region; a two-pane inbox has two. Regions are specified in 8.4.
             'per_page' => 50,
             'sort'     => ['created_at' => 'desc'],
             'columns'  => [
-                'id'         => '@column:id',
+                'id'         => ['use' => '@column:id'],
                 'title'      => ['type' => 'text', 'sortable' => true, 'link' => 'edit',
                                  'filter' => ['type' => 'text', 'op' => 'contains']],
                 'user_name'  => ['use' => '@column:name', 'label' => 'Author',
@@ -325,8 +325,8 @@ region; a two-pane inbox has two. Regions are specified in 8.4.
                 'is_active'  => ['type' => 'bool', 'display' => 'check'],
                 'progress'   => ['type' => 'int', 'display' => 'progress', 'max' => 100],
                 'views'      => ['type' => 'int', 'source' => 'stats->daily_views'],
-                'created_at' => '@column:created_at',
-                'actions'    => ['type' => 'actions', 'items' => ['edit', 'preview', 'copy', 'delete']],
+                'created_at' => ['use' => '@column:created_at'],
+                'tools'      => ['type' => 'actions', 'items' => ['edit', 'preview', 'copy', 'delete']],
             ],
             'bulk_actions' => ['delete', 'publish'],
         ],
@@ -461,15 +461,27 @@ therefore written once and referenced.
 ];
 ```
 
-Referencing follows the syntax already used by `@enum:`, so there is one rule
-to learn — `@namespace:key`:
+A reference is always written as `['use' => '@namespace:key']`, even when
+nothing is overridden:
 
 ```php
-'id'         => '@column:id',                                 // the definition as-is
-'created_at' => ['use' => '@column:created_at',               // and with changes
-                 'label' => 'Published'],
+'id'         => ['use' => '@column:id'],
+'created_at' => ['use' => '@column:created_at', 'label' => 'Published'],
 'note'       => ['use' => '@column:name', 'filter' => null],  // null removes an inherited key
 ```
+
+A shorter bare-string form was considered and rejected. A node that is
+sometimes a string and sometimes an array forces every reader — the
+validator, the reference generator, the scaffolder, a person skimming a diff
+— to handle two shapes, and adding the first override later rewrites the line
+instead of adding to it. One shape costs four characters and removes a class
+of mistakes.
+
+This is why `'options' => '@enum:ad_state'` stays a bare string and does not
+contradict the rule: there, the reference is the *value of a key*, like any
+other scalar. Here, the reference *is the node* being defined. Different
+positions, different rules, and the `@namespace:key` syntax is the same in
+both.
 
 Rules:
 
@@ -783,10 +795,6 @@ An action is defined once and referenced wherever it should appear:
     // The same region, shown as a modal instead.
     'quick'   => ['type' => 'open', 'in' => 'modal', 'target' => '@region:preview'],
 
-    // A region belonging to a different page.
-    'author'  => ['type' => 'open', 'in' => 'modal',
-                  'target' => '@region:users.detail', 'params' => ['id' => '{user_id}']],
-
     // Change data. Always POST, always confirmed, always permission-checked.
     'archive' => ['type' => 'post', 'to' => '@action:archive', 'icon' => 'archive',
                   'confirm' => 'Archive this ad?', 'permission' => 'ads.update',
@@ -798,24 +806,107 @@ Common keys: `type` (`link`, `open`, `post`), `label`, `icon`, `permission`,
 `confirm`, `when` (row conditions deciding whether the action is offered),
 and `refresh` (which regions re-render after it completes).
 
-Placeholders in `to`, `target`, `params` and `title` are filled from the row
-being rendered — `{id}`, `{user_id}`, any selected column. They are URL-encoded
-on substitution, and only keys present in the region's data are allowed, so a
-row cannot inject a path.
+#### How pages, regions and actions are addressed
 
-**Where actions appear** is a separate choice, and the same action may appear
-in several places at once:
+Every reference uses the same `@namespace:key` syntax as the rest of the
+configuration. Three namespaces matter here:
+
+| Reference | Points at | Resolves to the URL |
+|---|---|---|
+| `@page:users` | the page defined in `config/rockadmin/pages/users.php` | `/p/users` |
+| `@page:users/{id}/edit` | that page's edit form for a row | `/p/users/42/edit` |
+| `@region:detail` | the region `detail` **of the current page** | `/r/<current>/detail` |
+| `@region:users.detail` | the region `detail` of the page `users` | `/r/users/detail` |
+| `@action:archive` | the action handler on the current page | `/a/<current>/archive` |
+
+So `@region:users.detail` reads as *page `users`, region `detail`*: the part
+before the dot is the page file's name without `.php`, the part after it is a
+key in that page's `regions` block. Spelled out, the two halves are:
 
 ```php
-'header'  => ['buttons' => ['create', 'export']],              // page header
-'columns' => [
-    'actions' => ['type' => 'actions', 'items' => ['edit', 'preview', 'delete']],
-],                                                              // a column, anywhere in the grid
-'bulk_actions' => ['delete', 'archive'],                        // applied to selected rows
+// config/rockadmin/pages/users.php
+<?php return [
+    'title'   => 'Users',
+    'layout'  => 'list',
+    'entity'  => ['table' => 'users', 'key' => 'id'],
+    'regions' => [
+        'grid'   => ['type' => 'list', 'columns' => [/* ... */]],
+        'detail' => ['type' => 'preview', 'fields' => ['name', 'email', 'created_at']],
+    ],
+];
 ```
 
-Because the action column is an ordinary column, it can sit in the middle of
-the grid, and there can be more than one.
+```php
+// config/rockadmin/pages/ads.php — opens the users page's detail region
+'actions' => [
+    'author' => ['type' => 'open', 'in' => 'modal', 'size' => 'lg',
+                 'target' => '@region:users.detail',
+                 'params' => ['id' => '{user_id}']],
+],
+```
+
+Clicking that action requests `/r/users/detail?id=123`, which renders the
+`detail` region of the `users` page **under the `users` page's permissions**,
+and `core.js` puts the returned HTML into a modal. No new mechanism: it is the
+ordinary region fragment route from 5.1.
+
+`target` accepts only `@region:` and `@page:` references, never a bare URL.
+A raw URL cannot be permission-checked against a page, and would become the
+obvious way to smuggle content into the admin frame.
+
+#### Two kinds of placeholder
+
+They look similar and mean different things, so the distinction is worth
+stating plainly:
+
+| Syntax | Resolved | Source |
+|---|---|---|
+| `{{user.id}}` | once, when configuration loads | the **logged-in admin**, workspace, env, config |
+| `{user_id}` | per row, while rendering | a **column of the row** being rendered |
+
+Writing `{{user.id}}` when you meant "the user this row belongs to" produces
+the logged-in administrator's id on every row — a mistake that looks correct
+in testing, because the developer is usually looking at their own records.
+Row placeholders are URL-encoded on substitution and only keys present in the
+region's data are accepted, so a row cannot inject a path.
+
+#### Where actions appear
+
+The same action may appear in several places at once, and a grid may carry
+more than one action column:
+
+```php
+'header'  => ['buttons' => ['create', 'export']],       // page header
+'columns' => [
+    'activity' => ['type' => 'actions', 'items' => ['author']],   // early in the grid
+    'title'    => ['type' => 'text'],
+    'price'    => ['type' => 'money'],
+    'tools'    => ['type' => 'actions', 'items' => ['edit', 'copy', 'delete']],
+],
+'bulk_actions' => ['delete', 'archive'],                // applied to selected rows
+```
+
+An action column is an ordinary column, so it is placed by its position among
+the others and named like any other column. Name it for what it holds —
+`activity`, `tools` — not `actions` and `actions2`: the key becomes the CSS
+class `ra-grid-cell-tools` and the template override path, so a meaningful
+name is worth more than a numbered one.
+
+`items` accepts three forms, and they can be mixed:
+
+```php
+'items' => [
+    'edit',                                                   // a named action, as defined
+    ['use' => '@action:preview', 'in' => 'modal'],            // a named action, adjusted here
+    'log' => ['type' => 'open', 'in' => 'modal', 'size' => 'xl',
+              'target' => '@region:user_activity.log',
+              'params' => ['user_id' => '{id}']],             // defined inline, used only here
+],
+```
+
+Define an action in the page's `actions` block when it is used more than once
+or belongs to the page's vocabulary; define it inline when it exists only in
+that one column. Both produce the same thing.
 
 **`preview` is then only shorthand.** A page that declares
 
