@@ -21,10 +21,10 @@ final class Request
     public readonly array $headers;
 
     /**
-     * @param array<string, mixed>  $query
-     * @param array<string, mixed>  $body
-     * @param array<string, string> $cookies
-     * @param array<string, string> $headers header names in any case
+     * @param array<array-key, mixed> $query
+     * @param array<array-key, mixed> $body
+     * @param array<string, string>   $cookies
+     * @param array<string, string>   $headers header names in any case
      */
     public function __construct(
         string $method,
@@ -73,18 +73,6 @@ final class Request
 
         $method = \is_string($_SERVER['REQUEST_METHOD'] ?? null) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
-        $query = [];
-
-        foreach ($_GET as $name => $value) {
-            $query[(string) $name] = $value;
-        }
-
-        $body = [];
-
-        foreach ($_POST as $name => $value) {
-            $body[(string) $name] = $value;
-        }
-
         $cookies = [];
 
         foreach ($_COOKIE as $name => $value) {
@@ -93,7 +81,7 @@ final class Request
             }
         }
 
-        return new self($method, $path, $query, $body, $cookies, $headers);
+        return new self($method, $path, $_GET, $_POST, $cookies, $headers);
     }
 
     public function isPost(): bool
