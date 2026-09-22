@@ -135,4 +135,24 @@ final class ValidatorTest extends TestCase
 
         $this->assertCount(3, $errors);
     }
+
+    public function testANullableKeyStillRejectsAWrongType(): void
+    {
+        $errors = (new Validator())->validate(['smtp_host' => 42], $this->schema());
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('smtp_host', $errors[0]->path);
+        $this->assertStringContainsString('string', $errors[0]->message);
+        $this->assertStringContainsString('int', $errors[0]->message);
+    }
+
+    public function testAScalarEntryInAUniformMapIsReportedNotCrashedOn(): void
+    {
+        $errors = (new Validator())->validate(['enums' => ['active' => 'oops']], $this->schema());
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('enums.active', $errors[0]->path);
+        $this->assertStringContainsString('array', $errors[0]->message);
+        $this->assertStringContainsString('string', $errors[0]->message);
+    }
 }
