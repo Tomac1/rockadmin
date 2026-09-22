@@ -1,0 +1,22 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RockAdmin\Db;
+
+/**
+ * Everything a grid asks the database for.
+ *
+ * A description, not a builder: it holds what was asked and knows nothing
+ * about SQL. That is what lets the same description be answered by the
+ * default SQL reader or by a project's own RowSource.
+ */
+final class Query
+{
+    /** @param array<string, string> $columns alias => source path */
+    public function __construct(
+        public readonly Entity $entity,
+        public readonly array $columns,
+    ) {
+    }
+}
