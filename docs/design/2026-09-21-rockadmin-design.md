@@ -1239,6 +1239,9 @@ Also deferred: two-factor (TOTP), SSO beyond OIDC.
 ```php
 'mail' => [
     'driver'     => 'log',              // log | smtp | sendmail | callback
+                                        // the 'callback' driver's closure is
+                                        // supplied at bootstrap, not here —
+                                        // configuration holds data only
     'from'       => ['address' => '{{env.MAIL_FROM}}', 'name' => 'RockAdmin'],
     'host'       => '{{env.MAIL_HOST}}',
     'port'       => 587,
@@ -1295,12 +1298,21 @@ Route::any('/admin/{path?}', fn ($path = '') => RockAdmin::handle($path, basePat
 **Borrow the database connection rather than opening a second one:**
 
 ```php
-'db' => ['pdo' => fn () => DB::connection()->getPdo()],
+RockAdmin::handle($path, basePath: base_path(), pdo: fn () => DB::connection()->getPdo());
 ```
 
 One connection, one place holding the password, and transactions that do not
-diverge when the project writes alongside the admin. An explicit DSN remains
-available for framework-less projects.
+diverge when the project writes alongside the admin. An explicit DSN in
+`rockadmin.php` remains available for framework-less projects.
+
+The connection is handed to the bootstrap rather than written into the
+configuration, and that is deliberate: **configuration holds data, the host
+supplies services.** A closure cannot be written into `config.cache.php`, so a
+configuration containing one could never be cached — and the cache is what
+makes loading a single `include` in production. The same rule applies to every
+service the host may replace: the mailer callback, the session store, the
+environment reader and a custom `RowSource` are constructor arguments, not
+configuration keys.
 
 **Migrations belong to RockAdmin**, tracked in `ra_migrations`, idempotent,
 with `--dry-run` printing SQL for hosts without CLI access. The project's own
