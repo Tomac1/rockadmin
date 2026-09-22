@@ -587,16 +587,44 @@ abstract class DatabaseTestCase extends TestCase
     /** @var array<string, Connection> */
     private static array $connections = [];
 
-    /** @return iterable<string, array{Connection}> */
+    /**
+     * One case per configured server, or a single null case when there are none.
+     *
+     * A data provider that yields nothing makes PHPUnit report an error, not a
+     * skip — so a contributor with no database would see a red suite. The null
+     * case exists to give requireConnection() something to skip on.
+     *
+     * @return iterable<string, array{?Connection}>
+     */
     public static function connections(): iterable
     {
+        $any = false;
+
         foreach (['mysql' => 'MYSQL', 'pgsql' => 'PGSQL'] as $driver => $prefix) {
             $connection = self::connect($prefix);
 
             if ($connection !== null) {
+                $any = true;
+
                 yield $driver => [$connection];
             }
         }
+
+        if (!$any) {
+            yield 'no database configured' => [null];
+        }
+    }
+
+    /** Skips the test when this case is the no-database sentinel. */
+    protected function requireConnection(?Connection $connection): Connection
+    {
+        if ($connection === null) {
+            $this->markTestSkipped(
+                'No database configured. Set RA_TEST_MYSQL_DSN or RA_TEST_PGSQL_DSN.',
+            );
+        }
+
+        return $connection;
     }
 
     private static function connect(string $prefix): ?Connection
@@ -621,21 +649,6 @@ abstract class DatabaseTestCase extends TestCase
         );
 
         return self::$connections[$prefix] = Connection::fromPdo($pdo);
-    }
-
-    /**
-     * Skips the test when no server is configured at all.
-     *
-     * A data provider yielding nothing makes PHPUnit fail the test rather
-     * than skip it, so the emptiness has to be checked here.
-     */
-    protected function setUp(): void
-    {
-        if (iterator_count(self::connections()) === 0) {
-            $this->markTestSkipped(
-                'No database configured. Set RA_TEST_MYSQL_DSN or RA_TEST_PGSQL_DSN.',
-            );
-        }
     }
 
     /** Creates the fixture tables and fills them. Drops them first if present. */
@@ -706,8 +719,10 @@ use RockAdmin\Tests\Support\DatabaseTestCase;
 final class ConnectionTest extends DatabaseTestCase
 {
     #[DataProvider('connections')]
-    public function testSelectReturnsAssociativeRows(Connection $connection): void
+    public function testSelectReturnsAssociativeRows(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $rows = $connection->select(new Sql('SELECT id, title FROM ra_test_ads WHERE id = ?', [1]));
@@ -719,8 +734,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testScalarReturnsNullWhenNothingMatches(Connection $connection): void
+    public function testScalarReturnsNullWhenNothingMatches(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $this->assertSame(
@@ -732,8 +749,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testQuotedIdentifiersAreAcceptedByTheServer(Connection $connection): void
+    public function testQuotedIdentifiersAreAcceptedByTheServer(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $dialect = $connection->dialect();
@@ -748,8 +767,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testCaseInsensitiveLikeMatchesRegardlessOfCase(Connection $connection): void
+    public function testCaseInsensitiveLikeMatchesRegardlessOfCase(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $like = $connection->dialect()->caseInsensitiveLike();
@@ -761,8 +782,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testJsonPathReadsANestedValue(Connection $connection): void
+    public function testJsonPathReadsANestedValue(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $dialect = $connection->dialect();
@@ -779,8 +802,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testEstimatedCountReturnsANumberForAKnownTable(Connection $connection): void
+    public function testEstimatedCountReturnsANumberForAKnownTable(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $estimate = $connection->scalar($connection->dialect()->estimatedCount('ra_test_ads'));
@@ -793,8 +818,10 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAFailingStatementRaisesDbExceptionCarryingTheSql(Connection $connection): void
+    public function testAFailingStatementRaisesDbExceptionCarryingTheSql(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->expectException(DbException::class);
         $this->expectExceptionMessage('ra_test_nonexistent');
 
@@ -1554,8 +1581,10 @@ final class QueryBuilderSelectTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAChainedRelationAndAJsonColumnRunOnARealServer(Connection $connection): void
+    public function testAChainedRelationAndAJsonColumnRunOnARealServer(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query($this->entity(), [
@@ -1581,8 +1610,10 @@ final class QueryBuilderSelectTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testOneJoinIsEmittedForSeveralColumnsOfTheSameRelation(Connection $connection): void
+    public function testOneJoinIsEmittedForSeveralColumnsOfTheSameRelation(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query($this->entity(), [
@@ -1597,8 +1628,10 @@ final class QueryBuilderSelectTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testALeftJoinKeepsRowsWithoutARelatedRecord(Connection $connection): void
+    public function testALeftJoinKeepsRowsWithoutARelatedRecord(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $connection->execute(new \RockAdmin\Db\Sql(
@@ -2201,8 +2234,10 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testContainsMatchesIrrespectiveOfCaseOnBothServers(Connection $connection): void
+    public function testContainsMatchesIrrespectiveOfCaseOnBothServers(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query(
@@ -2218,8 +2253,10 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAWildcardInTheTermMatchesLiterally(Connection $connection): void
+    public function testAWildcardInTheTermMatchesLiterally(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $connection->execute(new \RockAdmin\Db\Sql(
@@ -2242,8 +2279,10 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAFilterThroughARelation(Connection $connection): void
+    public function testAFilterThroughARelation(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query(
@@ -2262,8 +2301,10 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testSearchAcrossTwoColumns(Connection $connection): void
+    public function testSearchAcrossTwoColumns(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query(
@@ -2280,8 +2321,10 @@ final class QueryBuilderWhereTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAnEmptyInReturnsNothing(Connection $connection): void
+    public function testAnEmptyInReturnsNothing(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $sql = (new QueryBuilder($connection->dialect()))->rows(new Query(
@@ -2733,8 +2776,10 @@ use RockAdmin\Tests\Support\DatabaseTestCase;
 final class QueryBuilderOrderTest extends DatabaseTestCase
 {
     #[DataProvider('connections')]
-    public function testSortingAndPagingWalkTheWholeTableExactlyOnce(Connection $connection): void
+    public function testSortingAndPagingWalkTheWholeTableExactlyOnce(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $builder = new QueryBuilder($connection->dialect());
@@ -2763,8 +2808,10 @@ final class QueryBuilderOrderTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testKeysetPagingWalksBackwardsFromTheCursor(Connection $connection): void
+    public function testKeysetPagingWalksBackwardsFromTheCursor(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $builder = new QueryBuilder($connection->dialect());
@@ -2798,8 +2845,10 @@ final class QueryBuilderOrderTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testSortingThroughARelation(Connection $connection): void
+    public function testSortingThroughARelation(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $entity = new Entity('ra_test_ads', 'id', [
@@ -3199,8 +3248,10 @@ use RockAdmin\Tests\Support\DatabaseTestCase;
 final class QueryBuilderCountTest extends DatabaseTestCase
 {
     #[DataProvider('connections')]
-    public function testAnExactCountMatchesTheRowsReturned(Connection $connection): void
+    public function testAnExactCountMatchesTheRowsReturned(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $builder = new QueryBuilder($connection->dialect());
@@ -3222,8 +3273,10 @@ final class QueryBuilderCountTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testACountIgnoresPagingSoItReportsTheWholeResult(Connection $connection): void
+    public function testACountIgnoresPagingSoItReportsTheWholeResult(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $builder = new QueryBuilder($connection->dialect());
@@ -3247,8 +3300,10 @@ final class QueryBuilderCountTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAnEstimateRunsOnBothServers(Connection $connection): void
+    public function testAnEstimateRunsOnBothServers(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $count = (new QueryBuilder($connection->dialect()))->count(new Query(
@@ -3337,8 +3392,10 @@ use RockAdmin\Tests\Support\DatabaseTestCase;
 final class SqlRowSourceTest extends DatabaseTestCase
 {
     #[DataProvider('connections')]
-    public function testItReturnsRowsAndATotal(Connection $connection): void
+    public function testItReturnsRowsAndATotal(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $result = (new SqlRowSource($connection))->fetch(new Query(
@@ -3360,8 +3417,10 @@ final class SqlRowSourceTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testNoCountMeansNoTotalAndNoSecondStatement(Connection $connection): void
+    public function testNoCountMeansNoTotalAndNoSecondStatement(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $result = (new SqlRowSource($connection))->fetch(new Query(
@@ -3382,8 +3441,10 @@ final class SqlRowSourceTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAOneToManyCostsExactlyOneExtraQueryForTheWholePage(Connection $connection): void
+    public function testAOneToManyCostsExactlyOneExtraQueryForTheWholePage(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $result = (new SqlRowSource($connection))->fetch(new Query(
@@ -3414,8 +3475,10 @@ final class SqlRowSourceTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAnEmptyPageSkipsTheSupplementaryQueryAltogether(Connection $connection): void
+    public function testAnEmptyPageSkipsTheSupplementaryQueryAltogether(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $result = (new SqlRowSource($connection))->fetch(new Query(
@@ -3437,8 +3500,10 @@ final class SqlRowSourceTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testItIsARowSource(Connection $connection): void
+    public function testItIsARowSource(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->assertInstanceOf(RowSource::class, new SqlRowSource($connection));
     }
 }
@@ -3761,8 +3826,10 @@ final class DatabaseEnumsTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testOptionsComeFromTheTableInTheOrderAsked(Connection $connection): void
+    public function testOptionsComeFromTheTableInTheOrderAsked(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $options = $this->enums($connection)->options('companies');
@@ -3775,8 +3842,10 @@ final class DatabaseEnumsTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testTheTableIsReadOnceHoweverOftenTheOptionsAreAsked(Connection $connection): void
+    public function testTheTableIsReadOnceHoweverOftenTheOptionsAreAsked(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $this->createFixtures($connection);
 
         $enums = $this->enums($connection);
@@ -3794,8 +3863,10 @@ final class DatabaseEnumsTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAStaticEnumerationStillWorksWithAConnectionAttached(Connection $connection): void
+    public function testAStaticEnumerationStillWorksWithAConnectionAttached(?Connection $connection): void
     {
+        $connection = $this->requireConnection($connection);
+
         $enums = Enums::fromConfig(['state' => ['active' => ['label' => 'Active']]])
             ->withConnection($connection);
 
@@ -3863,7 +3934,9 @@ final class EnumSource
         );
     }
 
-    /** @param array{value: string, label: string, order: string|null, cache: int|null} $data */
+    /**
+     * @param array{table: string, value: string, label: string, order: string|null, cache: int|null} $data
+     */
     public static function __set_state(array $data): self
     {
         return new self(
@@ -3876,9 +3949,6 @@ final class EnumSource
     }
 }
 ```
-
-The `__set_state` docblock needs `table` in its shape too — write it as
-`array{table: string, value: string, label: string, order: string|null, cache: int|null}`.
 
 - [ ] **Step 4: Extend `Enums`**
 
