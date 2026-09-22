@@ -45,6 +45,18 @@ final class Request
      * Empty, "." and ".." segments are dropped rather than rejected: a bad
      * path should fail to match a route, not raise a 500. Dropping ".." here
      * is what keeps the asset route from escaping its directory.
+     *
+     * Two conditions bound that guarantee, and both are load-bearing.
+     *
+     * It assumes the host passed an already-decoded path, and it is the first
+     * thing to touch that path, so nothing may decode afterwards: an
+     * un-decoded "%2E%2E" is one opaque segment here and stays one in
+     * Router::matchPattern(), which is why that method never decodes either.
+     *
+     * A backslash is not a separator, so "..\\..\\etc" survives intact as a
+     * single segment. On Windows the filesystem would read it as a traversal,
+     * so a handler resolving a path against a directory must still call
+     * realpath() and check the prefix rather than trusting this function.
      */
     public static function normalizePath(string $path): string
     {
@@ -61,6 +73,10 @@ final class Request
         return implode('/', $segments);
     }
 
+    /**
+     * Only HTTP_* keys become headers, so Content-Type and Content-Length —
+     * which PHP exposes without that prefix — are deliberately not collected.
+     */
     public static function fromGlobals(string $path): self
     {
         $headers = [];

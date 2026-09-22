@@ -14,6 +14,10 @@ use InvalidArgumentException;
  * link scanner, mail proxy or browser prefetch can trigger it. See the design
  * spec, section 5.1.
  *
+ * match() is an instance method because matching may gain per-instance state
+ * later; patternFor() is a pure lookup over the same constant table, static
+ * because UrlGenerator needs it without holding a router.
+ *
  * @phpstan-type RouteDefinition array{0: string, 1: string, 2: string}
  */
 final class Router
@@ -79,6 +83,14 @@ final class Router
     }
 
     /**
+     * Matches one pattern against already-decoded segments.
+     *
+     * Invariant: segments arrive decoded by the host and are consumed exactly
+     * as given. Never decode here. Request::normalizePath() runs before
+     * anything could decode a path, so it is the only place ".." is dropped;
+     * decoding a segment afterwards would turn a surviving "%2E%2E" into ".."
+     * behind that guard and reopen traversal on the _assets/{path...} route.
+     *
      * @param  list<string>               $segments
      * @return array<string, string>|null null when the pattern does not apply
      */
