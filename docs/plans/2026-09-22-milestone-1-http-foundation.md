@@ -1597,11 +1597,17 @@ final class KernelTest extends TestCase
         return new Kernel(new Router(), $handlers, new ErrorHandler($debug));
     }
 
-    private function handler(callable $callback): Handler
+    /**
+     * `callable` is not a legal property type in PHP, and an untyped property
+     * fails PHPStan at level max, so the double holds a Closure.
+     *
+     * @param \Closure(Route, Request): Response $callback
+     */
+    private function handler(\Closure $callback): Handler
     {
         return new class ($callback) implements Handler {
-            /** @param callable(Route, Request): Response $callback */
-            public function __construct(private $callback)
+            /** @param \Closure(Route, Request): Response $callback */
+            public function __construct(private readonly \Closure $callback)
             {
             }
 
