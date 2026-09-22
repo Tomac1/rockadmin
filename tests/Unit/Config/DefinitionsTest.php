@@ -25,7 +25,7 @@ final class DefinitionsTest extends TestCase
                 'published_at' => ['use' => '@column:created_at', 'label' => 'Published'],
             ],
             'field' => [
-                'email' => ['type' => 'text', 'validate' => ['email']],
+                'email' => ['type' => 'text', 'validate' => ['email', 'max:255']],
             ],
         ]);
     }
@@ -164,7 +164,7 @@ final class DefinitionsTest extends TestCase
         /** @var array<int, string> $css */
         $css = $assets['css'];
 
-        $this->assertSame(['email'], $email['validate']);
+        $this->assertSame(['email', 'max:255'], $email['validate']);
         $this->assertSame(['/a.css', '/b.css'], $css);
     }
 
@@ -174,5 +174,18 @@ final class DefinitionsTest extends TestCase
         $this->expectExceptionMessage('array');
 
         $this->definitions()->expand(['columns' => ['x' => ['use' => ['@column:id']]]]);
+    }
+
+    public function testAListOverrideReplacesTheInheritedListInsteadOfMerging(): void
+    {
+        $expanded = $this->definitions()->expand([
+            'fields' => ['email' => ['use' => '@field:email', 'validate' => ['url']]],
+        ]);
+
+        $this->assertSame(
+            ['fields' => ['email' => ['type' => 'text', 'validate' => ['url']]]],
+            $expanded,
+            'merging index-wise would leave a list neither author wrote',
+        );
     }
 }

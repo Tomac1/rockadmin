@@ -116,4 +116,20 @@ final class LoaderTest extends TestCase
 
         $this->assertSame('path', $config->get('url_mode'), 'the fixture writes no url_mode');
     }
+
+    public function testADefinitionReferenceIsExpandedAndThenResolved(): void
+    {
+        $config = $this->loader('valid', ['MAIL_HOST' => 'smtp.example.com'])->load();
+
+        $this->assertSame(587, $config->get('mail.port'), 'the definition was inlined');
+        $this->assertSame('smtp.example.com', $config->get('mail.host'), 'and its placeholder resolved');
+        $this->assertNull($config->get('mail.use'), 'the reference itself does not survive');
+    }
+
+    public function testAListInTheLocalOverrideReplacesTheInheritedList(): void
+    {
+        $config = $this->loader('valid')->load();
+
+        $this->assertSame(['/css/local.css'], $config->get('assets.css'));
+    }
 }

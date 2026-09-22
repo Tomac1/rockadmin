@@ -10,10 +10,6 @@ return [
         'logs' => 'storage/logs/rockadmin',
         'cache' => 'storage/cache/rockadmin',
     ],
-    'mail' => [
-        'driver' => 'log',
-        'host' => '{{env.MAIL_HOST}}',
-        'port' => 587,
-    ],
-    'assets' => ['css' => ['/css/admin.css'], 'js' => []],
+    'mail' => ['use' => '@mail:defaults'],
+    'assets' => ['css' => ['/css/admin.css', '/css/legacy.css'], 'js' => []],
 ];

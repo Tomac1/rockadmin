@@ -123,7 +123,11 @@ final class Definitions
                 continue;
             }
 
-            if (\is_array($value) && \is_array($base[$name] ?? null)) {
+            // A map is a set of named settings, so merging is the useful behaviour;
+            // a list is one value, so merging two lists produces a third that
+            // neither author intended -- ['url'] over ['email', 'max:255'] would
+            // leave ['url', 'max:255'], which nobody wrote and null cannot remove.
+            if (\is_array($value) && !array_is_list($value) && \is_array($base[$name] ?? null)) {
                 /** @var array<string, mixed> $existing */
                 $existing = $base[$name];
                 /** @var array<string, mixed> $value */
