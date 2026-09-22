@@ -13,17 +13,26 @@ use Stringable;
  * object might hold, each method either returns something safe to put in HTML
  * or throws. There is no "best effort" path, because a best effort at
  * escaping is a cross-site scripting hole that looks like it works.
+ *
+ * These methods are safe for HTML text content and for quoted attribute
+ * values. They are not safe for use in a <script> or <style> body, or in an
+ * intrinsic event handler like onclick — those contexts have different parsing
+ * rules and require different escaping. This project does not put values into
+ * those contexts; behaviour is declared with data-ra-* attributes and bound
+ * by delegation.
  */
 final class Escaper
 {
     private const FLAGS = ENT_QUOTES | ENT_SUBSTITUTE;
 
     /**
-     * A URL scheme that executes when a browser follows it. The comparison
-     * strips whitespace first, because a browser ignores whitespace inside a
-     * scheme and "java\tscript:" is a working link.
+     * URL schemes this project allows. An allow-list is safer than a deny-list
+     * because new dangerous schemes ship regularly (blob, filesystem), but this
+     * project only needs a few schemes: browsing paths, navigating to external
+     * sites, and emailing or calling. A URL with no scheme is ordinary: /path.
+     * A scheme-relative URL like //evil.com is a redirect vector and refused.
      */
-    private const EXECUTABLE_SCHEMES = ['javascript', 'data', 'vbscript'];
+    private const ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel'];
 
     /** Escapes for element content and for quoted attribute values alike. */
     public function text(mixed $value): string
@@ -41,13 +50,13 @@ final class Escaper
         return $this->text($value);
     }
 
-    /** Escapes a URL, refusing schemes that run code instead of navigating. */
+    /** Escapes a URL, allowing only safe schemes or relative paths. */
     public function url(mixed $value): string
     {
         $url = $this->stringify($value);
         $scheme = $this->scheme($url);
 
-        if ($scheme !== null && \in_array($scheme, self::EXECUTABLE_SCHEMES, true)) {
+        if ($scheme !== null && !\in_array($scheme, self::ALLOWED_SCHEMES, true)) {
             throw new ViewException("Refusing to write a '{$scheme}:' URL into a link.");
         }
 
@@ -71,15 +80,28 @@ final class Escaper
      * true writes a bare attribute, null and false omit it entirely, and an
      * empty string writes `attr=""`.
      *
-     * @param array<string, scalar|null> $attributes
+     * @param array<int|string, scalar|null> $attributes
      */
     public function attributes(array $attributes): string
     {
         $out = '';
 
         foreach ($attributes as $name => $value) {
+            // Cast to string to handle numeric keys that PHP coerces to int.
+            $name = (string) $name;
+
             if (preg_match('/^[A-Za-z_:][A-Za-z0-9_:.-]*$/', $name) !== 1) {
                 throw new ViewException("Refusing '{$name}' as an attribute name.");
+            }
+
+            // Refuse event handlers. They are unsafe even with escaped values
+            // because browsers entity-decode an event handler value before
+            // executing it as JavaScript. Use data-ra-* attributes instead.
+            if (preg_match('/^on.+$/i', $name) === 1) {
+                throw new ViewException(
+                    "Refusing '{$name}' as an attribute name. "
+                    . 'Use data-ra-* attributes instead; behaviour is declared with them and bound by delegation.',
+                );
             }
 
             if ($value === null || $value === false) {
@@ -116,7 +138,17 @@ final class Escaper
 
     private function scheme(string $url): ?string
     {
-        $candidate = preg_replace('/\s+/', '', $url) ?? $url;
+        // Strip C0 control characters and space from anywhere in the URL before
+        // reading the scheme. A browser does this too, so "java\tscript:" is a
+        // working link. Stripping everywhere catches leading control bytes that
+        // hide the scheme from the parser but not from the browser.
+        $candidate = preg_replace('/[\x00-\x20]/', '', $url) ?? $url;
+
+        // A scheme-relative URL like //evil.com is an open redirect and refused.
+        if (strpos($candidate, '//') === 0) {
+            return 'scheme-relative';
+        }
+
         $colon = strpos($candidate, ':');
 
         if ($colon === false) {

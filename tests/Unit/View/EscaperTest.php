@@ -177,4 +177,71 @@ final class EscaperTest extends TestCase
         // transform anything.
         $this->assertSame('<b>bold</b>', $this->escaper->raw('<b>bold</b>'));
     }
+
+    public function testAttrEscapesJustLikeText(): void
+    {
+        // attr() is never called in the original suite, so a no-op attr() would pass.
+        // Test that it actually escapes.
+        $this->assertSame('&lt;script&gt;', $this->escaper->attr('<script>'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function refusedSchemes(): array
+    {
+        return [
+            'javascript with leading C0 control' => ["\x01javascript:alert(1)"],
+            'javascript with leading null byte' => ["\x00javascript:alert(1)"],
+            'blob scheme' => ['blob:'],
+            'filesystem scheme' => ['filesystem:'],
+            'scheme-relative URL' => ['//evil.com'],
+        ];
+    }
+
+    #[DataProvider('refusedSchemes')]
+    public function testUrlRefusesSchemesThatAreNotAllowed(string $url): void
+    {
+        $this->expectException(ViewException::class);
+
+        $this->escaper->url($url);
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function allowedUrls(): array
+    {
+        return [
+            'relative path' => ['/admin/p/ads?page=2', '/admin/p/ads?page=2'],
+            'https URL' => ['https://example.com/x', 'https://example.com/x'],
+            'http URL' => ['http://example.com/x', 'http://example.com/x'],
+            'mailto URL' => ['mailto:a@example.com', 'mailto:a@example.com'],
+            'tel URL' => ['tel:+420123456789', 'tel:+420123456789'],
+            'relative path without leading slash' => ['p/ads/42', 'p/ads/42'],
+        ];
+    }
+
+    #[DataProvider('allowedUrls')]
+    public function testUrlAllowsOnlyWhitelistedSchemesAndRelativePaths(string $url, string $expected): void
+    {
+        // These should pass through without exception and be returned as-is
+        // (or with safe escaping of special characters if present).
+        $this->assertSame($expected, $this->escaper->url($url));
+    }
+
+    public function testAttributesRefusesNumericKey(): void
+    {
+        // PHP coerces numeric-string keys to int, which previously caused TypeError.
+        // Now it must throw ViewException.
+        $this->expectException(ViewException::class);
+        $this->expectExceptionMessage('attribute name');
+
+        $this->escaper->attributes(['0' => 'x']);
+    }
+
+    public function testAttributesRefusesEventHandlerAttributeName(): void
+    {
+        // Event handler attributes are unsafe even with escaped values.
+        $this->expectException(ViewException::class);
+        $this->expectExceptionMessage('onclick');
+
+        $this->escaper->attributes(['onclick' => 'alert(1)']);
+    }
 }
