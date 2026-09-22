@@ -134,4 +134,20 @@ final class ResolverTest extends TestCase
         $this->assertEquals($placeholder, $restoredPlaceholder);
         $this->assertEquals($enum, $restoredEnum);
     }
+
+    public function testANonScalarCannotBeInterpolatedIntoAString(): void
+    {
+        $resolver = $this->resolver(raw: ['nested' => ['a' => 1]]);
+
+        $this->expectException(ConfigException::class);
+
+        $resolver->resolve(['label' => 'id {{config.nested}}']);
+    }
+
+    public function testTwoAdjacentPlaceholdersAreBothResolved(): void
+    {
+        $resolved = $this->resolver(['A' => 'foo', 'B' => 'bar'])->resolve(['x' => '{{env.A}}{{env.B}}']);
+
+        $this->assertSame(['x' => 'foobar'], $resolved);
+    }
 }

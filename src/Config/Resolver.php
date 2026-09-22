@@ -89,7 +89,6 @@ final class Resolver
         return preg_replace_callback(
             '/\{\{(\w+)\.([\w.]+)}}/',
             function (array $match): string {
-                /** @var array{0: non-empty-string, 1: non-empty-string, 2: non-empty-string} $match */
                 if (\in_array($match[1], self::DEFERRED, true)) {
                     throw new ConfigException(
                         "{$match[0]} cannot appear inside a longer string. A "
