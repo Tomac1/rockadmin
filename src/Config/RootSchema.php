@@ -52,6 +52,14 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'template_paths' => new SchemaKey(
+                ValueType::Array,
+                default: [],
+                description: 'Directories searched for templates before the SDK\'s own, highest priority '
+                    . 'first. A file with the same name as an SDK template replaces it; nothing needs '
+                    . 'copying or registering.',
+                example: ['resources/rockadmin', 'vendor/company/admin-theme'],
+            ),
             'mail' => new SchemaKey(
                 ValueType::Array,
                 description: 'How the admin sends a password reset.',
