@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Http;
 
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Builds admin links.
@@ -34,17 +35,7 @@ final class UrlGenerator
     /** @param array<string, string|int> $query */
     public function to(string $path, array $query = []): string
     {
-        $path = Request::normalizePath($path);
-
-        if ($this->mode === self::MODE_QUERY) {
-            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
-
-            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
-        }
-
-        $url = rtrim($this->base, '/') . '/' . $path;
-
-        return $url . ($query === [] ? '' : '?' . http_build_query($query));
+        return $this->build(Request::normalizePath($path), $query);
     }
 
     /**
@@ -74,8 +65,31 @@ final class UrlGenerator
                 return rawurlencode($value);
             },
             $pattern,
-        ) ?? $pattern;
+        ) ?? throw new RuntimeException("Failed to build a URL for route {$name}.");
 
-        return $this->to($path, $query);
+        return $this->build($path, $query);
+    }
+
+    /**
+     * Joins an already-prepared path to the base, in whichever mode is active.
+     *
+     * The path is used as given. Callers that accept a path from outside
+     * normalise it first; `route()` must not, because its segments are already
+     * encoded and a value such as ".." would otherwise be read as a
+     * parent-directory segment and dropped.
+     *
+     * @param array<string, string|int> $query
+     */
+    private function build(string $path, array $query): string
+    {
+        if ($this->mode === self::MODE_QUERY) {
+            $parameters = $path === '' ? $query : [$this->queryKey => $path] + $query;
+
+            return $this->base . ($parameters === [] ? '' : '?' . http_build_query($parameters));
+        }
+
+        $url = rtrim($this->base, '/') . '/' . $path;
+
+        return $url . ($query === [] ? '' : '?' . http_build_query($query));
     }
 }

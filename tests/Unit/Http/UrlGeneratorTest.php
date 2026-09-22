@@ -74,4 +74,22 @@ final class UrlGeneratorTest extends TestCase
 
         new UrlGenerator('/admin', 'magic');
     }
+
+    public function testDotSegmentsInParametersSurvive(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame('/admin/p/ads/..', $urls->route('page.detail', ['page' => 'ads', 'id' => '..']));
+        $this->assertSame('/admin/p/ads/.', $urls->route('page.detail', ['page' => 'ads', 'id' => '.']));
+    }
+
+    public function testToStripsDotSegmentsFromAHandWrittenPath(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        // Dot segments are discarded, not resolved: if they were resolved this
+        // would be /admin/detail. Compare testDotSegmentsInParametersSurvive(),
+        // where route() leaves an encoded ".." parameter intact.
+        $this->assertSame('/admin/p/ads/detail', $urls->to('p/ads/../.././detail'));
+    }
 }
