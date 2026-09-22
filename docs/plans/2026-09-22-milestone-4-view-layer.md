@@ -1050,7 +1050,7 @@ git commit -m "Let a project replace one template without copying the rest"
   }
   ```
 
-**What a template sees.** Exactly these eight variables and nothing else:
+**What a template sees.** Exactly these nine variables and nothing else:
 
 | Variable | Type | What it does |
 |---|---|---|
@@ -1059,6 +1059,7 @@ git commit -m "Let a project replace one template without copying the rest"
 | `$raw` | `Closure(mixed): string` | writes unescaped, deliberately |
 | `$attr` | `Closure(mixed): string` | escapes one attribute value |
 | `$attrs` | `Closure(array): string` | builds a whole attribute list |
+| `$href` | `Closure(mixed): string` | escapes a URL for an `href`, `src` or `action`, refusing a scheme that executes |
 | `$url` | `Closure(string, array): string` | a URL from a path |
 | `$route` | `Closure(string, array, array): string` | a URL from a route name |
 | `$partial` | `Closure(string, mixed): string` | renders another template |
@@ -1196,7 +1197,7 @@ final class RendererTest extends TestCase
 
         $this->assertStringStartsWith('no-this|', $out);
         $this->assertSame(
-            ['attr', 'attrs', 'e', 'partial', 'raw', 'route', 'url', 'view'],
+            ['attr', 'attrs', 'e', 'href', 'partial', 'raw', 'route', 'url', 'view'],
             $this->definedVariables($out),
         );
     }
@@ -1338,6 +1339,11 @@ final class Renderer
             'e' => static fn (mixed $value): string => $escaper->text($value),
             'raw' => static fn (mixed $value): string => $escaper->raw($value),
             'attr' => static fn (mixed $value): string => $escaper->attr($value),
+            // Every href, src and action goes through this rather than $e():
+            // it is the only helper that checks the scheme, and a URL that
+            // reaches a template from a data column is not something the
+            // admin built.
+            'href' => static fn (mixed $value): string => $escaper->url($value),
             /** @param array<string, scalar|null> $attributes */
             'attrs' => static fn (array $attributes): string => $escaper->attributes($attributes),
             /** @param array<string, scalar|null> $query */
@@ -1378,7 +1384,7 @@ final class Renderer
     {
         // Declared with no parameters on purpose. A named parameter would be
         // a variable in the template's scope, and the whole point of this
-        // closure is that the template sees exactly the eight documented
+        // closure is that the template sees exactly the nine documented
         // names and nothing else — func_get_arg() leaves no variable behind.
         $run = Closure::bind(
             static function (): void {
@@ -1412,7 +1418,7 @@ final class Renderer
 
 **Why `func_get_arg()` and not parameters.** Any parameter name would be a
 variable the template can see, and `testATemplateCannotSeeTheRendererOrTheResolver`
-enumerates that scope. `extract()` before the `require` is what puts the eight
+enumerates that scope. `extract()` before the `require` is what puts the nine
 documented names there; nothing else may join them. This is the one place in
 the project where `func_get_arg()` is the clearer choice, so it carries the
 comment explaining why.
@@ -1421,7 +1427,21 @@ comment explaining why.
 
 Run: `vendor/bin/phpunit tests/Unit/View/RendererTest.php`
 Expected: PASS. In particular `testATemplateCannotSeeTheRendererOrTheResolver`
-must report exactly the eight documented variables.
+must report exactly the nine documented variables.
+
+Add one more test while you are here: that `$href` refuses a URL whose scheme
+executes, so a link built from a data column cannot carry one into a page.
+
+```php
+public function testHrefRefusesASchemeThatExecutes(): void
+{
+    $this->template('x', '<a href="<?= $href($view) ?>">x</a>');
+
+    $this->expectException(\RockAdmin\View\ViewException::class);
+
+    $this->renderer()->render('x', 'javascript:alert(1)');
+}
+```
 
 - [ ] **Step 5: Run the full gate**
 
@@ -2746,11 +2766,12 @@ Write the templates. A worked example of the standard, for `ui/button.php`:
  *
  * @var \RockAdmin\View\ButtonView $view
  * @var \Closure $e
+ * @var \Closure $href
  * @var \Closure $attrs
  * @var \Closure $partial
  */
 ?>
-<a class="<?= $e($view->classes()) ?>" href="<?= $e($view->url) ?>"<?= $attrs($view->attributes) ?>>
+<a class="<?= $e($view->classes()) ?>" href="<?= $href($view->url) ?>"<?= $attrs($view->attributes) ?>>
     <?php if ($view->icon !== null) { ?>
         <?= $partial('ui/icon', $view->icon) ?>
     <?php } ?>
@@ -2759,8 +2780,9 @@ Write the templates. A worked example of the standard, for `ui/button.php`:
 ```
 
 Note what it does: a docblock declaring every variable it uses so PHPStan can
-see the types, `ra-` classes on both elements, escaping on every echo, and no
-URL it built itself.
+see the types, `ra-` classes on both elements, escaping on every echo, `$href`
+rather than `$e` for the URL — it is the only helper that checks the scheme —
+and no URL it built itself.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2807,8 +2829,13 @@ file through a data provider so a failure names the file. The rules:
 
 1. **No script tag.** The file contains no `<script` in any casing.
 2. **Every `<?=` escapes.** Every short echo tag is immediately followed
-   (ignoring whitespace) by a call to `$e(`, `$raw(`, `$attr(`, `$attrs(` or
-   `$partial(`. Anything else fails, naming the offending line.
+   (ignoring whitespace) by a call to `$e(`, `$raw(`, `$attr(`, `$attrs(`,
+   `$href(` or `$partial(`. Anything else fails, naming the offending line.
+2b. **Every URL attribute uses `$href`.** An `href=`, `src=` or `action=`
+   attribute whose value is a short echo tag must call `$href(`, not `$e(`.
+   `$e()` escapes the characters that would end the attribute but says
+   nothing about the scheme, so `$e()` on a URL from a data column is how a
+   `javascript:` link reaches a page.
 3. **No hardcoded URL.** No `href="/`, `src="/`, `action="/`, `http://` or
    `https://` outside a comment. Every URL comes from `$url()`, `$route()` or
    a view object.
