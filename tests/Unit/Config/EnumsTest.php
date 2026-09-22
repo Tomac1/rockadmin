@@ -78,20 +78,45 @@ final class EnumsTest extends TestCase
         Enums::fromConfig(['ad_state' => ['active' => ['color' => 'success']]]);
     }
 
-    public function testADatabaseBackedEnumerationIsRefusedForNow(): void
+    public function testADatabaseBackedEnumerationIsAccepted(): void
     {
-        $this->expectException(ConfigException::class);
-        $this->expectExceptionMessage('milestone 3');
+        $enums = Enums::fromConfig([
+            'categories' => [
+                'source' => ['table' => 'categories', 'value' => 'id', 'label' => 'name'],
+            ],
+        ]);
 
-        Enums::fromConfig(['categories' => ['source' => ['table' => 'categories']]]);
+        $this->assertTrue($enums->has('categories'));
     }
 
-    public function testADatabaseBackedEnumerationIsRefusedEvenWithANullSource(): void
+    public function testADatabaseBackedEnumerationNeedsAConnectionToResolve(): void
+    {
+        $enums = Enums::fromConfig([
+            'categories' => [
+                'source' => ['table' => 'categories', 'value' => 'id', 'label' => 'name'],
+            ],
+        ]);
+
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('categories');
+
+        $enums->options('categories');
+    }
+
+    public function testASourceMissingItsTableIsRefused(): void
     {
         $this->expectException(ConfigException::class);
-        $this->expectExceptionMessage('milestone 3');
+        $this->expectExceptionMessage('table');
 
-        Enums::fromConfig(['categories' => ['source' => null]]);
+        Enums::fromConfig(['categories' => ['source' => ['value' => 'id', 'label' => 'name']]]);
+    }
+
+    public function testASourceThatIsNotAnArrayIsRefused(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('categories');
+
+        Enums::fromConfig(['categories' => ['source' => 'categories']]);
     }
 
     public function testANonStringLabelIsRefused(): void

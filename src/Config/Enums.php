@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace RockAdmin\Config;
 
+use RockAdmin\Db\Connection;
+use RockAdmin\Db\Sql;
+
 /**
  * Shared enumerations, defined once and referenced as @enum:key.
  *
@@ -12,15 +15,26 @@ namespace RockAdmin\Config;
  */
 final class Enums
 {
-    /** @param array<string, array<string, EnumOption>> $enums */
-    private function __construct(private readonly array $enums)
-    {
+    private ?Connection $connection = null;
+
+    /** @var array<string, array<string, EnumOption>> */
+    private array $memoised = [];
+
+    /**
+     * @param array<string, array<string, EnumOption>> $enums
+     * @param array<string, EnumSource>                 $sources
+     */
+    private function __construct(
+        private readonly array $enums,
+        private readonly array $sources = [],
+    ) {
     }
 
     /** @param array<string, mixed> $enums the contents of enums.php */
     public static function fromConfig(array $enums): self
     {
         $parsed = [];
+        $sources = [];
 
         foreach ($enums as $key => $definition) {
             if (!\is_array($definition)) {
@@ -33,22 +47,27 @@ final class Enums
             // A database-backed definition is nothing but its source array, so an
             // option that happens to be keyed 'source' is not mistaken for one.
             if (self::isDatabaseBacked($definition)) {
-                throw new ConfigException(
-                    "Enumeration '{$key}' reads its options from the database, which "
-                    . 'arrives in milestone 3. Until then, list the options here.',
+                $sources[(string) $key] = EnumSource::fromConfig(
+                    (string) $key,
+                    self::source((string) $key, $definition),
                 );
+
+                continue;
             }
 
             $parsed[(string) $key] = self::parseOptions((string) $key, $definition);
         }
 
-        return new self($parsed);
+        return new self($parsed, $sources);
     }
 
-    /** @param array{enums: array<string, array<string, EnumOption>>} $data written by var_export() */
+    /**
+     * @param array{enums: array<string, array<string, EnumOption>>, sources: array<string, EnumSource>} $data
+     *        written by var_export()
+     */
     public static function __set_state(array $data): self
     {
-        return new self($data['enums']);
+        return new self($data['enums'], $data['sources']);
     }
 
     /**
@@ -67,6 +86,26 @@ final class Enums
         return \count($definition) === 1
             && \array_key_exists('source', $definition)
             && (\is_array($definition['source']) || $definition['source'] === null);
+    }
+
+    /**
+     * @param  array<int|string, mixed> $definition
+     * @return array<string, mixed>
+     */
+    private static function source(string $enum, array $definition): array
+    {
+        $source = $definition['source'] ?? null;
+
+        if (!\is_array($source)) {
+            throw new ConfigException(
+                "Enumeration '{$enum}' has a 'source' that is not an array, got "
+                . get_debug_type($source) . '. A database-backed enumeration needs a '
+                . 'table, a value column and a label column.',
+            );
+        }
+
+        /** @var array<string, mixed> $source */
+        return $source;
     }
 
     /**
@@ -102,13 +141,26 @@ final class Enums
 
     public function has(string $key): bool
     {
-        return isset($this->enums[$key]);
+        return isset($this->enums[$key]) || isset($this->sources[$key]);
+    }
+
+    /** Returns a copy that can read its database-backed enumerations. */
+    public function withConnection(Connection $connection): self
+    {
+        $copy = new self($this->enums, $this->sources);
+        $copy->connection = $connection;
+
+        return $copy;
     }
 
     /** @return array<string, EnumOption> */
     public function options(EnumReference|string $enum): array
     {
         $key = $enum instanceof EnumReference ? $enum->key : $enum;
+
+        if (isset($this->sources[$key])) {
+            return $this->memoised[$key] ??= $this->read($key, $this->sources[$key]);
+        }
 
         if (!isset($this->enums[$key])) {
             $nearest = Schema::nearestOf(array_keys($this->enums), $key);
@@ -119,5 +171,35 @@ final class Enums
         }
 
         return $this->enums[$key];
+    }
+
+    /** @return array<string, EnumOption> */
+    private function read(string $key, EnumSource $source): array
+    {
+        if ($this->connection === null) {
+            throw new ConfigException(
+                "Enumeration '{$key}' reads its options from the database, but no connection "
+                . 'was given. Call withConnection() before resolving it.',
+            );
+        }
+
+        $dialect = $this->connection->dialect();
+
+        $sql = 'SELECT ' . $dialect->qualify($source->table, $source->value) . ' AS ra_value, '
+            . $dialect->qualify($source->table, $source->label) . ' AS ra_label'
+            . ' FROM ' . $dialect->quoteIdentifier($source->table)
+            . ($source->order === null
+                ? ''
+                : ' ORDER BY ' . $dialect->qualify($source->table, $source->order));
+
+        $options = [];
+
+        foreach ($this->connection->select(new Sql($sql)) as $row) {
+            $value = \is_scalar($row['ra_value'] ?? null) ? (string) $row['ra_value'] : '';
+            $label = \is_scalar($row['ra_label'] ?? null) ? (string) $row['ra_label'] : '';
+            $options[$value] = new EnumOption($value, $label);
+        }
+
+        return $options;
     }
 }
