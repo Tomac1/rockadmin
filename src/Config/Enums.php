@@ -30,7 +30,7 @@ final class Enums
                 );
             }
 
-            if (isset($definition['source'])) {
+            if (\array_key_exists('source', $definition)) {
                 throw new ConfigException(
                     "Enumeration '{$key}' reads its options from the database, which "
                     . 'arrives in milestone 3. Until then, list the options here.',

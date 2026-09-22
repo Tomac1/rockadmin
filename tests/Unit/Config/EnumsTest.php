@@ -84,4 +84,28 @@ final class EnumsTest extends TestCase
 
         Enums::fromConfig(['categories' => ['source' => ['table' => 'categories']]]);
     }
+
+    public function testADatabaseBackedEnumerationIsRefusedEvenWithANullSource(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('milestone 3');
+
+        Enums::fromConfig(['categories' => ['source' => null]]);
+    }
+
+    public function testANonStringLabelIsRefused(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('ad_state.active');
+
+        Enums::fromConfig(['ad_state' => ['active' => ['label' => 123]]]);
+    }
+
+    public function testANonStringColourIsRefused(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('ad_state.active');
+
+        Enums::fromConfig(['ad_state' => ['active' => ['label' => 'Active', 'color' => 123]]]);
+    }
 }
