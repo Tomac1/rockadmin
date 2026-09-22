@@ -47,6 +47,24 @@ Primary design goals, in priority order:
 The Composer constraint is a rule, not a preference. Any addition requires an
 explicit, documented decision.
 
+**This does not mean RockAdmin cannot use libraries — it means it does not
+depend on them.** Features that genuinely need one (a Google API client, a PDF
+renderer, an S3 uploader) are built as an interface in the core plus an
+implementation installed by the project:
+
+```php
+// The project installs dompdf, or Google's client, or whatever it prefers,
+// and wires it in. RockAdmin's composer.json never mentions it.
+'exporters' => ['pdf' => fn () => new MyPdfExporter()],
+```
+
+The project chooses the library and its version, upgrades it on its own
+schedule, and a project that does not want the feature carries none of it.
+`composer.json` may list such packages under `suggest`, which informs without
+requiring. The same pattern already applies to `Mailer`, `SessionStore`,
+`Authenticator`, `RowSource` and `WriteHandler` — it is the project's standard
+answer to "we need library X", not an exception made for one case.
+
 ## 4. Architecture
 
 ### 4.1 Layers
@@ -107,7 +125,7 @@ These are enforced in review and, where possible, in CI:
    configuration; it receives a prepared view object.
 2. **Composer dependencies stay at four extensions.**
 3. **Templates contain no `<script>` tags.** Behaviour is declared with
-   attributes (see 8.5).
+   attributes (see 8.6).
 4. **Templates never hardcode URLs.** All links go through `UrlGenerator`.
 5. **Every config key read by code exists in the schema.** Enforced by a CI
    test; an undeclared key is rejected by the validator, so an undocumented
@@ -133,14 +151,25 @@ URLs use fixed prefixes by kind. Routing is unambiguous and stable.
 | `/login`, `/logout` | authentication |
 | `/password/reset`, `/password/reset/{token}` | password reset |
 | `/p/{page}` | page (list view, settings, anything) |
+| `/p/{page}/create` | empty form for a new row |
 | `/p/{page}/{id}` | detail as a standalone page |
-| `/p/{page}/{id}/edit` | form |
+| `/p/{page}/{id}/edit` | form for an existing row |
+| `/p/{page}/{id}/copy` | form prefilled from a row, saving as a new one |
 | `/r/{page}/{region}` | **HTML fragment of one region** (AJAX) |
-| `/a/{page}/{action}` | action (create, update, delete, custom) |
+| `/a/{page}/{action}` | POST only — create, update, delete, custom |
 | `/w/{workspace}` | switch workspace |
 | `/_assets/{file}` | CSS, JS, icons from the SDK |
 | `/_diagnostics` | environment check (requires `dev.console`) |
 | `/_setup` | first-run setup, token-gated (see 11.4) |
+
+**`/p/` renders, `/a/` changes data.** There is deliberately no
+`/p/{page}/{id}/delete`: every GET request must be safe, because link
+scanners, browser prefetching, mail security proxies and antivirus software
+all follow links without a user ever clicking them. Deletion is a POST to
+`/a/{page}/delete` carrying a CSRF token.
+
+Copy and create therefore have `/p/` routes — they only render a form —
+while saving either goes to `/a/{page}/create`.
 
 ### 5.2 Lifecycle
 
@@ -176,9 +205,31 @@ RockAdmin::handle($_SERVER['PATH_INFO'] ?? '', ...);   // /admin/index.php/p/use
 Only link generation differs, controlled by one config key:
 
 ```php
-'url_mode' => 'path',   // /admin/p/users?page=2
-'url_mode' => 'query',  // /admin/index.php?ra=p/users&page=2
+'url_mode' => 'path',   // default: /admin/p/users?page=2
+'url_mode' => 'query',  //          /admin/index.php?ra=p/users&page=2
 ```
+
+`path` mode needs every admin URL to reach one entry point. Under a framework
+router that is already true. Otherwise, Apache:
+
+```apache
+# public/admin/.htaccess
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php [QSA,L]
+```
+
+or nginx:
+
+```nginx
+location /admin/ {
+    try_files $uri /admin/index.php$is_args$args;
+}
+```
+
+Either way `index.php` passes `$_SERVER['PATH_INFO']` or its own parsed path
+to `RockAdmin::handle()`. Where neither is possible, `query` mode needs no
+server configuration at all.
 
 A CI test fails the build on hardcoded `/p/` in `href` attributes inside
 templates.
@@ -225,8 +276,14 @@ config/rockadmin/
     └── users.php
 ```
 
-One page is one file, and it contains everything about that page — grid, form,
-preview, actions. No jumping around the repository.
+One page is one file, and it contains everything about that page. No jumping
+around the repository.
+
+A page is a layout holding **regions**: a region is one independently
+renderable part of a page — a grid, a form, a detail panel, a side menu —
+with its own definition, its own templates and its own URL, so it can be
+re-rendered on its own without reloading the page. Most pages have one
+region; a two-pane inbox has two. Regions are specified in 8.4.
 
 ### 6.2 Example page
 
@@ -236,9 +293,12 @@ preview, actions. No jumping around the repository.
     'layout' => 'list',
 
     'entity' => [
-        'table' => 'ads',
-        'key'   => 'id',
-        'scope' => ['site_id' => '{{workspace.site_id}}'],
+        'table'     => 'ads',
+        'key'       => 'id',
+        'scope'     => ['site_id' => '{{workspace.site_id}}'],
+        'relations' => [
+            'user' => ['table' => 'users', 'on' => 'users.id = ads.user_id'],
+        ],
     ],
 
     'header' => [
@@ -254,25 +314,28 @@ preview, actions. No jumping around the repository.
             'per_page' => 50,
             'sort'     => ['created_at' => 'desc'],
             'columns'  => [
-                'id'         => ['type' => 'int', 'width' => '60px'],
+                'id'         => '@column:id',
                 'title'      => ['type' => 'text', 'sortable' => true, 'link' => 'edit',
                                  'filter' => ['type' => 'text', 'op' => 'contains']],
-                'user_name'  => ['type' => 'text', 'label' => 'Author',
-                                 'source' => ['join' => 'users ON users.id = ads.user_id',
-                                              'column' => 'users.name'],
-                                 'sortable' => true],
+                'user_name'  => ['use' => '@column:name', 'label' => 'Author',
+                                 'source' => 'user.name'],
                 'price'      => ['type' => 'money', 'currency' => 'CZK', 'align' => 'right'],
-                'state'      => ['type' => 'badge',
-                                 'filter' => ['type' => 'select', 'options' => '@enum:ad_state']],
-                'created_at' => ['type' => 'datetime', 'format' => 'd.m.Y H:i'],
+                'state'      => ['type' => 'enum', 'options' => '@enum:ad_state',
+                                 'display' => 'badge', 'filter' => ['type' => 'select']],
+                'is_active'  => ['type' => 'bool', 'display' => 'check'],
+                'progress'   => ['type' => 'int', 'display' => 'progress', 'max' => 100],
+                'views'      => ['type' => 'int', 'source' => 'stats->daily_views'],
+                'created_at' => '@column:created_at',
+                'actions'    => ['type' => 'actions', 'items' => ['edit', 'preview', 'copy', 'delete']],
             ],
-            'row_actions'  => ['edit', 'preview', 'copy', 'delete'],
             'bulk_actions' => ['delete', 'publish'],
         ],
     ],
 
     'form'    => ['fields' => [/* ... */]],
-    'preview' => ['mode' => 'offcanvas', 'fields' => [/* ... */]],
+
+    // No 'fields' key: the preview inherits the grid's columns.
+    'preview' => [],
 ];
 ```
 
@@ -283,15 +346,51 @@ sort URL parameter, into permissions, into the CSS class `ra-grid-cell-price`,
 and into the template path `region/list/cell/price.php`. Labels change freely;
 keys are a contract.
 
+**Text that may contain markup says so.** A plain string is escaped:
+
+```php
+'description' => 'Manage ads across categories.',
+'description' => ['html' => 'See the <a href="...">import guide</a> first.'],
+```
+
+The second form is the same explicit opt-in as `$raw()` in templates: markup
+is possible where it is genuinely useful, and it is greppable and visible in
+review rather than being the silent default. The page header is also where
+widgets will eventually go — counters, filters that apply across regions,
+status strips — so `header` is specified as an open structure rather than a
+fixed pair of keys.
+
 **Convention over configuration.** Anything omitted is derived. Missing
-`label` comes from the key (`created_at` -> "Created at"). Missing `type`
+`label` comes from the key (`created_at` -> "Created At"). Missing `type`
 comes from the database column type. Missing `source` means the column is
 named like the key. The minimal column is `'title' => []`.
 
-**Column types are a registry, not a switch.** Each type is a pair: a class
-that prepares the value and a template `region/list/cell/{type}.php` that
-renders it. A custom type means registering a class and writing a template.
-Restyling an existing one means copying its template into the project.
+**Data type and presentation are two different things.** `type` says what the
+value *is* — how it is read from the database, cast, sorted, filtered and
+validated. `display` says how it is *drawn*. One boolean column can be a tick
+or a cross, a "Yes"/"No", or a live switch; one integer can be a number, a
+percentage or a progress bar. The data underneath is identical, and filtering
+and sorting must not change with the presentation.
+
+```php
+'is_active' => ['type' => 'bool', 'display' => 'check'],     // tick / cross
+'is_active' => ['type' => 'bool', 'display' => 'yesno'],     // "Yes" / "No"
+'is_active' => ['type' => 'bool', 'display' => 'switch'],    // live toggle (see 8.9)
+'progress'  => ['type' => 'int',  'display' => 'progress', 'max' => 100],
+'progress'  => ['type' => 'int',  'display' => 'percent'],
+```
+
+Both are registries, not switches. A **type** is a class that reads and casts
+a value and declares which filter operators and which form fields suit it.
+A **display** is a template, `region/list/cell/{display}.php`. Omitting
+`display` picks the type's default one, which is why `'title' => []` still
+renders correctly.
+
+Adding a presentation therefore costs one template and nothing else — no
+class, no type, no change to querying. Restyling an existing one means copying
+its template into the project. This separation is what keeps the template
+cascade useful: a project can change how every boolean in the admin looks
+without touching a single page configuration.
 
 **Placeholders resolve at load time**, always into bound parameters, never
 into SQL text:
@@ -335,7 +434,62 @@ Three artefacts are generated from it:
 A CI test compares keys read in code against the schema and fails the build on
 a mismatch.
 
-### 6.4 Enumerations
+### 6.4 Shared definitions
+
+Repeating the same column definition on nine pages is how configuration rots:
+the tenth page gets it slightly wrong, and nobody notices. Definitions are
+therefore written once and referenced.
+
+```php
+// config/rockadmin/defs.php
+<?php return [
+    'column' => [
+        'id'         => ['type' => 'int', 'width' => '60px', 'sortable' => true,
+                         'align' => 'right'],
+        'created_at' => ['type' => 'datetime', 'format' => 'd.m.Y H:i',
+                         'sortable' => true, 'filter' => ['type' => 'date_range']],
+        'name'       => ['type' => 'text', 'sortable' => true,
+                         'filter' => ['type' => 'text', 'op' => 'contains']],
+    ],
+    'field' => [
+        'created_at' => ['type' => 'datetime', 'readonly' => true],
+        'email'      => ['type' => 'text', 'validate' => ['email', 'max:255']],
+    ],
+    'preview' => [
+        'timestamps' => ['created_at' => '@field:created_at', 'updated_at' => '@field:created_at'],
+    ],
+];
+```
+
+Referencing follows the syntax already used by `@enum:`, so there is one rule
+to learn — `@namespace:key`:
+
+```php
+'id'         => '@column:id',                                 // the definition as-is
+'created_at' => ['use' => '@column:created_at',               // and with changes
+                 'label' => 'Published'],
+'note'       => ['use' => '@column:name', 'filter' => null],  // null removes an inherited key
+```
+
+Rules:
+
+- **Merging is deep.** `['use' => '@column:created_at', 'filter' => ['op' => 'after']]`
+  keeps the inherited filter type and replaces only the operator.
+- **`null` removes** an inherited key, so a shared definition can be pruned
+  rather than copied.
+- **Definitions may reference definitions.** Resolution happens once at config
+  load and is baked into the production cache, so there is no runtime cost.
+  The validator detects reference cycles and reports the chain.
+- **Namespaces match where the definition is used**: `column`, `field`,
+  `filter`, `preview`, `action`, `enum`. A `@field:` reference inside
+  `columns` is a validation error, because the two have different keys.
+- **A reference to a missing definition is an error**, listing the nearest
+  existing key. It never silently resolves to an empty definition.
+
+`make:page` emits references where a definition already covers a column, which
+keeps generated configuration consistent with the hand-written kind.
+
+### 6.5 Enumerations
 
 ```php
 <?php return [
@@ -354,7 +508,7 @@ Static or database-backed with caching, so a grid of fifty rows never triggers
 fifty lookups. Referenced as `@enum:ad_state` from filters, form selects and
 badge colouring — defined once, used anywhere.
 
-### 6.5 Caching
+### 6.6 Caching
 
 In production all configuration files merge into a single `config.cache.php`
 — one `include`, opcache-friendly. `rockadmin cache:build` writes it,
@@ -362,7 +516,7 @@ In production all configuration files merge into a single `config.cache.php`
 writable, it is built on the first request, so deployment without CLI still
 works. In development files are read and validated on every request.
 
-### 6.6 Naming conventions
+### 6.7 Naming conventions
 
 | Thing | Convention | Example |
 |---|---|---|
@@ -381,14 +535,69 @@ works. In development files are read and validated on every request.
 ```
 SELECT    <- columns from 'columns' only; never SELECT *
 FROM      <- entity.table
-JOIN      <- from column 'source.join', deduplicated
+JOIN      <- from the relations that columns reference, deduplicated
 WHERE     <- entity.scope (workspace) AND filters AND search
              (row-level permissions attach here in a later version)
 ORDER BY  <- 'sort' from the URL, validated against the column list
 LIMIT     <- per_page + offset, or keyset
 ```
 
-### 7.2 Performance rules
+### 7.2 Where a column's value comes from
+
+Writing a JOIN on every column that needs one is verbose and invites the same
+join to be written three slightly different ways. Relations are declared once
+on the entity, and columns address them by path:
+
+```php
+'entity' => [
+    'table'     => 'ads',
+    'relations' => [
+        'user'     => ['table' => 'users', 'on' => 'users.id = ads.user_id'],
+        'category' => ['table' => 'categories', 'on' => 'categories.id = ads.category_id',
+                       'type' => 'inner'],
+    ],
+],
+
+'columns' => [
+    'author'  => ['source' => 'user.name'],            // JOIN users, select users.name
+    'company' => ['source' => 'user.company.name'],    // chained relations
+    'views'   => ['source' => 'stats->daily_views'],   // JSON inside this table
+    'title'   => [],                                   // ads.title, by convention
+],
+```
+
+Four forms, in order of how often they are used:
+
+| Form | Meaning |
+|---|---|
+| omitted | a column of the entity's own table, named like the config key |
+| `'column_name'` | a column of the entity's own table, named differently |
+| `'relation.column'` | traverses a declared relation; dots chain further |
+| `'column->json->path'` | JSON traversal, translated per dialect |
+
+Each distinct relation used on a page produces exactly one JOIN, whether one
+column references it or six. Unused relations produce none, so declaring them
+generously costs nothing.
+
+Relations are **declared, not inferred**. Guessing a join from a foreign key
+is convenient right up to the schema that has two foreign keys to the same
+table, where the guess silently picks the wrong one. `make:page` does read
+foreign keys and writes the `relations` block for you — so the convenience is
+there, but it lands in configuration you can read and correct, not in runtime
+magic.
+
+`->` is deliberately different from `.` because JSON traversal and relation
+traversal are different operations: the first stays inside the row, the
+second adds a JOIN. Using one character for both would make the cost of a
+column invisible.
+
+**When this is not enough** — a window function, a lateral join, an aggregate
+over a filtered subset, or any join that needs hand-tuning — use the `query`
+callback or a custom `RowSource` from 7.4. The path syntax is for the ninety
+per cent that is ordinary; it is not meant to grow into a query language.
+That growth is how configuration formats turn into bad ORMs.
+
+### 7.3 Performance rules
 
 **One query per page of data.** A column from another table is a JOIN, never a
 per-row lookup. A 1:N relation needing multiple values (tags on an ad) issues
@@ -412,7 +621,7 @@ matched against the configured column list and discarded if absent. Filter
 values are bound parameters. Filter operators are an enum, not a string. The
 grid is injection-safe by construction rather than by vigilance.
 
-### 7.3 Extension points
+### 7.4 Extension points
 
 1. `'query' => fn($q) => $q->where('deleted_at', null)` — adjust the built query
 2. `'raw' => 'EXISTS (SELECT 1 FROM ...)'` — explicit raw SQL, documented as
@@ -421,14 +630,38 @@ grid is injection-safe by construction rather than by vigilance.
    a REST API); the core only asks for "rows matching these filters, sort and
    page"
 
-### 7.4 Dialects
+### 7.5 Dialects
 
 `Dialect` centralises every difference between MySQL and PostgreSQL:
 identifier quoting, `LIKE` vs `ILIKE`, boolean handling, JSON access,
 `LIMIT/OFFSET`, full-text search. None of it may leak into configuration —
 the same config must run on both. Tests run against both databases.
 
-### 7.5 Writes
+### 7.6 Default values for new rows
+
+A form field may declare what a new row starts with. Existing rows are never
+touched by it.
+
+```php
+'fields' => [
+    'state'      => ['type' => 'enum', 'options' => '@enum:ad_state', 'default' => 'draft'],
+    'site_id'    => ['type' => 'int', 'default' => '{{workspace.site_id}}', 'hidden' => true],
+    'author_id'  => ['type' => 'int', 'default' => '{{user.id}}', 'hidden' => true],
+    'published_at' => ['type' => 'datetime', 'default' => '@now'],
+],
+```
+
+Defaults accept a literal, a placeholder (7.2 rules apply — they resolve to
+bound values, never to SQL), or one of a small set of tokens such as `@now`
+and `@uuid`. They are applied when the create form is rendered, so the user
+sees what will be saved, and re-applied on save for hidden fields, so a
+tampered form cannot drop them.
+
+Copy is the same mechanism pointed the other way: `'copy' => ['reset' => ['state', 'published_at']]`
+lists the fields that fall back to their defaults instead of being carried
+over from the source row.
+
+### 7.7 Writes
 
 Writes run in a transaction through a `WriteHandler`. The default builds
 INSERT/UPDATE/DELETE from the form definition. A project may replace it
@@ -524,7 +757,105 @@ the integrator; adding a third dependent region is one config line.
 
 Layouts know nothing about regions — they fill named slots.
 
-### 8.5 Client-side JavaScript
+### 8.5 Actions and presentation
+
+An earlier draft of this specification put presentation into the region:
+`'preview' => ['mode' => 'offcanvas']`. That was wrong, and the mistake only
+shows up once you want the same detail panel opened from two places, or a
+grid cell that opens a panel belonging to a different page. A region cannot
+know where it will be displayed, because that is not its property.
+
+**A region renders content. An action decides where that content appears.**
+The two are separate concerns and are configured separately.
+
+An action is defined once and referenced wherever it should appear:
+
+```php
+'actions' => [
+    // Navigate somewhere.
+    'edit'    => ['type' => 'link', 'to' => '@page:ads/{id}/edit',
+                  'icon' => 'pencil', 'permission' => 'ads.update'],
+
+    // Load a region and show it in an overlay.
+    'preview' => ['type' => 'open', 'in' => 'offcanvas', 'size' => 'lg',
+                  'target' => '@region:preview', 'title' => 'Ad #{id}'],
+
+    // The same region, shown as a modal instead.
+    'quick'   => ['type' => 'open', 'in' => 'modal', 'target' => '@region:preview'],
+
+    // A region belonging to a different page.
+    'author'  => ['type' => 'open', 'in' => 'modal',
+                  'target' => '@region:users.detail', 'params' => ['id' => '{user_id}']],
+
+    // Change data. Always POST, always confirmed, always permission-checked.
+    'archive' => ['type' => 'post', 'to' => '@action:archive', 'icon' => 'archive',
+                  'confirm' => 'Archive this ad?', 'permission' => 'ads.update',
+                  'when' => ['state' => 'active'], 'refresh' => ['grid']],
+],
+```
+
+Common keys: `type` (`link`, `open`, `post`), `label`, `icon`, `permission`,
+`confirm`, `when` (row conditions deciding whether the action is offered),
+and `refresh` (which regions re-render after it completes).
+
+Placeholders in `to`, `target`, `params` and `title` are filled from the row
+being rendered — `{id}`, `{user_id}`, any selected column. They are URL-encoded
+on substitution, and only keys present in the region's data are allowed, so a
+row cannot inject a path.
+
+**Where actions appear** is a separate choice, and the same action may appear
+in several places at once:
+
+```php
+'header'  => ['buttons' => ['create', 'export']],              // page header
+'columns' => [
+    'actions' => ['type' => 'actions', 'items' => ['edit', 'preview', 'delete']],
+],                                                              // a column, anywhere in the grid
+'bulk_actions' => ['delete', 'archive'],                        // applied to selected rows
+```
+
+Because the action column is an ordinary column, it can sit in the middle of
+the grid, and there can be more than one.
+
+**`preview` is then only shorthand.** A page that declares
+
+```php
+'preview' => ['fields' => [/* ... */]],
+```
+
+gets a region named `preview` and a row action named `preview` that opens it
+in an offcanvas. Spelling both out explicitly produces exactly the same thing.
+The shorthand exists because that arrangement is wanted on most pages; it is
+not a separate mechanism, and nothing in the core treats "preview" specially.
+
+**Which fields a preview shows:**
+
+| Configuration | Meaning |
+|---|---|
+| key omitted | inherit the grid's columns |
+| `'fields' => ['a', 'b']` | exactly these |
+| `'fields' => '@all'` | every column of the table |
+| `'fields' => []` | none — legal, but the validator warns, since it is almost always a mistake |
+
+Inheriting by omission follows the same convention-over-configuration rule as
+everything else, and an empty array keeps its plain meaning instead of being
+overloaded into "all of them".
+
+**Pages that exist only to be opened.** A page may be reachable by URL and
+absent from the menu:
+
+```php
+'menu' => false,
+```
+
+Such a page is a normal page — same permissions, same lifecycle, same
+security checks — it simply is not advertised. This is what makes
+`'target' => '@region:users.detail'` sound: the panel loaded into a modal is
+a region of a real page, not a special-cased fragment, and it is governed by
+that page's permissions. Hiding a page from the menu is a convenience, never
+a security measure.
+
+### 8.6 Client-side JavaScript
 
 Bootstrap 5 provides modal, offcanvas, dropdown, toast, tooltip and collapse
 without jQuery, which removes the need for Alpine or Vue. Vue in particular is
@@ -587,7 +918,7 @@ the root rather than by preloading views:
 4. **Per-view libraries load on demand**: `data-ra-requires="charts.js"` makes
    `core.js` fetch that asset once, wait, then run `attach`.
 
-### 8.6 CSS conventions
+### 8.7 CSS conventions
 
 Every element carries two or three layers of classes:
 
@@ -610,7 +941,7 @@ elements, so small adjustments need neither a template override nor CSS.
 
 A template without `ra-` classes violates the standard.
 
-### 8.7 Project assets
+### 8.8 Project assets
 
 ```php
 'assets' => ['css' => ['/css/admin-theme.css'], 'js' => ['/js/admin-extra.js']],
@@ -618,7 +949,7 @@ A template without `ra-` classes violates the standard.
 
 Project CSS loads after the SDK's, so it overrides without `!important`.
 
-### 8.8 Grid state and shareable URLs
+### 8.9 Grid state and shareable URLs
 
 **Grid state lives in the URL, never in the session.** Shareable links then
 come for free.
@@ -658,7 +989,7 @@ slower, visibly flickering, and broken without JS. With a query parameter the
 server renders both grid and populated offcanvas, and JS merely opens it.
 `core.js` listens to `popstate`, so closing the overlay is a history step back.
 
-### 8.9 Editable cells (reserved for v1.1)
+### 8.10 Editable cells (reserved for v1.1)
 
 Cells will gain in-place editing: click a pencil and the text is replaced by
 an input, a select, or — for booleans — a checkbox that saves on change. This
@@ -682,7 +1013,7 @@ now:
   response returns the re-rendered cell, so the grid always shows what was
   actually stored, not what was typed.
 
-### 8.10 Flash messages
+### 8.11 Flash messages
 
 Flash messages live in the session, survive redirects, render once as
 Bootstrap toasts and are then discarded. On a fragment request they travel
@@ -978,14 +1309,20 @@ must not hand the database schema to the first person who gets in.
 **In:**
 
 - core: kernel, router, request/response, session, CSRF, error handling
-- configuration: loading, schema, validator, placeholders, caching, local override
-- database: PDO, MySQL and PostgreSQL dialects, query builder, offset and keyset pagination
-- regions: `list`, `form`, `preview`, `nav`, `stat`
+- configuration: loading, schema, validator, placeholders, shared definitions,
+  caching, local override
+- database: PDO, MySQL and PostgreSQL dialects, query builder, declared
+  relations with path sources and JSON traversal, offset and keyset pagination
+- regions: `list`, `form`, `preview`, `nav`, `stat`; pages hidden from the menu
 - layouts: `single`, `two-column`, `sidebar-detail`
-- column types: text, int, money, datetime, bool, enum, badge, image, link, relation
+- column types: text, int, money, datetime, bool, enum, image, link, relation
+- displays: plain, badge, check, yesno, progress, percent, image, link
 - form field types: text, textarea, number, select, multiselect, checkbox, radio, date, datetime, file, hidden, password
 - filters: text, select, multiselect, range, date, boolean, plus multi-column search
-- actions: create, update, copy, delete, bulk actions, custom actions
+- actions: `link`, `open` (modal, offcanvas, page), `post`; built-in create,
+  update, copy, delete; row conditions, confirmation, region refresh; as
+  header buttons, as a grid column, or as bulk actions
+- form fields: default values for new rows, including placeholders and tokens
 - auth: password login, roles and permissions from configuration, workspaces, password reset by email, audit log
 - built-in pages: dashboard, profile, user management, help
 - assets: Bootstrap 5 CSS + JS, `core.js`, default white theme
