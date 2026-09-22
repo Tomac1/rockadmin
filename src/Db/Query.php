@@ -18,6 +18,7 @@ final class Query
      * @param array<string, mixed>  $scope   column of the entity's own table => value
      * @param list<Filter>          $filters
      * @param list<Sort>            $sort
+     * @param list<Collection>      $collections
      */
     public function __construct(
         public readonly Entity $entity,
@@ -28,6 +29,7 @@ final class Query
         public readonly array $sort = [],
         public readonly ?Page $page = null,
         public readonly CountStrategy $count = CountStrategy::Exact,
+        public readonly array $collections = [],
     ) {
     }
 }
