@@ -39,11 +39,16 @@ final class Loader
         $resolver = new Resolver($this->env, $root);
         $resolved = $resolver->resolve($expanded);
 
-        $errors = (new Validator())->validate($resolved, RootSchema::create());
+        $schema = RootSchema::create();
+        $errors = (new Validator())->validate($resolved, $schema);
 
         if ($errors !== []) {
             throw new ConfigException($this->report($errors));
         }
+
+        // Defaults are applied after validation, so the validator judges what the
+        // project wrote rather than what we completed for it.
+        $resolved = (new Defaults())->apply($resolved, $schema);
 
         $enums = $definitions->expand($this->read('enums.php'));
         $resolvedEnums = $resolver->resolve($enums);

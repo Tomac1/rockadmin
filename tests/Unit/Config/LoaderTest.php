@@ -109,4 +109,11 @@ final class LoaderTest extends TestCase
 
         $this->loader('not-an-array')->load();
     }
+
+    public function testADeclaredDefaultFillsAKeyTheProjectOmitted(): void
+    {
+        $config = $this->loader('defaults')->load();
+
+        $this->assertSame('path', $config->get('url_mode'), 'the fixture writes no url_mode');
+    }
 }
