@@ -126,7 +126,13 @@ tests/Fixtures/config/   real configuration directories the loader reads
     `Bool`, `Array`, `Mixed`
   - `SchemaKey` with readonly `ValueType $type`, `mixed $default`,
     `string $description`, `mixed $example`, `bool $required`,
-    `?string $performance`, `?Schema $children`, `?Schema $each`
+    `bool $nullable`, `?string $performance`, `?Schema $children`, `?Schema $each`
+
+`nullable` exists because a missing environment variable resolves to `null`.
+A key backed by an optional variable — an SMTP host when the driver is `log` —
+must accept that; one that is not must report it. Making every key tolerate
+null would hide real mistakes, and making none tolerate it would break every
+optional setting.
   - `Schema` with `__construct(array<string, SchemaKey> $keys)`,
     `key(string): ?SchemaKey`, `names(): list<string>`,
     `nearest(string): ?string`
@@ -278,6 +284,7 @@ final class SchemaKey
         public readonly string $description = '',
         public readonly mixed $example = null,
         public readonly bool $required = false,
+        public readonly bool $nullable = false,
         public readonly ?string $performance = null,
         public readonly ?Schema $children = null,
         public readonly ?Schema $each = null,
@@ -413,6 +420,7 @@ final class ValidatorTest extends TestCase
                 'label' => new SchemaKey(ValueType::String, required: true),
                 'color' => new SchemaKey(ValueType::String),
             ])),
+            'smtp_host' => new SchemaKey(ValueType::String, nullable: true),
         ]);
     }
 
@@ -468,6 +476,13 @@ final class ValidatorTest extends TestCase
 
         $this->assertCount(1, $errors);
         $this->assertStringContainsString('null', $errors[0]->message);
+    }
+
+    public function testANullableKeyAcceptsNull(): void
+    {
+        // An optional setting backed by an environment variable that is not
+        // set — an SMTP host while the mail driver is 'log', for instance.
+        $this->assertSame([], (new Validator())->validate(['smtp_host' => null], $this->schema()));
     }
 
     public function testAMissingRequiredKeyIsReportedAtItsParentPath(): void
@@ -567,6 +582,18 @@ final class Validator
 
             if ($key === null) {
                 $errors[] = new ValidationError($path, $this->unknownKeyMessage((string) $name, $schema));
+
+                continue;
+            }
+
+            if ($value === null) {
+                if (!$key->nullable) {
+                    $errors[] = new ValidationError($path, \sprintf(
+                        'Expected %s, got null. A placeholder for an unset environment '
+                        . 'variable resolves to null; declare the key nullable if that is intended.',
+                        $key->type->value,
+                    ));
+                }
 
                 continue;
             }
@@ -2119,7 +2146,12 @@ final class RootSchema
                         description: 'log, smtp, sendmail or callback.',
                         example: 'smtp',
                     ),
-                    'host' => new SchemaKey(ValueType::String, description: 'SMTP host.', example: '{{env.MAIL_HOST}}'),
+                    'host' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP host. Null while the driver does not need one.',
+                        example: '{{env.MAIL_HOST}}',
+                        nullable: true,
+                    ),
                     'port' => new SchemaKey(ValueType::Int, default: 587, description: 'SMTP port.', example: 587),
                 ]),
             ),
