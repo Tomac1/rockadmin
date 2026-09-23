@@ -15,8 +15,8 @@ use RockAdmin\Db\SortDirection;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
 use RockAdmin\Page\PageException;
-use RockAdmin\Page\RegionType;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Page\RegionType;
 
 #[CoversClass(PageRepository::class)]
 final class PageRepositoryTest extends TestCase
