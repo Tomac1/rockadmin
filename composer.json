@@ -37,7 +37,8 @@
         "stan": "phpstan analyse",
         "cs": "php-cs-fixer fix --dry-run --diff",
         "cs:fix": "php-cs-fixer fix",
-        "check": ["@cs", "@stan", "@test"]
+        "check": ["@cs", "@stan", "@test"],
+        "docs:reference": "php bin/generate-reference.php"
     },
     "config": {
         "sort-packages": true
