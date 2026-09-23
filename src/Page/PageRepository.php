@@ -573,9 +573,9 @@ final class PageRepository
 
     /**
      * Accepts an `@enum:` reference, or a literal map from value to either a
-     * label string or `['label' => ..., 'color' => ...]`. Anything else
-     * (an entry that is neither a string nor an array carrying `label`) is
-     * silently dropped rather than refused — see the task report.
+     * label string or `['label' => ..., 'color' => ...]`. Anything else is
+     * refused by name: an entry that is neither of those is almost always a
+     * typo, and dropping it would produce a filter quietly missing a choice.
      *
      * @return array<string, EnumOption>
      */
