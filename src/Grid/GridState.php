@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace RockAdmin\Grid;
 
-use RockAdmin\Db\FilterOperator;
 use RockAdmin\Db\Sort;
 use RockAdmin\Db\SortDirection;
 use RockAdmin\Page\RegionDefinition;
@@ -95,13 +94,11 @@ final class GridState
                 continue;
             }
 
-            $filter = $region->column($columnKey)->filter;
-
-            if ($filter === null) {
+            if ($region->column($columnKey)->filter === null) {
                 continue;
             }
 
-            $input = self::readFilterValue($columnKey, $filter->operator, $value);
+            $input = self::readFilterValue($columnKey, $value);
 
             if ($input !== null) {
                 $filters[] = $input;
@@ -111,12 +108,12 @@ final class GridState
         return $filters;
     }
 
-    private static function readFilterValue(string $columnKey, FilterOperator $operator, mixed $value): ?FilterInput
+    private static function readFilterValue(string $columnKey, mixed $value): ?FilterInput
     {
         $scalar = self::asTrimmedScalar($value);
 
         if ($scalar !== null) {
-            return $scalar === '' ? null : new FilterInput($columnKey, $operator, $scalar);
+            return $scalar === '' ? null : new FilterInput($columnKey, $scalar);
         }
 
         if (!\is_array($value)) {
@@ -134,7 +131,7 @@ final class GridState
                 }
             }
 
-            return $items === [] ? null : new FilterInput($columnKey, FilterOperator::In, $items);
+            return $items === [] ? null : new FilterInput($columnKey, $items);
         }
 
         $range = [];
@@ -151,7 +148,7 @@ final class GridState
             }
         }
 
-        return $range === [] ? null : new FilterInput($columnKey, FilterOperator::Between, $range);
+        return $range === [] ? null : new FilterInput($columnKey, $range);
     }
 
     private static function asTrimmedScalar(mixed $value): ?string
@@ -171,35 +168,36 @@ final class GridState
     private static function readSort(array $namespace, RegionDefinition $region): array
     {
         $raw = $namespace['sort'] ?? null;
-
-        if (!\is_string($raw) || trim($raw) === '') {
-            return $region->sort;
-        }
-
         $sorts = [];
 
-        foreach (explode(',', $raw) as $part) {
-            $part = trim($part);
+        if (\is_string($raw)) {
+            foreach (explode(',', $raw) as $part) {
+                $part = trim($part);
 
-            if ($part === '') {
-                continue;
+                if ($part === '') {
+                    continue;
+                }
+
+                $direction = SortDirection::Asc;
+
+                if (str_starts_with($part, '-')) {
+                    $direction = SortDirection::Desc;
+                    $part = substr($part, 1);
+                }
+
+                if ($part === '' || !$region->hasColumn($part) || !$region->column($part)->sortable) {
+                    continue;
+                }
+
+                $sorts[] = new Sort($part, $direction);
             }
-
-            $direction = SortDirection::Asc;
-
-            if (str_starts_with($part, '-')) {
-                $direction = SortDirection::Desc;
-                $part = substr($part, 1);
-            }
-
-            if ($part === '' || !$region->hasColumn($part) || !$region->column($part)->sortable) {
-                continue;
-            }
-
-            $sorts[] = new Sort($part, $direction);
         }
 
-        return $sorts;
+        // Drop what cannot be understood, then behave as though it was never
+        // there: a bookmark whose sort names a since-renamed column has, once
+        // filtered, carried no sort at all — the same as a URL that never
+        // named one.
+        return $sorts === [] ? $region->sort : $sorts;
     }
 
     /** @param array<array-key, mixed> $namespace */
@@ -262,7 +260,16 @@ final class GridState
         return new self($this->search, $this->filters, $this->sort, max(1, $page));
     }
 
-    /** Toggles direction when the column is already the sort, otherwise replaces it, ascending. */
+    /**
+     * Toggles direction when the column is already the sort, otherwise
+     * replaces it, ascending.
+     *
+     * A third click on the same column cycles back to ascending rather than
+     * clearing the sort — `SortDirection` only has two values, so that is
+     * what toggling already does, with no third state to add. An unsorted
+     * grid would also make paging unstable, and two clicks to get back to
+     * where you started is what every other grid trains people to expect.
+     */
     public function withSort(string $column): self
     {
         $current = $this->sort[0] ?? null;

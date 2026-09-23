@@ -29,7 +29,7 @@ final class GridStateTest extends TestCase
      */
     private function region(array $columns = [], array $sort = [], array $searchable = []): RegionDefinition
     {
-        return new RegionDefinition('grid', RegionType::ListRegion->value, 25, $columns, $sort, $searchable);
+        return new RegionDefinition('grid', RegionType::List, 25, $columns, $sort, $searchable);
     }
 
     private function column(
@@ -103,7 +103,7 @@ final class GridStateTest extends TestCase
 
         $state = GridState::fromQuery(['grid' => ['f' => ['state' => 'active']]], 'grid', $region);
 
-        $this->assertEquals([new FilterInput('state', FilterOperator::Equals, 'active')], $state->filters);
+        $this->assertEquals([new FilterInput('state', 'active')], $state->filters);
     }
 
     public function testAFilterNamingAnUndeclaredColumnIsDropped(): void
@@ -135,7 +135,7 @@ final class GridStateTest extends TestCase
         );
 
         $this->assertEquals(
-            [new FilterInput('price', FilterOperator::Between, ['from' => '10', 'to' => '20'])],
+            [new FilterInput('price', ['from' => '10', 'to' => '20'])],
             $state->filters,
         );
     }
@@ -151,9 +151,37 @@ final class GridStateTest extends TestCase
         );
 
         $this->assertEquals(
-            [new FilterInput('price', FilterOperator::Between, ['from' => '10'])],
+            [new FilterInput('price', ['from' => '10'])],
             $state->filters,
         );
+    }
+
+    public function testAOneEndedAndATwoEndedRangeProduceTheSameShapeDifferingOnlyInValue(): void
+    {
+        // Pinned from this side because QueryFactory (task 4) keys its choice
+        // of Between vs. GreaterOrEqual/LessOrEqual on exactly this shape: a
+        // one-ended range must not be a different kind of FilterInput than a
+        // two-ended one, only a different value.
+        $region = $this->region(['price' => $this->column('price', filter: $this->filter(FilterOperator::Between, 'range'))]);
+
+        $oneEnded = GridState::fromQuery(
+            ['grid' => ['f' => ['price' => ['from' => '10']]]],
+            'grid',
+            $region,
+        )->filters[0];
+
+        $twoEnded = GridState::fromQuery(
+            ['grid' => ['f' => ['price' => ['from' => '10', 'to' => '20']]]],
+            'grid',
+            $region,
+        )->filters[0];
+
+        $this->assertInstanceOf(FilterInput::class, $oneEnded);
+        $this->assertInstanceOf(FilterInput::class, $twoEnded);
+        $this->assertSame('price', $oneEnded->column);
+        $this->assertSame('price', $twoEnded->column);
+        $this->assertSame(['from' => '10'], $oneEnded->value);
+        $this->assertSame(['from' => '10', 'to' => '20'], $twoEnded->value);
     }
 
     public function testAListValueBecomesAnInFilter(): void
@@ -167,7 +195,7 @@ final class GridStateTest extends TestCase
         );
 
         $this->assertEquals(
-            [new FilterInput('state', FilterOperator::In, ['active', 'draft'])],
+            [new FilterInput('state', ['active', 'draft'])],
             $state->filters,
         );
     }
@@ -226,6 +254,23 @@ final class GridStateTest extends TestCase
         );
 
         $state = GridState::fromQuery([], 'grid', $region);
+
+        $this->assertEquals($defaultSort, $state->sort);
+    }
+
+    public function testTheRegionsOwnSortIsUsedWhenEveryUrlSortIsInvalid(): void
+    {
+        // A stale bookmark whose sort names a since-renamed or since-removed
+        // column must behave exactly like a URL that never named a sort at
+        // all: drop what cannot be understood, then act as though it was
+        // never there.
+        $defaultSort = [new Sort('created_at', SortDirection::Desc)];
+        $region = $this->region(
+            ['created_at' => $this->column('created_at', sortable: true)],
+            sort: $defaultSort,
+        );
+
+        $state = GridState::fromQuery(['grid' => ['sort' => 'bogus_column']], 'grid', $region);
 
         $this->assertEquals($defaultSort, $state->sort);
     }
