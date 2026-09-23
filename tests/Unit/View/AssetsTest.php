@@ -102,6 +102,21 @@ final class AssetsTest extends TestCase
         $this->assertNotSame($before, $this->assets()->url('css/rockadmin.css'));
     }
 
+    public function testOneInstanceHashesAFileOnceHoweverOftenItIsAsked(): void
+    {
+        // The memoisation the brief asks for, pinned. Changing the file
+        // underneath a live instance and getting the first URL back is what
+        // proves the second call did not read the disk again — a page links
+        // the same stylesheet once, but a fragment request rebuilds the list.
+        $assets = $this->assets();
+        $first = $assets->url('css/rockadmin.css');
+
+        file_put_contents($this->root . '/css/rockadmin.css', ':root{--changed:1}');
+
+        $this->assertSame($first, $assets->url('css/rockadmin.css'));
+        $this->assertNotSame($first, $this->assets()->url('css/rockadmin.css'));
+    }
+
     public function testAnUnknownAssetIsRefusedRatherThanLinkedTo(): void
     {
         // A dead stylesheet link is a page that renders unstyled and looks

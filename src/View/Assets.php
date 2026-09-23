@@ -74,9 +74,9 @@ final class Assets
 
     private function normalize(string $path): string
     {
-        $clean = str_ends_with($path, '.css') || str_ends_with($path, '.js')
-            ? $path
-            : $path;
+        // An asset path keeps its extension, unlike a template name: the
+        // extension is what decides the content type on the way out.
+        $clean = $path;
 
         if ($clean === '') {
             throw new ViewException('An empty asset path cannot resolve to a file.');
