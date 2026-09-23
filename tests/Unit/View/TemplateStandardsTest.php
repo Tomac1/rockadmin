@@ -156,6 +156,28 @@ final class TemplateStandardsTest extends TestCase
         $this->assertNotSame([], $violations);
     }
 
+    /** @return array<string, array{string}> */
+    public static function urlAttributesWrittenEveryWay(): array
+    {
+        return [
+            'double quoted' => ['<a href="<?= $e($view->url) ?>">x</a>'],
+            'single quoted' => ["<a href='<?= \$e(\$view->url) ?>'>x</a>"],
+            'unquoted' => ['<a href=<?= $e($view->url) ?>>x</a>'],
+            'spaced around the equals' => ['<a href = "<?= $e($view->url) ?>">x</a>'],
+            'an image source' => ['<img src="<?= $e($view->icon) ?>">'],
+            'a form action' => ['<form action="<?= $e($view->url) ?>">'],
+        ];
+    }
+
+    #[DataProvider('urlAttributesWrittenEveryWay')]
+    public function testTheUrlAttributeRuleDoesNotDependOnHowTheAttributeIsQuoted(string $markup): void
+    {
+        // A rule that only recognised one quoting style would be checking a
+        // house convention rather than the property it exists for. The single
+        // quoted form is the one that was passing.
+        $this->assertNotSame([], $this->urlAttributeViolations($markup));
+    }
+
     public function testTheUrlAttributeRuleAcceptsHrefForAHref(): void
     {
         $violations = $this->urlAttributeViolations('<a href="<?= $href($view->url) ?>">x</a>');
@@ -308,7 +330,11 @@ final class TemplateStandardsTest extends TestCase
     {
         $violations = [];
 
-        $pattern = '/\b(href|src|action)\s*=\s*"<\?=\s*(\$\w+)\(/';
+        // Both quote styles, and none at all. Matching only double quotes
+        // would have left the rule checking a house convention rather than
+        // the property it exists for: a single-quoted URL attribute is
+        // exactly the case this rule is about, and it was passing.
+        $pattern = '/\b(href|src|action)\s*=\s*[\'"]?<\?=\s*(\$\w+)\(/';
 
         if (preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) === false) {
             return [];
