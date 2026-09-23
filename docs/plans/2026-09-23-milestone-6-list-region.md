@@ -843,8 +843,8 @@ difference between a grid that reads well and one that does not.
 - Test: `tests/Unit/Grid/CellFormatterTest.php`
 
 **Interfaces:**
-- Consumes: `ColumnDefinition`, `ColumnType`, `Display` (Task 1-2);
-  `RockAdmin\Config\Enums` for `enum` columns; `RockAdmin\View\Classes`.
+- Consumes: `ColumnDefinition`, `ColumnType`, `Display` (Task 1-2) and
+  `RockAdmin\View\Classes`. **Not `Enums`** — see below.
 - Produces:
   ```php
   namespace RockAdmin\Grid;
@@ -865,11 +865,18 @@ difference between a grid that reads well and one that does not.
 
   final class CellFormatter
   {
-      public function __construct(private readonly Enums $enums);
-
       public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView;
   }
   ```
+
+**Where an enum column's options come from.** Task 2 already resolved them:
+a column carries `$column->options['enum']` as an `array<string, EnumOption>`,
+with `@enum:` references followed and literal maps parsed, refusing anything
+malformed by name. This class reads that array and nothing else. Taking an
+`Enums` and looking the reference up again would be a second path to the same
+data, and the two would eventually disagree about a column whose options were
+overridden per page — which is exactly the kind of seam this milestone has
+already had to close twice.
 
 **How each type formats**, and the reasoning where it is not obvious:
 
@@ -886,8 +893,8 @@ difference between a grid that reads well and one that does not.
 - **bool** — `check` renders a tick or nothing; `yesno` renders words; both
   read `true`, `1`, `'1'` and `'t'` as true, because three databases spell a
   boolean three ways.
-- **enum** — the option's label from `Enums::options()`, and its variant for
-  the badge colour. A value with no matching option keeps its raw value and
+- **enum** — the option's label from `$column->options['enum']`, and its
+  colour for the badge variant. A value with no matching option keeps its raw value and
   gets no variant, so an unmapped state is visible rather than blank.
 - **json** — a compact one-line rendering, truncated with an ellipsis past a
   sensible length, with the full value in a `title` attribute.
