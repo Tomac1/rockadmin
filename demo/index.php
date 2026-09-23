@@ -50,16 +50,16 @@ $config = (new Loader(__DIR__ . '/config', static function (string $name): ?stri
 // The schema guarantees these keys are strings once the config has loaded,
 // but Config::get() returns mixed for every path alike; this is the one
 // place that narrows it back down, honestly, rather than casting past it.
-$configString = static function (Config $config, string $path, string $default) : string {
+$configString = static function (Config $config, string $path, string $default): string {
     $value = $config->get($path, $default);
 
-    return \is_string($value) ? $value : $default;
+    return is_string($value) ? $value : $default;
 };
 
 $brand = $configString($config, 'brand', 'RockAdmin');
 $darkMode = $configString($config, 'theme.dark', 'auto');
 $debugValue = $config->get('debug', false);
-$debug = \is_bool($debugValue) ? $debugValue : false;
+$debug = is_bool($debugValue) ? $debugValue : false;
 
 $session = new ArraySessionStore();
 $urls = new UrlGenerator('/', $configString($config, 'url_mode', 'path'));
@@ -128,8 +128,8 @@ $errors = new ErrorHandler(
 $kernel = new Kernel(new Router(), $handlers, $errors);
 
 $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
-$requestUri = \is_string($requestUri) ? $requestUri : '/';
+$requestUri = is_string($requestUri) ? $requestUri : '/';
 $requestPath = parse_url($requestUri, PHP_URL_PATH);
-$path = rawurldecode(\is_string($requestPath) ? $requestPath : '/');
+$path = rawurldecode(is_string($requestPath) ? $requestPath : '/');
 
 $kernel->handle(Request::fromGlobals($path))->send();
