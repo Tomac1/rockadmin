@@ -268,6 +268,222 @@ final class QueryFactoryTest extends TestCase
         );
     }
 
+    // --- Shape-vs-operator reconciliation --------------------------------
+    //
+    // Every FilterInput's value shape only tells us what the URL sent, not
+    // what the column's FilterDefinition expects. A shape that does not
+    // match the declared operator must never reach QueryBuilder unguarded:
+    // one, the builder throws (a 500 from a link anyone can type); or worse,
+    // an array is silently coerced to a string and the filter matches
+    // nothing while looking like it ran.
+
+    public function testAScalarWithInBecomesAOneElementList(): void
+    {
+        // ?grid[f][state]=active on a column declaring 'in'. Before this fix,
+        // FilterOperator::In reached the builder with a bare string and blew
+        // up with "An 'in' filter needs a list of values."
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'state' => $this->column('state', filter: $this->filter(FilterOperator::In, 'multiselect')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['state' => 'active']]], 'grid', $region),
+        );
+
+        $this->assertEquals([new Filter('state', FilterOperator::In, ['active'])], $query->filters);
+    }
+
+    public function testAScalarWithBetweenIsDropped(): void
+    {
+        // ?grid[f][price]=15 on a column declaring 'between'. One value is
+        // not a range, and the builder throws "needs exactly two values" if
+        // it reaches it.
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'price' => $this->column('price', filter: $this->filter(FilterOperator::Between, 'range')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['price' => '15']]], 'grid', $region),
+        );
+
+        $this->assertSame([], $query->filters);
+    }
+
+    public function testAListOfExactlyOneUnwrapsToItsScalarThenFollowsTheScalarRules(): void
+    {
+        // ?grid[f][state][]=active on a column declaring 'equals'. This is
+        // the worst of the three bugs the review found: the array used to
+        // reach PDO, become the literal string "Array", and match nothing
+        // while raising nothing — a filter that looks like it ran but
+        // silently excludes every row.
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'state' => $this->column('state', filter: $this->filter(FilterOperator::Equals, 'select')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['state' => ['active']]]], 'grid', $region),
+        );
+
+        $this->assertEquals([new Filter('state', FilterOperator::Equals, 'active')], $query->filters);
+    }
+
+    public function testAListOfSeveralWithEqualsBecomesIn(): void
+    {
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'state' => $this->column('state', filter: $this->filter(FilterOperator::Equals, 'select')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['state' => ['active', 'draft']]]], 'grid', $region),
+        );
+
+        $this->assertEquals(
+            [new Filter('state', FilterOperator::In, ['active', 'draft'])],
+            $query->filters,
+        );
+    }
+
+    public function testAListOfSeveralWithAnyOtherOperatorIsDropped(): void
+    {
+        // "Contains any of these" is not something the builder expresses,
+        // and guessing would be worse than dropping the filter.
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'title' => $this->column('title', filter: $this->filter(FilterOperator::Contains, 'text')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['title' => ['bike', 'moto']]]], 'grid', $region),
+        );
+
+        $this->assertSame([], $query->filters);
+    }
+
+    public function testIsNullIgnoresTheValueRegardlessOfShape(): void
+    {
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'deleted_at' => $this->column('deleted_at', filter: $this->filter(FilterOperator::IsNull, 'boolean')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['deleted_at' => 'whatever']]], 'grid', $region),
+        );
+
+        $this->assertEquals([new Filter('deleted_at', FilterOperator::IsNull)], $query->filters);
+    }
+
+    public function testIsNotNullIgnoresARangeShapedValue(): void
+    {
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'deleted_at' => $this->column('deleted_at', filter: $this->filter(FilterOperator::IsNotNull, 'boolean')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['deleted_at' => ['from' => '2020-01-01']]]], 'grid', $region),
+        );
+
+        $this->assertEquals([new Filter('deleted_at', FilterOperator::IsNotNull)], $query->filters);
+    }
+
+    /**
+     * Every FilterOperator against every value shape a URL can produce: a
+     * future operator cannot be added without deciding what each shape means
+     * for it, because this test will fail until it does.
+     */
+    public function testEveryOperatorReconcilesEveryValueShapeOrDropsTheFilter(): void
+    {
+        $shapes = [
+            'a scalar' => 'active',
+            'a list of one' => ['active'],
+            'a list of several' => ['active', 'draft'],
+            'a range with both ends' => ['from' => '10', 'to' => '20'],
+            'a range with only a from' => ['from' => '10'],
+            'a range with only a to' => ['to' => '20'],
+        ];
+
+        foreach (FilterOperator::cases() as $operator) {
+            foreach ($shapes as $label => $value) {
+                $this->assertEquals(
+                    $this->expectedFilterFor($operator, $value),
+                    $this->filterFor($operator, $value),
+                    "operator '{$operator->value}' against {$label}",
+                );
+            }
+        }
+    }
+
+    /** @param string|list<string>|array{from?: string, to?: string} $value */
+    private function filterFor(FilterOperator $operator, string|array $value): ?Filter
+    {
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'col' => $this->column('col', filter: $this->filter($operator)),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['col' => $value]]], 'grid', $region),
+        );
+
+        return $query->filters[0] ?? null;
+    }
+
+    /** @param string|list<string>|array{from?: string, to?: string} $value */
+    private function expectedFilterFor(FilterOperator $operator, string|array $value): ?Filter
+    {
+        if ($operator === FilterOperator::IsNull || $operator === FilterOperator::IsNotNull) {
+            return new Filter('col', $operator);
+        }
+
+        if (\is_array($value) && !array_is_list($value)) {
+            $from = $value['from'] ?? null;
+            $to = $value['to'] ?? null;
+
+            return match (true) {
+                $from !== null && $to !== null => new Filter('col', FilterOperator::Between, [$from, $to]),
+                $from !== null => new Filter('col', FilterOperator::GreaterOrEqual, $from),
+                $to !== null => new Filter('col', FilterOperator::LessOrEqual, $to),
+                default => null,
+            };
+        }
+
+        $values = \is_array($value) ? $value : [$value];
+
+        if (\count($values) === 1) {
+            return match ($operator) {
+                FilterOperator::Between => null,
+                FilterOperator::In => new Filter('col', FilterOperator::In, [$values[0]]),
+                default => new Filter('col', $operator, $values[0]),
+            };
+        }
+
+        return match ($operator) {
+            FilterOperator::In, FilterOperator::Equals => new Filter('col', FilterOperator::In, $values),
+            default => null,
+        };
+    }
+
     public function testSearchCoversExactlyTheSearchableColumnsSourcePaths(): void
     {
         $region = $this->region(
@@ -352,6 +568,39 @@ final class QueryFactoryTest extends TestCase
 
         $this->assertNotNull($query->page);
         $this->assertSame(200, $query->page->limit);
+    }
+
+    public function testPerPageHasALowerBoundToo(): void
+    {
+        // PageRepository already refuses a per_page below 1 at load time, but
+        // a RegionDefinition can be built directly -- in a test, or by a
+        // future caller -- bypassing that guard entirely. Page::of() throws
+        // on anything less than one, and a 500 is a poor answer to a bad
+        // number reaching this far.
+        $region = $this->region(perPage: 0);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $this->assertNotNull($query->page);
+        $this->assertSame(1, $query->page->limit);
+    }
+
+    public function testANegativePerPageIsAlsoClampedToOne(): void
+    {
+        $region = $this->region(perPage: -5);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $this->assertNotNull($query->page);
+        $this->assertSame(1, $query->page->limit);
     }
 
     public function testPageThreeBecomesTheRightOffset(): void

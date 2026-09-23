@@ -609,6 +609,43 @@ final class PageRepositoryTest extends TestCase
         $this->assertSame(10, $region->perPage);
     }
 
+    public function testAPerPageBelowOneIsRefusedAtLoadRatherThanOnEveryRequest(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'per_page' => 0, 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A per_page of zero should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('grid', $e->getMessage());
+            $this->assertStringContainsString('per_page', $e->getMessage());
+        }
+    }
+
+    public function testANegativePerPageIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'per_page' => -5, 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A negative per_page should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('per_page', $e->getMessage());
+        }
+    }
+
     public function testSortIsReadAsAListOfSortObjects(): void
     {
         $this->writePage('ads', <<<'PHP'

@@ -38,7 +38,13 @@ final class QueryFactory
     {
         [$columns, $collections] = $this->splitColumns($region);
 
-        $limit = min($region->perPage, $this->maxPerPage);
+        // PageRepository already refuses a per_page below 1 when a page
+        // loads, loudly, naming the page and region where a person can fix
+        // it. This lower bound exists for the RegionDefinition that never
+        // went through that loader -- built directly in a test, or by some
+        // future caller -- because Page::of() throws below 1, and a 500 is a
+        // poor answer to a bad number reaching this far.
+        $limit = max(1, min($region->perPage, $this->maxPerPage));
 
         return new Query(
             entity: $page->entity,
@@ -97,6 +103,16 @@ final class QueryFactory
     /**
      * Decides the operator from the shape of the value and the column's
      * declared FilterDefinition — the one place this mapping lives.
+     *
+     * A URL's shape and a column's operator do not always agree: a URL can
+     * send `?f[state]=active` to a column that declared `in`, or
+     * `?f[state][]=active` to one that declared `equals`. Handing either
+     * straight to the builder unguarded either throws -- a 500 from a link
+     * anyone can type -- or, worse, silently coerces an array to a string
+     * and matches nothing while looking like it ran. Where a shape and an
+     * operator cannot be honestly reconciled, the filter is dropped instead:
+     * it came from a URL, and the discard rule already says unreadable input
+     * is dropped rather than raised.
      */
     private function toFilter(RegionDefinition $region, FilterInput $input): ?Filter
     {
@@ -110,26 +126,62 @@ final class QueryFactory
             return null;
         }
 
-        if (\is_string($input->value)) {
-            return new Filter($input->column, $definition->operator, $input->value);
+        $operator = $definition->operator;
+
+        if ($operator === FilterOperator::IsNull || $operator === FilterOperator::IsNotNull) {
+            // The value's presence, or lack of it, already decided which of
+            // these two operators the column declares -- no shape it takes
+            // afterwards changes what that means.
+            return new Filter($input->column, $operator);
         }
 
-        if (array_is_list($input->value)) {
-            return new Filter($input->column, $definition->operator, $input->value);
+        if (\is_array($input->value) && !array_is_list($input->value)) {
+            return $this->rangeFilter($input->column, $input->value);
         }
 
-        $from = $input->value['from'] ?? null;
-        $to = $input->value['to'] ?? null;
+        $values = \is_array($input->value) ? $input->value : [$input->value];
 
-        if ($from !== null && $to !== null) {
-            return new Filter($input->column, FilterOperator::Between, [$from, $to]);
+        if (\count($values) === 1) {
+            return $this->scalarFilter($input->column, $operator, $values[0]);
         }
 
-        if ($from !== null) {
-            return new Filter($input->column, FilterOperator::GreaterOrEqual, $from);
-        }
+        // A list of several values has one honest reading: "any of these".
+        // An operator that already means that, or means exact equality,
+        // accepts it as `in`. Anything else -- a range, a text match, an
+        // ordering comparison -- has no meaning for a list, and guessing one
+        // would be worse than dropping the filter.
+        return match ($operator) {
+            FilterOperator::In, FilterOperator::Equals => new Filter($input->column, FilterOperator::In, $values),
+            default => null,
+        };
+    }
 
-        return new Filter($input->column, FilterOperator::LessOrEqual, $to);
+    private function scalarFilter(string $column, FilterOperator $operator, string $value): ?Filter
+    {
+        return match ($operator) {
+            // One value is not a range.
+            FilterOperator::Between => null,
+            FilterOperator::In => new Filter($column, FilterOperator::In, [$value]),
+            default => new Filter($column, $operator, $value),
+        };
+    }
+
+    /** @param array{from?: string, to?: string} $range */
+    private function rangeFilter(string $column, array $range): ?Filter
+    {
+        $from = $range['from'] ?? null;
+        $to = $range['to'] ?? null;
+
+        return match (true) {
+            $from !== null && $to !== null => new Filter($column, FilterOperator::Between, [$from, $to]),
+            $from !== null => new Filter($column, FilterOperator::GreaterOrEqual, $from),
+            $to !== null => new Filter($column, FilterOperator::LessOrEqual, $to),
+            // GridState never produces a range with neither end -- it drops
+            // one before a FilterInput is ever built -- but a FilterInput
+            // could in principle be constructed directly, and dropping here
+            // is the same answer this class gives any other unreadable shape.
+            default => null,
+        };
     }
 
     private function search(RegionDefinition $region, GridState $state): ?Search

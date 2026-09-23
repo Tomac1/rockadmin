@@ -312,6 +312,15 @@ final class PageRepository
 
         $perPage = \is_int($regionConfig['per_page'] ?? null) ? $regionConfig['per_page'] : $this->defaultPerPage;
 
+        if ($perPage < 1) {
+            throw new PageException(\sprintf(
+                "Page '%s': region '%s' has per_page %d. A page needs at least one row.",
+                $pageName,
+                $regionKey,
+                $perPage,
+            ));
+        }
+
         /** @var array<string, mixed> $columnsConfig */
         $columnsConfig = \is_array($regionConfig['columns'] ?? null) ? $regionConfig['columns'] : [];
         $columns = [];
