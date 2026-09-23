@@ -2827,7 +2827,12 @@ Create `tests/Unit/View/TemplateStandardsTest.php`. It walks every `.php` file
 under `templates/` with a `RecursiveDirectoryIterator`, and runs one test per
 file through a data provider so a failure names the file. The rules:
 
-1. **No script tag.** The file contains no `<script` in any casing.
+1. **No script tag that carries behaviour.** No `<script>` with a body, in any
+   casing, anywhere. A `<script src="...">` with an empty body is allowed in
+   `templates/layout/base.php` and nowhere else — the page has to load its
+   assets somewhere, and that is the one template that writes a document.
+   Every other template can be returned as a fragment and inserted into a
+   live page, where a script tag either does not run or runs twice.
 2. **Every `<?=` escapes.** Every short echo tag is immediately followed
    (ignoring whitespace) by a call to `$e(`, `$raw(`, `$attr(`, `$attrs(`,
    `$href(` or `$partial(`. Anything else fails, naming the offending line.
