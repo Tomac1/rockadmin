@@ -126,4 +126,59 @@ final class ClassesTest extends TestCase
 
         Classes::identity('page-type', 'list invalid');
     }
+
+    /** @return array<string, array{string, string}> */
+    public static function identitiesFromConfigurationKeys(): array
+    {
+        return [
+            'already kebab-case' => ['user-accounts', 'ra-page-user-accounts'],
+            'snake_case, as this project writes configuration keys' => ['user_accounts', 'ra-page-user-accounts'],
+            'a single word' => ['users', 'ra-page-users'],
+            'capitals' => ['Users', 'ra-page-users'],
+            'mixed' => ['User_Accounts', 'ra-page-user-accounts'],
+            'a digit' => ['step_2', 'ra-page-step-2'],
+        ];
+    }
+
+    #[DataProvider('identitiesFromConfigurationKeys')]
+    public function testAnIdentityIsTranslatedFromAConfigurationKey(string $key, string $expected): void
+    {
+        // Configuration keys are snake_case in this project and CSS classes
+        // are kebab-case. A page named user_accounts.php used to throw, which
+        // took down the whole page for following the project's own rules.
+        $this->assertSame($expected, Classes::identity('page', $key));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function identitiesThatAreNotWords(): array
+    {
+        return [
+            'a space' => ['user accounts'],
+            'a quote' => ['user"accounts'],
+            'an angle bracket' => ['user<accounts'],
+            'a slash' => ['user/accounts'],
+            'empty' => [''],
+            'only punctuation' => ['--'],
+        ];
+    }
+
+    #[DataProvider('identitiesThatAreNotWords')]
+    public function testAnIdentityThatIsNotAWordIsStillRefused(string $key): void
+    {
+        // Translating case and underscores is a convention mapping. Anything
+        // that is not a word cannot become a class name by any honest
+        // transformation, so it is refused rather than mangled.
+        $this->expectException(ViewException::class);
+
+        Classes::identity('page', $key);
+    }
+
+    public function testTheStructuralHalfIsStillHeldToKebabCase(): void
+    {
+        // A structural name is written by a template author, not taken from
+        // configuration, so there is no convention to translate.
+        $this->expectException(ViewException::class);
+
+        Classes::of('grid_cell');
+    }
 }

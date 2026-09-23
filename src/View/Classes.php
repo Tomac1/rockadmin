@@ -20,7 +20,7 @@ final class Classes
         $names = [self::name($structural, 'structural class')];
 
         if ($identity !== null) {
-            $names[] = $names[0] . '-' . self::segment($identity);
+            $names[] = $names[0] . '-' . self::slug($identity);
         }
 
         foreach ($extra as $class) {
@@ -32,10 +32,37 @@ final class Classes
         return implode(' ', array_values(array_unique($names)));
     }
 
-    /** One class: 'ra-<structural>-<identity>', validated the same way. */
+    /** One class: 'ra-<structural>-<identity>', from the same two rules. */
     public static function identity(string $structural, string $identity): string
     {
-        return 'ra-' . self::segment($structural) . '-' . self::segment($identity);
+        return 'ra-' . self::segment($structural) . '-' . self::slug($identity);
+    }
+
+    /**
+     * An identity comes from a configuration key, and this project writes
+     * those in snake_case — `per_page`, `created_at`, a page file named
+     * `user_accounts.php`. CSS classes are kebab-case. Translating between the
+     * two conventions is exactly what this boundary is for, so an underscore
+     * becomes a hyphen and a capital becomes lower case rather than taking a
+     * page down: a project that follows the naming rules written in its own
+     * CLAUDE.md should not meet an exception for doing so.
+     *
+     * What is still refused is anything that is not a word at all — a space, a
+     * quote, an angle bracket, punctuation — because that cannot become a
+     * class name by any honest transformation.
+     */
+    private static function slug(string $value): string
+    {
+        $slug = strtolower(str_replace('_', '-', $value));
+
+        if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) {
+            throw new ViewException(
+                "Refusing '{$value}' as an identity: it cannot be written as a class name. "
+                . 'Use letters, digits, underscores or hyphens.',
+            );
+        }
+
+        return $slug;
     }
 
     /**
