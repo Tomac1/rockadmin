@@ -202,6 +202,116 @@ final class PageRepositoryTest extends TestCase
         }
     }
 
+    public function testAnUnknownColumnTypeNamesThePageAndColumn(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'price' => ['type' => 'mony'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown column type should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('ads', $e->getMessage());
+            $this->assertStringContainsString('price', $e->getMessage());
+            $this->assertStringContainsString("Did you mean 'money'", $e->getMessage());
+        }
+    }
+
+    public function testAnUnknownDisplayNamesThePageAndColumn(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'price' => ['display' => 'bagde'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown display should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('ads', $e->getMessage());
+            $this->assertStringContainsString('price', $e->getMessage());
+            $this->assertStringContainsString('bagde', $e->getMessage());
+        }
+    }
+
+    public function testAnUnresolvedEnumReferenceInOptionsIsRefusedNamingTheColumn(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => ['type' => 'enum', 'options' => '@enum:bogus'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unresolved enum reference should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('ads', $e->getMessage());
+            $this->assertStringContainsString('state', $e->getMessage());
+            $this->assertStringContainsString('bogus', $e->getMessage());
+        }
+    }
+
+    public function testColumnOptionsAcceptAMapWithAColorForABadge(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => [
+                        'type' => 'enum',
+                        'options' => ['active' => ['label' => 'Active', 'color' => 'success']],
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('state');
+
+        /** @var array<string, \RockAdmin\Config\EnumOption> $enumOptions */
+        $enumOptions = $column->options['enum'];
+
+        $this->assertSame('Active', $enumOptions['active']->label);
+        $this->assertSame('success', $enumOptions['active']->color);
+    }
+
+    public function testARegionWithAnUnknownTypeIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'lis', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown region type should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('ads', $e->getMessage());
+            $this->assertStringContainsString('grid', $e->getMessage());
+            $this->assertStringContainsString("Did you mean 'list'", $e->getMessage());
+        }
+    }
+
     public function testARelationDeclaredOnTheEntityBecomesARelationObject(): void
     {
         $this->writePage('ads', <<<'PHP'
@@ -294,11 +404,42 @@ final class PageRepositoryTest extends TestCase
             ]
             PHP);
 
-        // Only proves search's declared shape loads without error; nothing on
-        // RegionDefinition exposes it yet (see the task report).
+        // This only proves a *valid* search block loads without error — it
+        // cannot assert the value arrives anywhere, because RegionDefinition
+        // exposes no field for it (out of this task's given interface; see
+        // the task report). Paired with the two tests below, which assert
+        // something a valid block cannot: that search's declared shape is
+        // actually enforced, not merely tolerated — a wrong-typed
+        // `placeholder` and an unknown key are both refused.
         $page = $this->repository()->get('ads');
 
         $this->assertSame('ads', $page->name);
+    }
+
+    public function testASearchPlaceholderMustBeAString(): void
+    {
+        // Proof that search's shape is a real, checked schema and not just
+        // "any array is accepted": a wrong-typed value inside it is refused
+        // the same way a wrong-typed value anywhere else in the page is.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'search' => ['placeholder' => 123],
+                    'columns' => ['title' => []],
+                ]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A non-string search placeholder should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('search.placeholder', $e->getMessage());
+            $this->assertStringContainsString('Expected string', $e->getMessage());
+        }
     }
 
     public function testAnUnknownKeyInsideSearchIsRefused(): void

@@ -57,7 +57,7 @@ Every entry of `regions`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | — | `list` | The region type: list, form or custom. **Required.** |
+| `type` | string | — | `list` | The region type: list or preview. Refused at load if it names anything else. `form`, `nav` and `stat` arrive in later milestones. **Required.** |
 | `per_page` | int | — | `25` | Rows to show per page. Only for list regions. |
 | `sort` | array | — | `['created_at' => 'desc']` | The default sort order: a map of column key to direction, applied until a user picks their own. |
 
@@ -88,7 +88,7 @@ Every entry of `regions.*.columns`.
 | `currency` | string | — | `USD` | ISO 4217 currency code. Shown after the amount. For `money` type only. |
 | `format` | string | — | `Y-m-d H:i` | PHP date format string. For `datetime` type only. |
 | `max` | int | — | `100` | The value that counts as full. For `progress` display only. |
-| `options` | mixed | — | `['active' => 'Active', 'inactive' => 'Inactive']` | The enum values: an `@enum:` reference or a literal key-value map. For `enum` type only. |
+| `options` | mixed | — | `['active' => […], 'inactive' => 'Inactive']` | The enum values, keyed by their stored value: an `@enum:` reference to a shared enumeration, or a literal map where each entry is either the label as a plain string, or `['label' => ..., 'color' => ...]` when the value needs a badge colour. For `enum` type only. |
 
 ## `regions.*.columns.*.filter`
 
@@ -97,9 +97,9 @@ Makes the column filterable. Declares how the filter works.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `type` | string | `text` | `text` | The filter type: text, select, multiselect, range, date or boolean. |
-| `op` | string | — | `contains` | The filter operator (a FilterOperator value). Defaults per filter type: text uses `contains`, select and boolean use `equals`, multiselect uses `in`, range and date use `between`. |
+| `op` | string | — | `contains` | The filter operator: equals, not_equals, contains, starts_with, ends_with, gt, gte, lt, lte, between, in, is_null or is_not_null. Defaults per filter type: text uses `contains`, select and boolean use `equals`, multiselect uses `in`, range and date use `between`. |
 | `label` | string | — | `Search by name` | The filter label, shown beside the input. Defaults to the column's label. |
-| `options` | mixed | — | `['active' => 'Active', 'inactive' => 'Inactive']` | For select and multiselect: an `@enum:` reference or a literal map. Defaults to the column's own options when it is an enum. |
+| `options` | mixed | — | `['active' => […], 'inactive' => 'Inactive']` | For select and multiselect: the same shapes the column's own `options` accepts — an `@enum:` reference, or a literal map from value to either a label string or `['label' => ..., 'color' => ...]`. Defaults to the column's own options when it is an enum. |
 | `placeholder` | string | — | `Type a name...` | Placeholder text shown in an empty text filter. |
 
 ## `regions.*.columns.*.collection`

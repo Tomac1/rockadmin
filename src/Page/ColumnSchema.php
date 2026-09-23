@@ -95,9 +95,11 @@ final class ColumnSchema
             ),
             'options' => new SchemaKey(
                 ValueType::Mixed,
-                description: 'The enum values: an `@enum:` reference or a literal key-value map. '
+                description: 'The enum values, keyed by their stored value: an `@enum:` reference to a shared '
+                    . 'enumeration, or a literal map where each entry is either the label as a plain string, '
+                    . 'or `[\'label\' => ..., \'color\' => ...]` when the value needs a badge colour. '
                     . 'For `enum` type only.',
-                example: ['active' => 'Active', 'inactive' => 'Inactive'],
+                example: ['active' => ['label' => 'Active', 'color' => 'success'], 'inactive' => 'Inactive'],
             ),
             'filter' => new SchemaKey(
                 ValueType::Array,
@@ -111,7 +113,8 @@ final class ColumnSchema
                     ),
                     'op' => new SchemaKey(
                         ValueType::String,
-                        description: 'The filter operator (a FilterOperator value). '
+                        description: 'The filter operator: equals, not_equals, contains, starts_with, '
+                            . 'ends_with, gt, gte, lt, lte, between, in, is_null or is_not_null. '
                             . 'Defaults per filter type: text uses `contains`, select and boolean use `equals`, '
                             . 'multiselect uses `in`, range and date use `between`.',
                         example: 'contains',
@@ -123,9 +126,11 @@ final class ColumnSchema
                     ),
                     'options' => new SchemaKey(
                         ValueType::Mixed,
-                        description: 'For select and multiselect: an `@enum:` reference or a literal map. '
+                        description: 'For select and multiselect: the same shapes the column\'s own `options` '
+                            . 'accepts — an `@enum:` reference, or a literal map from value to either a label '
+                            . 'string or `[\'label\' => ..., \'color\' => ...]`. '
                             . 'Defaults to the column\'s own options when it is an enum.',
-                        example: ['active' => 'Active', 'inactive' => 'Inactive'],
+                        example: ['active' => ['label' => 'Active', 'color' => 'success'], 'inactive' => 'Inactive'],
                     ),
                     'placeholder' => new SchemaKey(
                         ValueType::String,

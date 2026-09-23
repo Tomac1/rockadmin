@@ -299,7 +299,17 @@ final class PageRepository
     /** @param array<string, mixed> $regionConfig */
     private function buildRegion(string $pageName, string $regionKey, array $regionConfig, Entity $entity): RegionDefinition
     {
-        $type = \is_string($regionConfig['type'] ?? null) ? $regionConfig['type'] : '';
+        $typeValue = \is_string($regionConfig['type'] ?? null) ? $regionConfig['type'] : '';
+
+        try {
+            $type = RegionType::parse($typeValue)->value;
+        } catch (PageException $e) {
+            throw new PageException(
+                "Page '{$pageName}': region '{$regionKey}': {$e->getMessage()}",
+                previous: $e,
+            );
+        }
+
         $perPage = \is_int($regionConfig['per_page'] ?? null) ? $regionConfig['per_page'] : $this->defaultPerPage;
 
         /** @var array<string, mixed> $columnsConfig */
@@ -355,10 +365,26 @@ final class PageRepository
     private function buildColumn(string $pageName, string $columnKey, array $columnConfig, Entity $entity): ColumnDefinition
     {
         $typeValue = \is_string($columnConfig['type'] ?? null) ? $columnConfig['type'] : 'text';
-        $type = ColumnType::parse($typeValue);
+
+        try {
+            $type = ColumnType::parse($typeValue);
+        } catch (PageException $e) {
+            throw new PageException(
+                "Page '{$pageName}': column '{$columnKey}': {$e->getMessage()}",
+                previous: $e,
+            );
+        }
 
         $displayValue = $columnConfig['display'] ?? null;
-        $display = \is_string($displayValue) ? Display::parse($displayValue) : $type->defaultDisplay();
+
+        try {
+            $display = \is_string($displayValue) ? Display::parse($displayValue) : $type->defaultDisplay();
+        } catch (PageException $e) {
+            throw new PageException(
+                "Page '{$pageName}': column '{$columnKey}': {$e->getMessage()}",
+                previous: $e,
+            );
+        }
 
         if (!$type->allows($display)) {
             throw new PageException(\sprintf(
@@ -412,7 +438,7 @@ final class PageRepository
         $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
 
         $enumOptions = \array_key_exists('options', $columnConfig)
-            ? $this->resolveOptions($columnConfig['options'])
+            ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey)
             : [];
 
         $options = [];
@@ -539,17 +565,31 @@ final class PageRepository
         $options = $columnOptions;
 
         if (\array_key_exists('options', $filterConfig) && $filterConfig['options'] !== null) {
-            $options = $this->resolveOptions($filterConfig['options']);
+            $options = $this->resolveOptions($filterConfig['options'], $pageName, $columnKey);
         }
 
         return new FilterDefinition($type, $operator, $label, $options, $placeholder);
     }
 
-    /** @return array<string, EnumOption> */
-    private function resolveOptions(mixed $raw): array
+    /**
+     * Accepts an `@enum:` reference, or a literal map from value to either a
+     * label string or `['label' => ..., 'color' => ...]`. Anything else
+     * (an entry that is neither a string nor an array carrying `label`) is
+     * silently dropped rather than refused — see the task report.
+     *
+     * @return array<string, EnumOption>
+     */
+    private function resolveOptions(mixed $raw, string $pageName, string $columnKey): array
     {
         if ($raw instanceof EnumReference) {
-            return $this->enums->options($raw);
+            try {
+                return $this->enums->options($raw);
+            } catch (ConfigException $e) {
+                throw new PageException(
+                    "Page '{$pageName}': column '{$columnKey}': {$e->getMessage()}",
+                    previous: $e,
+                );
+            }
         }
 
         if (!\is_array($raw)) {

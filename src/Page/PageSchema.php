@@ -101,7 +101,8 @@ final class PageSchema
                     'type' => new SchemaKey(
                         ValueType::String,
                         required: true,
-                        description: 'The region type: list, form or custom.',
+                        description: 'The region type: list or preview. Refused at load if it names anything '
+                            . 'else. `form`, `nav` and `stat` arrive in later milestones.',
                         example: 'list',
                     ),
                     'per_page' => new SchemaKey(
