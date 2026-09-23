@@ -158,15 +158,33 @@ final class RendererTest extends TestCase
 
     public function testNothingInATemplatesScopeIsAnObjectExceptTheViewItself(): void
     {
-        // The helpers are closures bound to nothing, and the one remaining
+        // The helpers are closures bound to nothing and the one remaining
         // variable is a string. A Renderer, a TemplateResolver, an Escaper, a
         // UrlGenerator or a Config in scope would each be a way to reach the
         // configuration or the database from a template someone overrode.
-        $this->template('x', '<?php $types = []; foreach (get_defined_vars() as $name => $value) { $types[] = $name . ":" . get_debug_type($value); } ?><?= implode(",", $types) ?>');
+        //
+        // $view is exempt, and has to be: a prepared view object is an object,
+        // and handing templates one is the entire design. So this renders with
+        // an object view and checks everything except it.
+        $this->template(
+            'x',
+            '<?php $raTypes = []; foreach (get_defined_vars() as $raName => $raValue) {'
+            . ' if ($raName === "view" || str_starts_with($raName, "raTypes") || str_starts_with($raName, "raName")'
+            . ' || str_starts_with($raName, "raValue")) { continue; }'
+            . ' $raTypes[] = $raName . ":" . get_debug_type($raValue); } ?><?= implode(",", $raTypes) ?>',
+        );
 
-        $types = explode(',', $this->renderer()->render('x'));
+        $view = new class () {
+            public string $name = 'a real view object';
+        };
 
-        foreach ($types as $pair) {
+        $pairs = explode(',', $this->renderer()->render('x', $view));
+
+        // Without this the loop below would pass on an empty scope, which is
+        // the one result that would mean the test learned nothing.
+        $this->assertCount(9, $pairs, 'The scope this test inspects is not the one the renderer builds.');
+
+        foreach ($pairs as $pair) {
             [$name, $type] = explode(':', $pair, 2);
 
             $this->assertContains(
@@ -175,6 +193,49 @@ final class RendererTest extends TestCase
                 "The variable \${$name} in a template's scope is a {$type}.",
             );
         }
+    }
+
+    public function testATemplateCanStillReceiveAnObjectView(): void
+    {
+        // Guards the test above: if the exemption for $view were wrong, or if
+        // an object view stopped working, this fails rather than the scope
+        // test silently passing because every view in the suite is a string.
+        $this->template('x', '<?= $e($view->name) ?>');
+
+        $view = new class () {
+            public string $name = 'Tomáš';
+        };
+
+        $this->assertSame('Tomáš', $this->renderer()->render('x', $view));
+    }
+
+    public function testTemplatesReturnsTheResolverItWasGiven(): void
+    {
+        // Milestone 10's development console reads resolutions() through this.
+        $resolver = new TemplateResolver([], $this->root . '/sdk');
+
+        $renderer = new Renderer($resolver, new Escaper(), new UrlGenerator('/admin'));
+
+        $this->assertSame($resolver, $renderer->templates());
+    }
+
+    public function testABufferATemplateOpensAndAbandonsIsClosedWhenItThrows(): void
+    {
+        // A template may open a buffer of its own; closing it on the happy
+        // path is the template's business. On the way out of an exception it
+        // is ours, or the next response inherits it.
+        $this->template('boom', '<?php ob_start(); echo "swallowed"; throw new \RuntimeException("boom"); ?>');
+
+        $depth = ob_get_level();
+
+        try {
+            $this->renderer()->render('boom');
+            $this->fail('The exception should have propagated.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame($depth, ob_get_level(), 'A buffer the template opened was left behind.');
     }
 
     /** @return list<string> */

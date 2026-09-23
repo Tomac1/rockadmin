@@ -18,6 +18,13 @@ use Throwable;
  * closures. There is no database here, no configuration, and no reference to
  * this renderer — so a template can be overridden by someone who has never
  * read the core, and a query cannot be smuggled into one.
+ *
+ * The limit of that is Reflection: a template could read the helpers' captured
+ * variables with ReflectionFunction::getStaticVariables() and reach the escaper
+ * and the URL generator. Neither leads to the configuration or the database,
+ * and a template that imports ReflectionFunction has stopped being a template
+ * — the guarantee here is against smuggling a query into one by accident, not
+ * against a hostile template file, which is code the project already trusts.
  */
 final class Renderer
 {
@@ -68,12 +75,12 @@ final class Renderer
         foreach ($attributes as $name => $value) {
             if ($value !== null && !\is_scalar($value)) {
                 throw new ViewException(
-                    "The attribute '" . (\is_string($name) ? $name : (string) $name) . "' holds a "
-                    . get_debug_type($value) . '. An attribute value is a string, a number, a boolean or null.',
+                    "The attribute '{$name}' holds a " . get_debug_type($value)
+                    . '. An attribute value is a string, a number, a boolean or null.',
                 );
             }
 
-            $clean[\is_int($name) ? $name : (string) $name] = $value;
+            $clean[(string) $name] = $value;
         }
 
         return $clean;
@@ -81,8 +88,16 @@ final class Renderer
 
     /**
      * The same narrowing for the two places a template passes values into a
-     * URL. A query value that is not a string or a number has no spelling in
-     * a URL, so there is nothing sensible to do but say so.
+     * URL.
+     *
+     * This is stricter than PHP would be: http_build_query() would happily
+     * turn 2.5 into "2.5" and true into "1". Both are guesses. A float in a
+     * URL is a locale question nobody wants to answer twice, and "1" for true
+     * is a convention this project does not use anywhere else — so a value
+     * that is not a string or an integer is refused by name rather than
+     * spelled by accident. UrlGenerator's own signature already says
+     * array<string, int|string>; this makes that true at the boundary a
+     * template writes against.
      *
      * @param  array<mixed, mixed>        $values
      * @return array<string, int|string>
@@ -94,8 +109,8 @@ final class Renderer
         foreach ($values as $name => $value) {
             if (!\is_string($value) && !\is_int($value)) {
                 throw new ViewException(
-                    "The URL {$what} '" . (\is_string($name) ? $name : (string) $name) . "' holds a "
-                    . get_debug_type($value) . '. A URL carries strings and numbers.',
+                    "The URL {$what} '{$name}' holds a " . get_debug_type($value)
+                    . '. A URL carries strings and whole numbers.',
                 );
             }
 
