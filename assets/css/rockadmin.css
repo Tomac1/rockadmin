@@ -70,6 +70,16 @@
     --ra-sidebar-width: 15rem;
     --ra-header-height: 3rem;
     --ra-grid-row-padding: 0.35rem;
+
+    /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
+       those flip with the page theme, and the navbar does not. It is the
+       dark bar the content sits under in both modes, so its foreground and
+       background are stated once here and never redefined in a theme block.
+       Tying them to --bs-light was how the menu came to render near-black
+       text on a near-black bar the moment dark mode arrived. */
+    --ra-shell-bg: #22262b;
+    --ra-shell-fg: #f5f6f7;
+    --ra-shell-fg-rgb: 245, 246, 247;
 }
 
 /*
@@ -147,14 +157,17 @@
 .btn-info { --ra-btn-color: var(--bs-info); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
 .btn-warning { --ra-btn-color: var(--bs-warning); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
 .btn-danger { --ra-btn-color: var(--bs-danger); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-dark { --ra-btn-color: var(--bs-dark); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-light { --ra-btn-color: var(--bs-light); --bs-btn-color: #000; --bs-btn-hover-color: #000; --bs-btn-active-color: #000; --bs-btn-disabled-color: #000; }
+.btn-dark { --ra-btn-color: var(--bs-dark); --bs-btn-color: var(--bs-light); --bs-btn-hover-color: var(--bs-light); --bs-btn-active-color: var(--bs-light); --bs-btn-disabled-color: var(--bs-light); }
+/* .btn-light's background follows --bs-light, which is a dark shade in dark
+   mode, so its text colour has to follow too — a fixed #000 would be the
+   navbar's bug again, dormant until a template uses this class. */
+.btn-light { --ra-btn-color: var(--bs-light); --bs-btn-color: var(--bs-dark); --bs-btn-hover-color: var(--bs-dark); --bs-btn-active-color: var(--bs-dark); --bs-btn-disabled-color: var(--bs-dark); }
 
 /* The shell itself. */
 .ra-navbar {
     min-height: var(--ra-header-height);
-    background-color: var(--bs-dark);
-    color: var(--bs-light);
+    background-color: var(--ra-shell-bg);
+    color: var(--ra-shell-fg);
     padding: 0 1rem;
 
     /* The navbar's background is always the dark shell colour, in both light
@@ -166,14 +179,19 @@
        data-bs-theme="dark" on the element: that attribute would also swing
        every other themed token in this subtree (body background, borders,
        form controls in the dropdown) to their dark-mode values, which is
-       more than a contrast fix asks for. */
-    --bs-navbar-color: rgba(var(--bs-light-rgb), 0.75);
-    --bs-navbar-hover-color: rgba(var(--bs-light-rgb), 0.95);
-    --bs-navbar-active-color: var(--bs-light);
+       more than a contrast fix asks for.
+
+       They are declared on .ra-navbar itself, so a dark-mode block on :root
+       could never reach them: a rule targeting an ancestor only applies to
+       this element by inheritance, and inheritance never overrides the
+       element's own declaration. Hence --ra-shell-*, which do not change. */
+    --bs-navbar-color: rgba(var(--ra-shell-fg-rgb), 0.75);
+    --bs-navbar-hover-color: rgba(var(--ra-shell-fg-rgb), 0.95);
+    --bs-navbar-active-color: var(--ra-shell-fg);
 }
 
 .ra-navbar-brand {
-    color: var(--bs-light);
+    color: var(--ra-shell-fg);
     font-weight: 600;
 }
 
