@@ -33,16 +33,13 @@ use RockAdmin\Db\SourcePath;
  * objects the rest of the code reads. Validation runs before defaults so it
  * judges what a project actually wrote.
  *
- * `entity.relations`, `entity.scope`, and a region's `sort` and `search` are
- * declared in PageSchema with an empty child schema — their keys are chosen
- * by the project (a relation name, a column name), not a fixed set the
- * schema could enumerate. The generic Validator has no "any keys" mode: an
- * empty child schema means "no keys allowed", which would reject every real
- * page. Those four blocks are therefore type-checked and swapped for an
- * empty array before the generic pass runs, and parsed by hand afterwards —
- * relations and sort with the domain rules this class documents; scope and
- * search are only checked to be arrays, because PageDefinition does not yet
- * expose them (see the task report).
+ * `entity.relations` has a real per-entry schema (`table`, `on`, `type`), so
+ * the generic Validator checks it like anything else. `entity.scope` and a
+ * region's `sort` are declared with no `children`/`each` at all — their keys
+ * are chosen by the project (a column name), not a fixed set the schema
+ * could enumerate — so the Validator only checks they are arrays, and this
+ * class does the rest by hand: a sort direction must be `asc` or `desc`,
+ * which the schema cannot express since it only knows the value is a string.
  */
 final class PageRepository
 {
@@ -107,7 +104,7 @@ final class PageRepository
         }
 
         $schema = PageSchema::create();
-        $errors = (new Validator())->validate($this->forValidation($resolved), $schema);
+        $errors = (new Validator())->validate($resolved, $schema);
 
         if ($errors !== []) {
             throw new PageException($this->report($name, $file, $errors));
@@ -171,73 +168,6 @@ final class PageRepository
         return $definitions;
     }
 
-    /**
-     * A validation-safe copy: the freeform blocks the schema cannot describe
-     * are type-checked here and then emptied, so the generic pass does not
-     * reject their project-chosen keys.
-     *
-     * @param  array<string, mixed> $resolved
-     * @return array<string, mixed>
-     */
-    private function forValidation(array $resolved): array
-    {
-        $copy = $resolved;
-
-        if (\is_array($copy['entity'] ?? null)) {
-            /** @var array<string, mixed> $entity */
-            $entity = $copy['entity'];
-            $this->assertArrayIfPresent($entity, 'relations', 'entity.relations');
-            $this->assertArrayIfPresent($entity, 'scope', 'entity.scope');
-
-            if (\array_key_exists('relations', $entity)) {
-                $entity['relations'] = [];
-            }
-
-            if (\array_key_exists('scope', $entity)) {
-                $entity['scope'] = [];
-            }
-
-            $copy['entity'] = $entity;
-        }
-
-        if (\is_array($copy['regions'] ?? null)) {
-            /** @var array<string, mixed> $regions */
-            $regions = $copy['regions'];
-
-            foreach ($regions as $regionKey => $region) {
-                if (!\is_array($region)) {
-                    continue;
-                }
-
-                /** @var array<string, mixed> $region narrows array<mixed, mixed> — argument.type without it */
-                $this->assertArrayIfPresent($region, 'sort', "regions.{$regionKey}.sort");
-                $this->assertArrayIfPresent($region, 'search', "regions.{$regionKey}.search");
-
-                if (\array_key_exists('sort', $region)) {
-                    $region['sort'] = [];
-                }
-
-                if (\array_key_exists('search', $region)) {
-                    $region['search'] = [];
-                }
-
-                $regions[$regionKey] = $region;
-            }
-
-            $copy['regions'] = $regions;
-        }
-
-        return $copy;
-    }
-
-    /** @param array<string, mixed> $node */
-    private function assertArrayIfPresent(array $node, string $key, string $path): void
-    {
-        if (\array_key_exists($key, $node) && !\is_array($node[$key])) {
-            throw new PageException("{$path}: Expected array, got " . get_debug_type($node[$key]) . '.');
-        }
-    }
-
     /** @param list<ValidationError> $errors */
     private function report(string $name, string $file, array $errors): string
     {
@@ -268,6 +198,7 @@ final class PageRepository
         /** @var array<string, mixed> $entityConfig */
         $entityConfig = \is_array($config['entity'] ?? null) ? $config['entity'] : [];
         $entity = $this->buildEntity($name, $entityConfig);
+        $scope = $this->buildScope($entityConfig);
 
         /** @var array<string, mixed> $regionsConfig */
         $regionsConfig = \is_array($config['regions'] ?? null) ? $config['regions'] : [];
@@ -282,7 +213,7 @@ final class PageRepository
             $regions[(string) $regionKey] = $this->buildRegion($name, (string) $regionKey, $regionConfig, $entity);
         }
 
-        return new PageDefinition($name, $title, $layout, $description, $entity, $regions);
+        return new PageDefinition($name, $title, $layout, $description, $entity, $scope, $regions);
     }
 
     /** @param array<string, mixed> $entityConfig */
@@ -304,6 +235,8 @@ final class PageRepository
 
         foreach ($relationsConfig as $relationName => $relationConfig) {
             $relationName = (string) $relationName;
+            /** @var array<string, mixed> $relationConfig each entry is an array: PageSchema's `each` guarantees it */
+            $relationConfig = \is_array($relationConfig) ? $relationConfig : [];
             $relations[$relationName] = $this->buildRelation($pageName, $relationName, $relationConfig);
         }
 
@@ -314,30 +247,23 @@ final class PageRepository
         }
     }
 
-    private function buildRelation(string $pageName, string $relationName, mixed $relationConfig): Relation
+    /**
+     * `table` and `on` are guaranteed present and string-typed by PageSchema
+     * (required, ValueType::String) before this ever runs — checking them
+     * again here would be the same rule enforced twice, which is exactly
+     * what lets the two drift. Only the join type is genuinely this class's
+     * job: the schema knows `type` is a string, not that it is `left` or
+     * `inner`.
+     *
+     * @param array<string, mixed> $relationConfig
+     */
+    private function buildRelation(string $pageName, string $relationName, array $relationConfig): Relation
     {
-        if (!\is_array($relationConfig)) {
-            throw new PageException(\sprintf(
-                "Page '%s': relation '%s' must be an array, got %s.",
-                $pageName,
-                $relationName,
-                get_debug_type($relationConfig),
-            ));
-        }
+        $table = \is_string($relationConfig['table'] ?? null) ? $relationConfig['table'] : '';
+        $on = \is_string($relationConfig['on'] ?? null) ? $relationConfig['on'] : '';
 
-        $table = $relationConfig['table'] ?? null;
-        $on = $relationConfig['on'] ?? null;
-
-        if (!\is_string($table) || $table === '') {
-            throw new PageException("Page '{$pageName}': relation '{$relationName}' needs a 'table'.");
-        }
-
-        if (!\is_string($on) || $on === '') {
-            throw new PageException("Page '{$pageName}': relation '{$relationName}' needs an 'on' condition.");
-        }
-
-        $typeValue = $relationConfig['type'] ?? JoinType::Left->value;
-        $joinType = \is_string($typeValue) ? JoinType::tryFrom($typeValue) : null;
+        $typeValue = \is_string($relationConfig['type'] ?? null) ? $relationConfig['type'] : JoinType::Left->value;
+        $joinType = JoinType::tryFrom($typeValue);
 
         if ($joinType === null) {
             $names = array_map(static fn (JoinType $t): string => $t->value, JoinType::cases());
@@ -346,12 +272,28 @@ final class PageRepository
                 "Page '%s': relation '%s' has an unknown join type '%s'. The types are: '%s'.",
                 $pageName,
                 $relationName,
-                \is_string($typeValue) ? $typeValue : get_debug_type($typeValue),
+                $typeValue,
                 implode("', '", $names),
             ));
         }
 
         return new Relation($relationName, $table, $on, $joinType);
+    }
+
+    /**
+     * @param  array<string, mixed> $entityConfig
+     * @return array<string, mixed> column => value, placeholders included and unresolved
+     */
+    private function buildScope(array $entityConfig): array
+    {
+        $raw = \is_array($entityConfig['scope'] ?? null) ? $entityConfig['scope'] : [];
+        $scope = [];
+
+        foreach ($raw as $column => $value) {
+            $scope[(string) $column] = $value;
+        }
+
+        return $scope;
     }
 
     /** @param array<string, mixed> $regionConfig */

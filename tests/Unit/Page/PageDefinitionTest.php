@@ -55,7 +55,7 @@ final class PageDefinitionTest extends TestCase
             $keyed[$region->key] = $region;
         }
 
-        return new PageDefinition('ads', 'Ads', 'single', '', new Entity('ads'), $keyed);
+        return new PageDefinition('ads', 'Ads', 'single', '', new Entity('ads'), [], $keyed);
     }
 
     public function testRegionReturnsTheNamedRegion(): void

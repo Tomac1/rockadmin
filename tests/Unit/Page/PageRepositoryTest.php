@@ -7,6 +7,7 @@ namespace RockAdmin\Tests\Unit\Page;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\Enums;
+use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\FilterOperator;
 use RockAdmin\Db\JoinType;
 use RockAdmin\Db\Sort;
@@ -225,6 +226,106 @@ final class PageRepositoryTest extends TestCase
         $this->assertSame(JoinType::Left, $relation->type);
     }
 
+    public function testARelationMissingOnIsRefusedByTheGenericSchema(): void
+    {
+        // entity.relations now has a real per-entry schema (table/on/type),
+        // so a missing 'on' is caught by the generic Validator before
+        // PageRepository ever builds a Relation — proof that the hand-written
+        // presence checks removed in this round were genuine duplication.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => [
+                    'table' => 'ads',
+                    'relations' => [
+                        'user' => ['table' => 'users'],
+                    ],
+                ],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A relation missing on should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('entity.relations.user.on', $e->getMessage());
+            $this->assertStringContainsString('Required', $e->getMessage());
+        }
+    }
+
+    public function testARelationWithAnUnknownJoinTypeIsRefused(): void
+    {
+        // The schema only knows 'type' is a string; that it must be 'left'
+        // or 'inner' is still PageRepository's job.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => [
+                    'table' => 'ads',
+                    'relations' => [
+                        'user' => ['table' => 'users', 'on' => 'users.id = ads.user_id', 'type' => 'outer'],
+                    ],
+                ],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown join type should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('user', $e->getMessage());
+            $this->assertStringContainsString('outer', $e->getMessage());
+        }
+    }
+
+    public function testARegionsSearchBlockHasARealShape(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'search' => ['placeholder' => 'Search ads...'],
+                    'columns' => ['title' => []],
+                ]],
+            ]
+            PHP);
+
+        // Only proves search's declared shape loads without error; nothing on
+        // RegionDefinition exposes it yet (see the task report).
+        $page = $this->repository()->get('ads');
+
+        $this->assertSame('ads', $page->name);
+    }
+
+    public function testAnUnknownKeyInsideSearchIsRefused(): void
+    {
+        // search is no longer an opaque block: it has a real shape now
+        // (`placeholder`), so a typo inside it is caught the same way any
+        // other unknown key is.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'search' => ['placeholderr' => 'Search ads...'],
+                    'columns' => ['title' => []],
+                ]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown key inside search should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString("Did you mean 'placeholder'", $e->getMessage());
+        }
+    }
+
     public function testAColumnSourceNamingAnUndeclaredRelationIsRefused(): void
     {
         $this->writePage('ads', <<<'PHP'
@@ -288,10 +389,15 @@ final class PageRepositoryTest extends TestCase
         // A workspace placeholder binds per request and cannot be resolved at
         // load time; the loader must not choke on one buried inside a
         // freeform block such as scope, and must not try to validate its
-        // project-chosen key against a fixed list.
+        // project-chosen key against a fixed list. The data layer depends on
+        // it arriving as a Placeholder object, not a string, so it can bind
+        // it as a parameter later instead of interpolating it.
         $page = $this->repository()->get('ads');
 
-        $this->assertSame('ads', $page->name);
+        $this->assertArrayHasKey('site_id', $page->scope);
+        $this->assertInstanceOf(Placeholder::class, $page->scope['site_id']);
+        $this->assertSame('workspace', $page->scope['site_id']->namespace);
+        $this->assertSame('site_id', $page->scope['site_id']->name);
     }
 
     public function testAnUnknownKeyInAPageFileIsRefusedAndSuggestsTheNearest(): void

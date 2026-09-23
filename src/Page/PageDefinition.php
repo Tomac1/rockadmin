@@ -16,13 +16,19 @@ use RockAdmin\Db\Entity;
  */
 final class PageDefinition
 {
-    /** @param array<string, RegionDefinition> $regions keyed by the region's own key */
+    /**
+     * @param array<string, mixed>            $scope   column => value, always applied and never removable
+     *                                                  by a URL — a placeholder such as `{{workspace.site_id}}`
+     *                                                  survives unresolved, ready to bind per request
+     * @param array<string, RegionDefinition> $regions keyed by the region's own key
+     */
     public function __construct(
         public readonly string $name,
         public readonly string $title,
         public readonly string $layout,
         public readonly string $description,
         public readonly Entity $entity,
+        public readonly array $scope,
         public readonly array $regions,
     ) {
     }

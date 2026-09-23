@@ -50,13 +50,35 @@ final class PageSchema
                     ),
                     'scope' => new SchemaKey(
                         ValueType::Array,
-                        description: 'A SQL fragment to scope the entity. WHERE is added before it.',
-                        children: new Schema([]),
+                        description: 'A map of column to value, most often a placeholder. Every entry becomes '
+                            . 'a filter that is always applied and can never be removed by a URL, which is what '
+                            . 'makes it a workspace boundary rather than a default.',
+                        example: ['site_id' => '{{workspace.site_id}}'],
                     ),
                     'relations' => new SchemaKey(
                         ValueType::Array,
                         description: 'Relationships to other tables, for joining.',
-                        each: new Schema([]),
+                        each: new Schema([
+                            'table' => new SchemaKey(
+                                ValueType::String,
+                                required: true,
+                                description: 'The table this relation joins.',
+                                example: 'users',
+                            ),
+                            'on' => new SchemaKey(
+                                ValueType::String,
+                                required: true,
+                                description: 'The join condition, written with table names, e.g. '
+                                    . '`users.id = ads.user_id`.',
+                                example: 'users.id = ads.user_id',
+                            ),
+                            'type' => new SchemaKey(
+                                ValueType::String,
+                                default: 'left',
+                                description: 'The join type: left or inner.',
+                                example: 'left',
+                            ),
+                        ]),
                     ),
                 ]),
             ),
@@ -89,13 +111,21 @@ final class PageSchema
                     ),
                     'sort' => new SchemaKey(
                         ValueType::Array,
-                        description: 'Default sort order and options.',
-                        children: new Schema([]),
+                        description: 'The default sort order: a map of column key to direction, applied '
+                            . 'until a user picks their own.',
+                        example: ['created_at' => 'desc'],
                     ),
                     'search' => new SchemaKey(
                         ValueType::Array,
-                        description: 'Search configuration.',
-                        children: new Schema([]),
+                        description: 'Presentation for the region\'s search box. Which columns it searches '
+                            . 'is decided per column, by that column\'s own `searchable` key.',
+                        children: new Schema([
+                            'placeholder' => new SchemaKey(
+                                ValueType::String,
+                                description: 'Placeholder text shown in the empty search box.',
+                                example: 'Search...',
+                            ),
+                        ]),
                     ),
                     'columns' => new SchemaKey(
                         ValueType::Array,
