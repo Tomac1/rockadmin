@@ -99,6 +99,21 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'pages_path' => new SchemaKey(
+                ValueType::String,
+                default: 'pages',
+                description: 'Where page files live, relative to the configuration directory. '
+                    . 'One file per page, named after the page: pages/ads.php is reachable at /p/ads.',
+                example: 'pages',
+            ),
+            'per_page' => new SchemaKey(
+                ValueType::Int,
+                default: 25,
+                description: 'Rows in one page of a grid, for regions that do not set their own.',
+                example: 50,
+                performance: 'A large value makes every grid render slower for everyone; '
+                    . 'set it per region where a particular page needs more.',
+            ),
             'theme' => new SchemaKey(
                 ValueType::Array,
                 description: 'The default look. Replace it wholesale with a stylesheet in assets.css.',

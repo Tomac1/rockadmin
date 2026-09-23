@@ -1,0 +1,577 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RockAdmin\Tests\Unit\Page;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
+use RockAdmin\Config\Enums;
+use RockAdmin\Db\FilterOperator;
+use RockAdmin\Db\JoinType;
+use RockAdmin\Db\Sort;
+use RockAdmin\Db\SortDirection;
+use RockAdmin\Page\ColumnType;
+use RockAdmin\Page\Display;
+use RockAdmin\Page\PageException;
+use RockAdmin\Page\PageRepository;
+
+#[CoversClass(PageRepository::class)]
+final class PageRepositoryTest extends TestCase
+{
+    private string $root;
+
+    protected function setUp(): void
+    {
+        $this->root = str_replace('\\', '/', sys_get_temp_dir()) . '/ra-pages-' . bin2hex(random_bytes(6));
+        mkdir($this->root . '/pages', 0o777, true);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->remove($this->root);
+    }
+
+    private function writePage(string $name, string $body): void
+    {
+        file_put_contents($this->root . '/pages/' . $name . '.php', "<?php\n\nreturn {$body};\n");
+    }
+
+    private function writeDefs(string $body): void
+    {
+        file_put_contents($this->root . '/defs.php', "<?php\n\nreturn {$body};\n");
+    }
+
+    private function remove(string $path): void
+    {
+        if (is_file($path)) {
+            unlink($path);
+
+            return;
+        }
+
+        if (!is_dir($path)) {
+            return;
+        }
+
+        foreach (array_diff(scandir($path) ?: [], ['.', '..']) as $entry) {
+            $this->remove($path . '/' . $entry);
+        }
+
+        rmdir($path);
+    }
+
+    private function repository(int $defaultPerPage = 25, ?Enums $enums = null): PageRepository
+    {
+        return new PageRepository(
+            $this->root . '/pages',
+            static fn (string $name): ?string => null,
+            $enums ?? Enums::fromConfig([]),
+            $defaultPerPage,
+        );
+    }
+
+    public function testAPageIsNamedByItsFile(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $this->assertSame('ads', $this->repository()->get('ads')->name);
+    }
+
+    public function testTitleAndLayoutComeStraightFromTheFile(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'layout' => 'two-column',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $page = $this->repository()->get('ads');
+
+        $this->assertSame('Ads', $page->title);
+        $this->assertSame('two-column', $page->layout);
+    }
+
+    public function testAColumnWithNoSourceReadsTheColumnOfItsOwnName(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('title');
+
+        $this->assertSame('title', $column->source);
+    }
+
+    public function testAColumnWithNoLabelGetsOneMadeFromItsKey(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['created_at' => []]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('created_at');
+
+        $this->assertSame('Created at', $column->label);
+    }
+
+    public function testALabelForAnAlreadyCapitalisedKeyIsLeftAlone(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['ID' => []]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('ID');
+
+        $this->assertSame('ID', $column->label);
+    }
+
+    public function testALabelForAKeyWithADigitKeepsItInPlace(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['utm_source_2' => []]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('utm_source_2');
+
+        $this->assertSame('Utm source 2', $column->label);
+    }
+
+    public function testAColumnInheritsItsTypesDefaultDisplay(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'is_active' => ['type' => 'bool'],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('is_active');
+
+        $this->assertSame(ColumnType::Bool, $column->type);
+        $this->assertSame(Display::Check, $column->display);
+    }
+
+    public function testADisplayTheTypeRefusesIsAnErrorNamingBoth(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'price' => ['type' => 'money', 'display' => 'progress'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A display the type refuses should be an error.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('price', $e->getMessage());
+            $this->assertStringContainsString('money', $e->getMessage());
+            $this->assertStringContainsString('progress', $e->getMessage());
+        }
+    }
+
+    public function testARelationDeclaredOnTheEntityBecomesARelationObject(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => [
+                    'table' => 'ads',
+                    'relations' => [
+                        'user' => ['table' => 'users', 'on' => 'users.id = ads.user_id'],
+                    ],
+                ],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $entity = $this->repository()->get('ads')->entity;
+
+        $this->assertTrue($entity->hasRelation('user'));
+        $relation = $entity->relation('user');
+        $this->assertSame('users', $relation->table);
+        $this->assertSame('users.id = ads.user_id', $relation->on);
+        $this->assertSame(JoinType::Left, $relation->type);
+    }
+
+    public function testAColumnSourceNamingAnUndeclaredRelationIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'author' => ['source' => 'user.name'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An undeclared relation should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('author', $e->getMessage());
+            $this->assertStringContainsString('user', $e->getMessage());
+        }
+    }
+
+    public function testSharedDefinitionsAreExpanded(): void
+    {
+        $this->writeDefs(<<<'PHP'
+            [
+                'column' => [
+                    'id' => ['type' => 'int', 'width' => '60px'],
+                ],
+            ]
+            PHP);
+
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'id' => ['use' => '@column:id'],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('id');
+
+        $this->assertSame(ColumnType::Int, $column->type);
+        $this->assertSame('60px', $column->width);
+    }
+
+    public function testPlaceholdersInScopeSurviveAsPlaceholders(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => [
+                    'table' => 'ads',
+                    'scope' => ['site_id' => '{{workspace.site_id}}'],
+                ],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        // A workspace placeholder binds per request and cannot be resolved at
+        // load time; the loader must not choke on one buried inside a
+        // freeform block such as scope, and must not try to validate its
+        // project-chosen key against a fixed list.
+        $page = $this->repository()->get('ads');
+
+        $this->assertSame('ads', $page->name);
+    }
+
+    public function testAnUnknownKeyInAPageFileIsRefusedAndSuggestsTheNearest(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'tilte' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown key should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tilte', $e->getMessage());
+            $this->assertStringContainsString("Did you mean 'title'", $e->getMessage());
+        }
+    }
+
+    public function testAMissingTitleIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A missing title should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('title', $e->getMessage());
+            $this->assertStringContainsString('Required', $e->getMessage());
+        }
+    }
+
+    public function testPerPageFallsBackToTheRootConfigurationsValue(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $region = $this->repository(defaultPerPage: 77)->get('ads')->region('grid');
+
+        $this->assertSame(77, $region->perPage);
+    }
+
+    public function testARegionsOwnPerPageWins(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'per_page' => 10, 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $region = $this->repository(defaultPerPage: 77)->get('ads')->region('grid');
+
+        $this->assertSame(10, $region->perPage);
+    }
+
+    public function testSortIsReadAsAListOfSortObjects(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'sort' => ['created_at' => 'desc', 'id' => 'asc'],
+                    'columns' => ['title' => []],
+                ]],
+            ]
+            PHP);
+
+        $region = $this->repository()->get('ads')->region('grid');
+
+        $this->assertEquals(
+            [new Sort('created_at', SortDirection::Desc), new Sort('id', SortDirection::Asc)],
+            $region->sort,
+        );
+    }
+
+    public function testSearchableColumnsAreCollectedForTheRegion(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['searchable' => true],
+                    'id' => [],
+                ]]],
+            ]
+            PHP);
+
+        $region = $this->repository()->get('ads')->region('grid');
+
+        $this->assertSame(['title'], $region->searchable);
+    }
+
+    public function testAFilterBlockBecomesAFilterDefinitionWithItsDefaultOperator(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['filter' => ['type' => 'text']],
+                ]]],
+            ]
+            PHP);
+
+        $filter = $this->repository()->get('ads')->region('grid')->column('title')->filter;
+
+        $this->assertNotNull($filter);
+        $this->assertSame('text', $filter->type);
+        $this->assertSame(FilterOperator::Contains, $filter->operator);
+    }
+
+    public function testAFilterTypeChoosesItsOperatorWhenTheColumnDoesNotSayOne(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => ['type' => 'enum', 'options' => ['active' => 'Active'], 'filter' => ['type' => 'select']],
+                ]]],
+            ]
+            PHP);
+
+        $filter = $this->repository()->get('ads')->region('grid')->column('state')->filter;
+
+        $this->assertNotNull($filter);
+        $this->assertSame(FilterOperator::Equals, $filter->operator);
+    }
+
+    public function testASelectFilterInheritsTheColumnsEnumOptions(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => [
+                        'type' => 'enum',
+                        'options' => ['active' => 'Active', 'draft' => 'Draft'],
+                        'filter' => ['type' => 'select'],
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        $filter = $this->repository()->get('ads')->region('grid')->column('state')->filter;
+
+        $this->assertNotNull($filter);
+        $this->assertSame(['active', 'draft'], array_keys($filter->options));
+        $this->assertSame('Active', $filter->options['active']->label);
+    }
+
+    public function testAColumnWithNoFilterBlockIsNotFilterable(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('title');
+
+        $this->assertNull($column->filter);
+    }
+
+    public function testACollectionBlockBecomesADbCollectionObject(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'tags' => ['collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag']],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('tags');
+
+        $this->assertNotNull($column->collection);
+        $this->assertSame('tags', $column->collection->alias);
+        $this->assertSame('ad_tags', $column->collection->table);
+        $this->assertSame('ad_id', $column->collection->foreignKey);
+        $this->assertSame('tag', $column->collection->column);
+    }
+
+    public function testACollectionColumnCarryingASourceIsRefusedAsAContradiction(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'tags' => [
+                        'source' => 'tag_summary',
+                        'collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag'],
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A collection column carrying a source should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tags', $e->getMessage());
+            $this->assertStringContainsString('source', $e->getMessage());
+            $this->assertStringContainsString('collection', $e->getMessage());
+        }
+    }
+
+    public function testAPageThatDoesNotExistIsRefusedByName(): void
+    {
+        try {
+            $this->repository()->get('missing');
+            $this->fail('A missing page should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('missing', $e->getMessage());
+        }
+    }
+
+    public function testNamesListsEveryPageFileOnce(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+        $this->writePage('users', <<<'PHP'
+            [
+                'title' => 'Users',
+                'entity' => ['table' => 'users'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['name' => []]]],
+            ]
+            PHP);
+
+        $this->assertSame(['ads', 'users'], $this->repository()->names());
+    }
+
+    public function testAPageIsReadFromDiskOnlyOnce(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $repository = $this->repository();
+        $first = $repository->get('ads');
+
+        // Replacing the file with something that would fail to load proves
+        // the second get() never touches the disk again.
+        unlink($this->root . '/pages/ads.php');
+
+        $second = $repository->get('ads');
+
+        $this->assertSame($first, $second);
+        $this->assertSame('Ads', $second->title);
+    }
+}
