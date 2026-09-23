@@ -726,9 +726,22 @@ below it executes, and this is where description becomes a `Query`.
 2. **Scope.** The entity's `scope` becomes filters that are not negotiable —
    they are the workspace boundary, so they are appended after the URL's
    filters and can never be dropped by the discard rule.
-3. **Filters.** Each `FilterInput` becomes a `Filter` with the operator its
-   column declared. A range becomes `Between` when both ends are present and
-   `GreaterOrEqual`/`LessOrEqual` when one is.
+3. **Filters.** Each `FilterInput` carries a column and a value shape; this
+   step reconciles that shape with the operator the column declared, and
+   drops the filter when the two cannot be honestly reconciled. A URL may
+   narrow what the page offered; it may never change its meaning.
+
+   - `is_null` and `is_not_null` ignore the value entirely.
+   - A list of one unwraps to its scalar and follows the scalar rules.
+   - A list of several becomes `in` for `in` or `equals`, and is dropped for
+     anything else: "contains any of these" has no single-condition SQL, and
+     guessing is worse than dropping.
+   - A scalar with `in` becomes a one-element list; with `between` it is
+     dropped, because one value is not a range.
+   - A range is reconcilable only with an operator that compares by magnitude
+     — `between`, `gt`, `gte`, `lt`, `lte` — and is dropped for the rest.
+     Within those, the ends decide: both is `between`, a lone `from` is
+     `gte`, a lone `to` is `lte`, neither is dropped.
 4. **Search.** When the state has a term and the region has searchable
    columns, a `Search` over those columns' source paths.
 5. **Sort.** The state's sort, or the region's own when the URL carries none.
