@@ -26,11 +26,27 @@ final class ViewObjectsTest extends TestCase
         return new ShellView('RockAdmin');
     }
 
-    public function testAPageCarriesItsIdentityIntoTheBodyClasses(): void
+    /** @return array<string, array{string, string, string}> */
+    public static function pageIdentities(): array
     {
-        $page = new PageView('users', 'Users', $this->shell(), type: 'list');
+        return [
+            'a list page' => ['users', 'list', 'ra-page ra-page-users ra-page-type-list'],
+            'a form page' => ['ads', 'form', 'ra-page ra-page-ads ra-page-type-form'],
+            'a dashboard' => ['dashboard', 'stat', 'ra-page ra-page-dashboard ra-page-type-stat'],
+        ];
+    }
 
-        $this->assertSame('ra-page ra-page-users ra-page-type-list', $page->bodyClasses());
+    #[DataProvider('pageIdentities')]
+    public function testAPageCarriesItsIdentityIntoTheBodyClasses(
+        string $key,
+        string $type,
+        string $expected,
+    ): void {
+        // Both halves vary, because a body class built from one of them and a
+        // hardcoded other would pass any single case.
+        $page = new PageView($key, 'Title', $this->shell(), type: $type);
+
+        $this->assertSame($expected, $page->bodyClasses());
     }
 
     public function testASlotReturnsWhatWasRenderedIntoIt(): void
@@ -51,11 +67,25 @@ final class ViewObjectsTest extends TestCase
         $this->assertSame('', $page->slot('side'));
     }
 
-    public function testAButtonCarriesStructuralAndIdentityClasses(): void
+    /** @return array<string, array{string, string, string}> */
+    public static function buttonIdentities(): array
     {
-        $button = new ButtonView('create', 'New ad', '/admin/p/ads/create', style: 'primary');
+        return [
+            'create, primary' => ['create', 'primary', 'ra-btn ra-btn-create btn btn-primary'],
+            'export, secondary' => ['export', 'secondary', 'ra-btn ra-btn-export btn btn-secondary'],
+            'delete, danger' => ['delete', 'danger', 'ra-btn ra-btn-delete btn btn-danger'],
+        ];
+    }
 
-        $this->assertSame('ra-btn ra-btn-create btn btn-primary', $button->classes());
+    #[DataProvider('buttonIdentities')]
+    public function testAButtonCarriesStructuralAndIdentityClasses(
+        string $key,
+        string $style,
+        string $expected,
+    ): void {
+        $button = new ButtonView($key, 'Label', '/admin/p/ads/x', style: $style);
+
+        $this->assertSame($expected, $button->classes());
     }
 
     public function testAMenuItemKnowsWhetherItIsActive(): void

@@ -24,10 +24,8 @@ final class Classes
         }
 
         foreach ($extra as $class) {
-            $class = trim($class);
-
-            if ($class !== '') {
-                $names[] = $class;
+            foreach (self::appearance($class) as $name) {
+                $names[] = $name;
             }
         }
 
@@ -38,6 +36,38 @@ final class Classes
     public static function identity(string $structural, string $identity): string
     {
         return 'ra-' . self::segment($structural) . '-' . self::segment($identity);
+    }
+
+    /**
+     * Appearance classes are held to a looser rule than ra- classes: they are
+     * Bootstrap's vocabulary and a project's own, so they may be upper case,
+     * may carry a colon or a slash the way a utility framework spells one,
+     * and several may arrive in one string the way `'class' => 'text-end
+     * fw-bold'` is written in configuration.
+     *
+     * What they may not do is end the attribute they are written into. A
+     * quote, an angle bracket or a control character in a class name has no
+     * legitimate spelling and exactly one use, so it is refused rather than
+     * escaped — an escaped class attribute is not a class anyone can target.
+     *
+     * @return list<string>
+     */
+    private static function appearance(string $value): array
+    {
+        // The backslash is asked about by its code point rather than joining
+        // the character class: spelling one inside a single-quoted PHP string
+        // that is also a regular expression takes four of them, and getting
+        // that wrong compiles to a pattern which quietly matches nothing.
+        if (preg_match('/[\x00-\x1F"\'<>`]/', $value) === 1 || str_contains($value, \chr(92))) {
+            throw new ViewException(
+                "Refusing '{$value}' as a class: a class name cannot contain a quote, "
+                . 'an angle bracket, a backslash or a control character.',
+            );
+        }
+
+        $names = preg_split('/\s+/', trim($value)) ?: [];
+
+        return array_values(array_filter($names, static fn (string $name): bool => $name !== ''));
     }
 
     private static function name(string $value, string $what): string
