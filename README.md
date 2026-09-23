@@ -126,6 +126,20 @@ like HTML that arrived with it.
 - A way to route admin requests to one entry point — a rewrite rule, your
   framework's router, or `?ra=`
 
+## Looking at it
+
+A themed admin shell — navbar, menu, a page header with buttons, a flash
+message — is running in this repository right now:
+
+```bash
+php -S localhost:8080 -t demo demo/index.php
+```
+
+Open <http://localhost:8080/>. See [`demo/README.md`](demo/README.md) for
+what it is and is not: it is the design surface the default theme is tuned
+against, kept honest to the general case; it is not a page listing yet — the
+grid arrives in milestone 6.
+
 ## Documentation
 
 - [Design specification][spec] — the complete architecture and the reasoning

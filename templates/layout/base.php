@@ -35,7 +35,7 @@ $theme = $view->shell->themeAttribute();
 
             <ul class="ra-menu navbar-nav">
                 <?php foreach ($view->shell->menu as $item) { ?>
-                    <li class="ra-menu-item-entry nav-item<?= $item->children !== [] ? ' dropdown' : '' ?>">
+                    <li class="ra-menu-item-entry nav-item<?= $e($item->children !== [] ? ' dropdown' : '') ?>">
                         <a class="<?= $e($item->classes()) ?>" href="<?= $href($item->url) ?>"><?= $e($item->label) ?></a>
                         <?php if ($item->children !== []) { ?>
                             <ul class="ra-submenu dropdown-menu">
