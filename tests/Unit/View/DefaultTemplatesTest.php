@@ -279,4 +279,23 @@ final class DefaultTemplatesTest extends TestCase
             'line' => $debug ? __LINE__ : null,
         ];
     }
+
+    public function testTheShellCarriesOneEmptyModalAndOneEmptyOffcanvas(): void
+    {
+        // Regions do not carry their own overlay markup: there is one of each
+        // in the document, and core.js fills the right one from a fragment's
+        // root attributes. That is what lets an action open any region
+        // anywhere, and milestone 6 depends on these containers existing.
+        $html = $this->renderer()->render('layout/base', $this->page());
+
+        $this->assertStringContainsString('id="ra-modal"', $html);
+        $this->assertStringContainsString('id="ra-offcanvas"', $html);
+
+        $this->assertSame(1, substr_count($html, 'id="ra-modal"'));
+        $this->assertSame(1, substr_count($html, 'id="ra-offcanvas"'));
+
+        // Empty, because their contents arrive as a fragment.
+        $this->assertStringContainsString('<div class="ra-modal-content modal-content"></div>', $html);
+        $this->assertStringContainsString('<div class="ra-offcanvas-body offcanvas-body"></div>', $html);
+    }
 }
