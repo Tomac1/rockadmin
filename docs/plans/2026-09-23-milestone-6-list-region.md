@@ -128,6 +128,7 @@ src/Page/PageRepository.php      loads pages/*.php, validates, caches per reques
 src/Page/PageDefinition.php      one page, as the rest of the code reads it
 src/Page/RegionDefinition.php    one region's slice of a page
 src/Page/ColumnDefinition.php    one column: key, label, type, display, source
+src/Page/FilterDefinition.php    one column's filter control and its operator
 src/Page/ColumnType.php          text, int, money, datetime, bool, enum, json
 src/Page/Display.php             plain, badge, check, yesno, progress, percent, link
 src/Page/PageException.php       every failure this namespace raises
@@ -363,6 +364,32 @@ description written for someone deciding whether to set it, and an example:
 | `format` | string | — | `datetime` only: a PHP date format. |
 | `max` | int | — | `progress` only: what counts as full. |
 | `options` | mixed | — | `enum` only: an `@enum:` reference or a literal map. |
+| `filter` | array | — | Makes the column filterable. Its own block, below. |
+| `collection` | array | — | Makes the column a one-to-many. Its own block, below. |
+
+**The `filter` block**, because a column that can be filtered has to say how:
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | string | `text` | `text`, `select`, `multiselect`, `range`, `date`, `boolean`. |
+| `op` | string | — | A `FilterOperator` value. Defaults per filter type: `text` uses `contains`, `select` and `boolean` use `equals`, `multiselect` uses `in`, `range` and `date` use `between`. |
+| `label` | string | — | Defaults to the column's label. |
+| `options` | mixed | — | `select` and `multiselect`: an `@enum:` reference or a literal map. Defaults to the column's own `options` when it is an enum. |
+| `placeholder` | string | — | Shown in an empty text filter. |
+
+**The `collection` block.** A one-to-many is not a join — joining would
+multiply the rows and make every count wrong. Milestone 3 fetches it with one
+supplementary query for the whole page, and this is how a page asks for that:
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `table` | string | **required** | The table holding the many. |
+| `foreign_key` | string | **required** | Its column pointing back at this entity's key. |
+| `column` | string | **required** | The column to collect, one value per related row. |
+
+A column carrying `collection` has no `source`: its values come from the
+supplementary query rather than the select list, so a `source` on one is
+refused at load as a contradiction.
 
 `PageSchema::create()` declares `title` (string, required), `layout` (string,
 default `single`), `entity` (array: `table` required, `key` default `id`,
@@ -393,6 +420,7 @@ git commit -m "Declare what a page may say about itself"
 - Create: `src/Page/PageDefinition.php`
 - Create: `src/Page/RegionDefinition.php`
 - Create: `src/Page/ColumnDefinition.php`
+- Create: `src/Page/FilterDefinition.php`
 - Create: `src/Page/PageRepository.php`
 - Modify: `src/Config/RootSchema.php` — add `pages_path` and `per_page`
 - Test: `tests/Unit/Page/PageRepositoryTest.php`
@@ -450,6 +478,8 @@ git commit -m "Declare what a page may say about itself"
 
   final class ColumnDefinition
   {
+      public readonly ?FilterDefinition $filter;   // null when the column is not filterable
+      public readonly ?Collection $collection;     // RockAdmin\Db\Collection, null unless one-to-many
       public readonly string $key;
       public readonly string $label;
       public readonly string $source;
@@ -493,6 +523,12 @@ public function testAMissingTitleIsRefused(): void
 public function testPerPageFallsBackToTheRootConfigurationsValue(): void
 public function testSortIsReadAsAListOfSortObjects(): void                 // ['created_at' => 'desc']
 public function testSearchableColumnsAreCollectedForTheRegion(): void
+public function testAFilterBlockBecomesAFilterDefinitionWithItsDefaultOperator(): void
+public function testAFilterTypeChoosesItsOperatorWhenTheColumnDoesNotSayOne(): void
+public function testASelectFilterInheritsTheColumnsEnumOptions(): void
+public function testAColumnWithNoFilterBlockIsNotFilterable(): void
+public function testACollectionBlockBecomesADbCollectionObject(): void
+public function testACollectionColumnCarryingASourceIsRefusedAsAContradiction(): void
 public function testAPageThatDoesNotExistIsRefusedByName(): void
 public function testNamesListsEveryPageFileOnce(): void
 public function testAPageIsReadFromDiskOnlyOnce(): void                    // repository caches per request
@@ -701,6 +737,11 @@ below it executes, and this is where description becomes a `Query`.
    `maxPerPage`, and `offset` = `(page - 1) * limit`.
 7. **Count.** `CountStrategy::Exact`, because a pager needs a number. A region
    may later ask for an estimate; that key is not in this milestone.
+8. **Collections.** Every column carrying one contributes its
+   `RockAdmin\Db\Collection` to the query, keyed by the column's key.
+   Milestone 3 fetches them with one supplementary statement for the whole
+   page — never one per row — and refuses a collection whose alias collides
+   with the entity's key.
 
 - [ ] **Step 1: Write the failing unit test**
 
@@ -724,6 +765,8 @@ public function testTheEntityKeyIsNotAddedTwiceWhenItIsAlreadyTheSort(): void
 public function testPerPageIsClampedSoAUrlCannotAskForEverything(): void
 public function testPageThreeBecomesTheRightOffset(): void
 public function testTheRegionsOwnSortIsUsedWhenTheStateHasNone(): void
+public function testAColumnCarryingACollectionIsNotInTheSelectList(): void
+public function testEveryCollectionColumnReachesTheQuerysCollections(): void
 ```
 
 The tiebreaker test is the one that matters most. Write it so a factory that
