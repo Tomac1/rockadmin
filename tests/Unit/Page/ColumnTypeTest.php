@@ -116,4 +116,36 @@ final class ColumnTypeTest extends TestCase
             $this->assertSame($display, Display::parse($display->value));
         }
     }
+
+    /** @return array<string, array{string, list<string>}> */
+    public static function everyAllowedPair(): array
+    {
+        // The whole table, both directions. Without this an allows() that
+        // returned true for everything would pass, because only two negative
+        // cases were pinned and both happened to be about money.
+        return [
+            'text' => ['text', ['plain', 'badge', 'link']],
+            'int' => ['int', ['plain', 'progress', 'percent', 'badge', 'link']],
+            'money' => ['money', ['plain']],
+            'datetime' => ['datetime', ['plain']],
+            'bool' => ['bool', ['check', 'yesno', 'badge']],
+            'enum' => ['enum', ['badge', 'plain']],
+            'json' => ['json', ['plain']],
+        ];
+    }
+
+    /** @param list<string> $allowed */
+    #[DataProvider('everyAllowedPair')]
+    public function testATypeAllowsExactlyTheDisplaysItShould(string $type, array $allowed): void
+    {
+        $column = ColumnType::parse($type);
+
+        foreach (Display::cases() as $display) {
+            $this->assertSame(
+                \in_array($display->value, $allowed, true),
+                $column->allows($display),
+                "{$type} against {$display->value}",
+            );
+        }
+    }
 }
