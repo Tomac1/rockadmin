@@ -83,6 +83,11 @@ final class FlashBagTest extends TestCase
         $session = new ArraySessionStore(['rockadmin.flashes' => 'not an array']);
 
         $this->assertSame([], (new FlashBag($session))->take());
+
+        // And it is gone afterwards. A value this method refuses to read is
+        // exactly the value that should not survive the request: leaving it
+        // there means every later request pays to load and skip it.
+        $this->assertNull($session->get('rockadmin.flashes'));
     }
 
     public function testAMalformedEntryIsSkippedAndTheRestSurvive(): void

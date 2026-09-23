@@ -75,7 +75,13 @@ final class FlashBag
     {
         $flashes = $this->session->get(self::KEY, []);
 
-        // Discard anything that is not a list.
+        // Drained first, and unconditionally. Draining at the end would leave
+        // anything this method refuses to read sitting in the session for
+        // ever — and what it refuses to read is exactly what should not be
+        // kept: a value another application wrote, or a format this version
+        // no longer understands.
+        $this->session->forget(self::KEY);
+
         if (!\is_array($flashes)) {
             return [];
         }
@@ -101,9 +107,6 @@ final class FlashBag
                 continue;
             }
         }
-
-        // Drain the bag.
-        $this->session->forget(self::KEY);
 
         return $result;
     }
