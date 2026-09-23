@@ -99,6 +99,18 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'theme' => new SchemaKey(
+                ValueType::Array,
+                description: 'The default look. Replace it wholesale with a stylesheet in assets.css.',
+                children: new Schema([
+                    'dark' => new SchemaKey(
+                        ValueType::String,
+                        default: 'auto',
+                        description: "Dark mode: 'auto' follows the operating system, 'on' and 'off' decide.",
+                        example: 'auto',
+                    ),
+                ]),
+            ),
         ]);
     }
 }

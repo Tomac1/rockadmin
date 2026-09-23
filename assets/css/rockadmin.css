@@ -1,1 +1,212 @@
-:root { }
+/*
+ * The RockAdmin theme.
+ *
+ * This file redefines Bootstrap's own custom properties rather than
+ * overriding its component classes, so there is no fork of Bootstrap to
+ * maintain: every component still reads --bs-primary, --bs-border-radius and
+ * the rest, it just reads different values here. Loaded after
+ * bootstrap.min.css and before a project's own stylesheet, so a project
+ * overrides this without !important either.
+ *
+ * Density is the single biggest difference between something that looks like
+ * a website and something that looks like a tool: an admin table wants more
+ * rows on screen than a marketing page does. Everything else — the font
+ * stack, the palette, the restrained radius and shadow — matters, but
+ * density is why a grid reads as a grid.
+ */
+
+:root {
+    /* Type: a system stack, no font request leaves the machine, and a base
+       size smaller than Bootstrap's so more of a table fits above the fold. */
+    --bs-font-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    --bs-body-font-family: var(--bs-font-sans-serif);
+    --bs-body-font-size: 0.9rem;
+    --bs-body-line-height: 1.4;
+
+    /* Shape: restrained radius and no default shadow. Bootstrap's own
+       defaults are exactly what makes a page read as "stock Bootstrap". */
+    --bs-border-radius: 0.25rem;
+    --bs-border-radius-sm: 0.2rem;
+    --bs-border-radius-lg: 0.3rem;
+    --bs-box-shadow: none;
+    --bs-box-shadow-sm: none;
+
+    /* Palette: RockAdmin's own, not Bootstrap's blue. Desaturated slate for
+       primary actions, a neutral gray scale for the shell. */
+    --bs-primary: #3a5470;
+    --bs-primary-rgb: 58, 84, 112;
+    --bs-secondary: #6c757d;
+    --bs-secondary-rgb: 108, 117, 125;
+    --bs-success: #2e7d5b;
+    --bs-success-rgb: 46, 125, 91;
+    --bs-info: #3d7d99;
+    --bs-info-rgb: 61, 125, 153;
+    --bs-warning: #b3791f;
+    --bs-warning-rgb: 179, 121, 31;
+    --bs-danger: #b3402f;
+    --bs-danger-rgb: 179, 64, 47;
+    --bs-light: #f5f6f7;
+    --bs-light-rgb: 245, 246, 247;
+    --bs-dark: #22262b;
+    --bs-dark-rgb: 34, 38, 43;
+
+    --bs-body-color: #22262b;
+    --bs-body-bg: #ffffff;
+    --bs-border-color: #dee1e4;
+    --bs-link-color: var(--bs-primary);
+    --bs-link-hover-color: #2c405a;
+
+    /* The shell: tokens Bootstrap has no equivalent for, so they are ours
+       to name. Templates and this stylesheet are the only readers. */
+    --ra-sidebar-width: 15rem;
+    --ra-header-height: 3rem;
+    --ra-grid-row-padding: 0.35rem;
+}
+
+/*
+ * Density. A grid cell, a table row and a form control all get less padding
+ * than Bootstrap's defaults, so a screen shows more rows without shrinking
+ * the type past legibility.
+ */
+.ra-grid-cell,
+.table > :not(caption) > * > * {
+    padding-top: var(--ra-grid-row-padding);
+    padding-bottom: var(--ra-grid-row-padding);
+}
+
+.table {
+    --bs-table-color: var(--bs-body-color);
+    font-size: 0.85rem;
+}
+
+.form-control,
+.form-select {
+    min-height: calc(1.4em + 0.5rem + 2px);
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.form-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.btn {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+    font-size: 0.85rem;
+}
+
+/* The shell itself. */
+.ra-navbar {
+    min-height: var(--ra-header-height);
+    background-color: var(--bs-dark);
+    color: var(--bs-light);
+    padding: 0 1rem;
+}
+
+.ra-navbar-brand {
+    color: var(--bs-light);
+    font-weight: 600;
+}
+
+.ra-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.ra-page-title {
+    font-size: 1.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.ra-page-description {
+    color: var(--bs-secondary);
+    margin-bottom: 0;
+}
+
+.ra-main {
+    padding: 0;
+}
+
+.ra-layout {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.ra-layout-two-column .ra-layout-side,
+.ra-layout-sidebar-detail .ra-layout-list {
+    flex: 0 0 var(--ra-sidebar-width);
+}
+
+.ra-layout-two-column .ra-layout-main,
+.ra-layout-sidebar-detail .ra-layout-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ra-toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1080;
+}
+
+.ra-error-main {
+    max-width: 32rem;
+    margin: 4rem auto;
+    padding: 0 1rem;
+    text-align: center;
+}
+
+.ra-error-detail {
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background-color: var(--bs-light);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+}
+
+/*
+ * Dark mode ships now. The media-query block only applies when the document
+ * carries no explicit data-bs-theme, so an operator's choice always wins
+ * over the operating system's.
+ */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-bs-theme]) {
+        --bs-body-color: #dfe3e6;
+        --bs-body-bg: #16181b;
+        --bs-border-color: #363b41;
+        --bs-light: #22262b;
+        --bs-dark: #0e1012;
+        --bs-link-color: #7ea3c4;
+        --bs-link-hover-color: #9cbcd8;
+    }
+
+    :root:not([data-bs-theme]) .ra-error-detail {
+        background-color: #1c1f23;
+    }
+}
+
+[data-bs-theme="dark"] {
+    --bs-body-color: #dfe3e6;
+    --bs-body-bg: #16181b;
+    --bs-border-color: #363b41;
+    --bs-light: #22262b;
+    --bs-dark: #0e1012;
+    --bs-link-color: #7ea3c4;
+    --bs-link-hover-color: #9cbcd8;
+}
+
+[data-bs-theme="dark"] .ra-error-detail {
+    background-color: #1c1f23;
+}
