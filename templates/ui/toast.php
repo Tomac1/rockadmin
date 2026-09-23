@@ -9,7 +9,7 @@
  * @var \Closure(mixed): string $e
  */
 ?>
-<div class="<?= $e($view->classes()) ?> toast" role="status" aria-live="polite" aria-atomic="true" data-ra-toast>
+<div class="<?= $e($view->classes()) ?> toast show" role="status" aria-live="polite" aria-atomic="true" data-ra-toast>
     <div class="ra-toast-body toast-body">
         <span class="ra-toast-message"><?= $e($view->message) ?></span>
         <button type="button" class="ra-toast-close btn-close" data-bs-dismiss="toast" aria-label="Close"></button>

@@ -19,21 +19,6 @@ use RockAdmin\Http\Route;
  */
 final class AssetHandler implements Handler
 {
-    private const TYPES = [
-        'css' => 'text/css; charset=utf-8',
-        'js' => 'application/javascript; charset=utf-8',
-        'svg' => 'image/svg+xml',
-        'png' => 'image/png',
-        'jpg' => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'gif' => 'image/gif',
-        'webp' => 'image/webp',
-        'woff' => 'font/woff',
-        'woff2' => 'font/woff2',
-        'ico' => 'image/x-icon',
-        'map' => 'application/json',
-    ];
-
     public function __construct(private readonly ?string $root = null)
     {
     }
@@ -53,12 +38,10 @@ final class AssetHandler implements Handler
             throw new NotFoundException("Asset '{$normalized}' could not be read.");
         }
 
-        $extension = $this->getExtension($normalized);
-        if (!isset(self::TYPES[$extension])) {
+        $contentType = AssetTypes::contentType(AssetTypes::extensionOf($normalized));
+        if ($contentType === null) {
             throw new NotFoundException("Asset '{$normalized}' has an unsupported file type.");
         }
-
-        $contentType = self::TYPES[$extension];
 
         return new Response(200, $contents, [
             'content-type' => $contentType,
@@ -136,12 +119,5 @@ final class AssetHandler implements Handler
         }
 
         return $filePath;
-    }
-
-    private function getExtension(string $path): string
-    {
-        $parts = explode('.', $path);
-
-        return end($parts) ?: '';
     }
 }

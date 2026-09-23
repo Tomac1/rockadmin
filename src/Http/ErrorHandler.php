@@ -48,7 +48,10 @@ final class ErrorHandler
 
         $status = $e instanceof HttpException ? $e->status : 500;
 
-        return Response::html($this->pageBody($e, $status) ?? $this->body($e, $status), $status)
+        $pageBody = $this->pageBody($e, $status);
+        $body = $pageBody === null || $pageBody === '' ? $this->body($e, $status) : $pageBody;
+
+        return Response::html($body, $status)
             // An error page is never worth caching, and a sniffed content type
             // on a page that may quote user input is worth even less.
             ->withHeader('Cache-Control', 'no-store')

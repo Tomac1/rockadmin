@@ -21,10 +21,13 @@ use Throwable;
  *
  * The limit of that is Reflection: a template could read the helpers' captured
  * variables with ReflectionFunction::getStaticVariables() and reach the escaper
- * and the URL generator. Neither leads to the configuration or the database,
- * and a template that imports ReflectionFunction has stopped being a template
- * — the guarantee here is against smuggling a query into one by accident, not
- * against a hostile template file, which is code the project already trusts.
+ * and the URL generator. It could reach this Renderer too — $partial is a
+ * non-static closure, so ReflectionFunction::getClosureThis() hands back the
+ * object it is bound to, which is this Renderer, not null. None of the three
+ * leads to the configuration or the database, and a template that imports
+ * ReflectionFunction has stopped being a template — the guarantee here is
+ * against smuggling a query into one by accident, not against a hostile
+ * template file, which is code the project already trusts.
  */
 final class Renderer
 {

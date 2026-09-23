@@ -32,14 +32,13 @@ use RockAdmin\Http\UrlGenerator;
 use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
 use RockAdmin\View\ButtonView;
-use RockAdmin\View\Escaper;
 use RockAdmin\View\FlashBag;
 use RockAdmin\View\MenuItemView;
 use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellView;
 use RockAdmin\View\TemplateErrorPage;
-use RockAdmin\View\TemplateResolver;
+use RockAdmin\View\ViewFactory;
 
 $config = (new Loader(__DIR__ . '/config', static function (string $name): ?string {
     $value = getenv($name);
@@ -47,24 +46,32 @@ $config = (new Loader(__DIR__ . '/config', static function (string $name): ?stri
     return $value === false ? null : $value;
 }))->load();
 
-// The schema guarantees these keys are strings once the config has loaded,
-// but Config::get() returns mixed for every path alike; this is the one
-// place that narrows it back down, honestly, rather than casting past it.
+// The schema guarantees this key is a string once the config has loaded, but
+// Config::get() returns mixed for every path alike; this is the one place
+// that narrows it back down, honestly, rather than casting past it.
 $configString = static function (Config $config, string $path, string $default): string {
     $value = $config->get($path, $default);
 
     return is_string($value) ? $value : $default;
 };
 
-$brand = $configString($config, 'brand', 'RockAdmin');
-$darkMode = $configString($config, 'theme.dark', 'auto');
 $debugValue = $config->get('debug', false);
 $debug = is_bool($debugValue) ? $debugValue : false;
 
 $session = new ArraySessionStore();
 $urls = new UrlGenerator('/', $configString($config, 'url_mode', 'path'));
-$renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
-$assets = new Assets($urls);
+
+// ViewFactory is the proof that template_paths, assets.css, assets.js and
+// theme.dark — all declared in RootSchema, none of them read anywhere before
+// this class existed — are actually reachable from configuration. Hand-wiring
+// a TemplateResolver and an Assets here, the way this file used to, is
+// exactly the trap: it works, and it proves nothing about the setting a real
+// project writes into rockadmin.php.
+$views = new ViewFactory($config, $urls);
+$renderer = $views->renderer();
+$assets = $views->assets();
+$brand = $views->brand();
+$darkMode = $views->darkMode();
 $flashes = new FlashBag($session);
 
 $handlers = new HandlerRegistry();

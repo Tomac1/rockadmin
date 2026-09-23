@@ -8,7 +8,9 @@ namespace RockAdmin\View;
  * A navigation menu item.
  *
  * Carries a label, URL, optional icon, active state, and child items for
- * hierarchical menus.
+ * hierarchical menus. An optional key names which one it is — milestone 5
+ * writes the real menu against this, the way PageView and ButtonView already
+ * carry an identity class for their own key.
  */
 final class MenuItemView
 {
@@ -19,15 +21,30 @@ final class MenuItemView
         public readonly ?string $icon = null,
         public readonly bool $active = false,
         public readonly array $children = [],
+        public readonly ?string $key = null,
     ) {
     }
 
     public function classes(): string
     {
+        // 'active' is state, not identity, so it is not something Classes::of()
+        // has a slot for — it does not vary per menu item the way a key does,
+        // it varies per request. The structural and identity classes still go
+        // through Classes so a malformed key fails the same way a malformed
+        // page or button key does, rather than being written into a class
+        // attribute unchecked.
+        $names = [Classes::of('menu-item', $this->key)];
+
         if ($this->active) {
-            return 'ra-menu-item ra-menu-item-active nav-link active';
+            $names[] = Classes::identity('menu-item', 'active');
         }
 
-        return 'ra-menu-item nav-link';
+        $names[] = 'nav-link';
+
+        if ($this->active) {
+            $names[] = 'active';
+        }
+
+        return implode(' ', $names);
     }
 }

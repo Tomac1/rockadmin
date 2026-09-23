@@ -34,6 +34,21 @@ final class Escaper
      */
     private const ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel'];
 
+    /**
+     * Attribute names attributes() scheme-checks a value the way url() does,
+     * rather than only escaping it. attributes() otherwise only refuses an
+     * event-handler name and escapes the value, so ['href' => 'javascript:…']
+     * or ['formaction' => 'javascript:…'] would be written out verbatim. No
+     * caller does that today — the one caller puts $attrs() on an anchor that
+     * already carries an href written through $href() — but spec 8.5 makes
+     * `attrs` a configuration key on every action, and a project's own
+     * configuration is not code this project already trusts the way a
+     * template file is.
+     */
+    private const URL_ATTRIBUTES = [
+        'href', 'src', 'action', 'formaction', 'xlink:href', 'poster', 'data', 'srcset', 'srcdoc',
+    ];
+
     /** Escapes for element content and for quoted attribute values alike. */
     public function text(mixed $value): string
     {
@@ -118,7 +133,11 @@ final class Escaper
                 continue;
             }
 
-            $out .= ' ' . $name . '="' . $this->text($value) . '"';
+            $written = \in_array(strtolower($name), self::URL_ATTRIBUTES, true)
+                ? $this->url($value)
+                : $this->text($value);
+
+            $out .= ' ' . $name . '="' . $written . '"';
         }
 
         return $out;

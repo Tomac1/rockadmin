@@ -126,4 +126,68 @@ final class AssetsTest extends TestCase
 
         $this->assets()->url('css/nothing.css');
     }
+
+    public function testAnExtensionAssetHandlerCannotServeIsRefusedHere(): void
+    {
+        // Verified by execution before this fix: fonts/x.ttf, img/LOGO.PNG
+        // and img/a.avif each minted a URL that then 404s, because url()
+        // never checked the extension against what AssetHandler will serve.
+        // Refusing here is what turns that 404 into a message naming the
+        // file that a person wrote in configuration or a template.
+        mkdir($this->root . '/fonts', 0o777, true);
+        file_put_contents($this->root . '/fonts/x.notaformat', 'x');
+
+        try {
+            $this->expectException(ViewException::class);
+            $this->expectExceptionMessage('fonts/x.notaformat');
+
+            $this->assets()->url('fonts/x.notaformat');
+        } finally {
+            @unlink($this->root . '/fonts/x.notaformat');
+            @rmdir($this->root . '/fonts');
+        }
+    }
+
+    public function testAnUppercaseExtensionIsRecognisedTheSameAsLowercase(): void
+    {
+        // img/LOGO.PNG must resolve exactly as img/logo.png does: the
+        // extension lookup is case-insensitive on both sides of the asset
+        // route, or a URL minted here 404s the moment AssetHandler does its
+        // own case-sensitive comparison.
+        mkdir($this->root . '/img', 0o777, true);
+        file_put_contents($this->root . '/img/LOGO.PNG', 'not really a png, only the extension matters here');
+
+        try {
+            $url = $this->assets()->url('img/LOGO.PNG');
+
+            $this->assertStringContainsString('img/LOGO.PNG', $url);
+        } finally {
+            @unlink($this->root . '/img/LOGO.PNG');
+            @rmdir($this->root . '/img');
+        }
+    }
+
+    public function testFontAndModernImageExtensionsAreServable(): void
+    {
+        // ttf, otf, avif and mjs were missing from the allowed list entirely,
+        // so a project asset in any of these formats 404d however it was
+        // spelled.
+        mkdir($this->root . '/fonts', 0o777, true);
+        foreach (['a.ttf', 'a.otf', 'a.avif', 'a.mjs'] as $file) {
+            file_put_contents($this->root . '/fonts/' . $file, 'x');
+        }
+
+        try {
+            foreach (['a.ttf', 'a.otf', 'a.avif', 'a.mjs'] as $file) {
+                $url = $this->assets()->url('fonts/' . $file);
+
+                $this->assertStringContainsString('fonts/' . $file, $url);
+            }
+        } finally {
+            foreach (['a.ttf', 'a.otf', 'a.avif', 'a.mjs'] as $file) {
+                @unlink($this->root . '/fonts/' . $file);
+            }
+            @rmdir($this->root . '/fonts');
+        }
+    }
 }

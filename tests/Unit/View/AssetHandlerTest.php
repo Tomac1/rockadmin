@@ -99,4 +99,69 @@ final class AssetHandlerTest extends TestCase
 
         $this->serve('css/nothing.css');
     }
+
+    public function testAnUppercaseExtensionIsServedTheSameAsLowercase(): void
+    {
+        mkdir($this->root . '/img', 0o777, true);
+        file_put_contents($this->root . '/img/LOGO.PNG', 'not really a png, only the extension matters here');
+
+        try {
+            $response = $this->serve('img/LOGO.PNG');
+
+            $this->assertSame(200, $response->status);
+            $this->assertSame('image/png', $response->headers['content-type']);
+        } finally {
+            @unlink($this->root . '/img/LOGO.PNG');
+            @rmdir($this->root . '/img');
+        }
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function newlyAllowedTypes(): array
+    {
+        return [
+            'ttf' => ['fonts/x.ttf', 'font/ttf'],
+            'otf' => ['fonts/x.otf', 'font/otf'],
+            'avif' => ['img/a.avif', 'image/avif'],
+            'mjs' => ['js/x.mjs', 'application/javascript; charset=utf-8'],
+        ];
+    }
+
+    #[DataProvider('newlyAllowedTypes')]
+    public function testAFormerlyRefusedExtensionIsNowServed(string $path, string $contentType): void
+    {
+        $file = $this->root . '/' . $path;
+        mkdir(\dirname($file), 0o777, true);
+        file_put_contents($file, 'x');
+
+        try {
+            $response = $this->serve($path);
+
+            $this->assertSame(200, $response->status);
+            $this->assertSame($contentType, $response->headers['content-type']);
+        } finally {
+            @unlink($file);
+            @rmdir(\dirname($file));
+        }
+    }
+
+    public function testTheExtensionComesFromTheFilenameNotTheWholePath(): void
+    {
+        // getExtension() used to split the whole path on '.', so a directory
+        // segment carrying a dot ("v1.2/logo.png") would read "2/logo" —
+        // well, would read the last segment after the last dot in the whole
+        // string, i.e. "png", by coincidence; the real failure case is a dot
+        // in a directory name with no further dot in the filename.
+        mkdir($this->root . '/v1.2', 0o777, true);
+        file_put_contents($this->root . '/v1.2/logo', 'not a real png, only the extension matters');
+
+        try {
+            $this->expectException(NotFoundException::class);
+
+            $this->serve('v1.2/logo');
+        } finally {
+            @unlink($this->root . '/v1.2/logo');
+            @rmdir($this->root . '/v1.2');
+        }
+    }
 }

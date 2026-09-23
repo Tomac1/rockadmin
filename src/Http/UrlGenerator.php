@@ -30,6 +30,18 @@ final class UrlGenerator
                 "Unknown url_mode '{$mode}'. Use 'path' or 'query'.",
             );
         }
+
+        // A base of "//host/admin" makes every link this generator builds
+        // scheme-relative, which Escaper::url() then refuses as an open
+        // redirect — including the link on the error page itself, so every
+        // page in the admin would throw rather than only the one
+        // misconfigured link a person could otherwise find and fix.
+        if (str_starts_with($base, '//')) {
+            throw new InvalidArgumentException(
+                "Refusing '{$base}' as a URL base: it starts with '//', which makes every "
+                . 'generated link scheme-relative. Use an absolute path or a full https:// URL.',
+            );
+        }
     }
 
     /** @param array<string, string|int> $query */

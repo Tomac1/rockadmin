@@ -166,7 +166,18 @@ final class TemplateStandardsTest extends TestCase
             'spaced around the equals' => ['<a href = "<?= $e($view->url) ?>">x</a>'],
             'an image source' => ['<img src="<?= $e($view->icon) ?>">'],
             'a form action' => ['<form action="<?= $e($view->url) ?>">'],
+            'a button formaction' => ['<button formaction="<?= $e($view->url) ?>">x</button>'],
         ];
+    }
+
+    public function testTheUrlAttributeRuleCatchesEUsedForAFormaction(): void
+    {
+        // formaction contains "action" as a substring, which is exactly why
+        // \b(href|src|action) alone missed it: no word boundary falls
+        // between the 'm' of "form" and the 'a' of "action".
+        $violations = $this->urlAttributeViolations('<button formaction="<?= $e($view->url) ?>">x</button>');
+
+        $this->assertNotSame([], $violations);
     }
 
     #[DataProvider('urlAttributesWrittenEveryWay')]
@@ -209,6 +220,17 @@ final class TemplateStandardsTest extends TestCase
     public function testTheRaClassRuleCatchesATemplateWithNoRaClassAnywhere(): void
     {
         $this->assertFalse($this->hasRaClass('<span class="plain"><?= $e($view) ?></span>'));
+    }
+
+    public function testTheRaClassRuleCatchesACommentMentioningDataRaAttributesWithNoRealClass(): void
+    {
+        // hasRaClass() used to be str_contains($contents, 'ra-'), which is
+        // true of this snippet: no element carries a class at all, and the
+        // only 'ra-' in the file is the word "data-ra-behavior" inside a
+        // docblock comment describing a convention rather than using it.
+        $this->assertFalse($this->hasRaClass(
+            "<?php\n/** Behaviour is declared with data-ra-behavior attributes. */\n?><span><?= \$e(\$view) ?></span>",
+        ));
     }
 
     public function testTheRaClassRuleAcceptsAClassesHelperCall(): void
@@ -334,7 +356,13 @@ final class TemplateStandardsTest extends TestCase
         // would have left the rule checking a house convention rather than
         // the property it exists for: a single-quoted URL attribute is
         // exactly the case this rule is about, and it was passing.
-        $pattern = '/\b(href|src|action)\s*=\s*[\'"]?<\?=\s*(\$\w+)\(/';
+        // 'formaction' is listed ahead of 'action': \b(href|src|action) never
+        // matches "action" inside "formaction" because 'm' and 'a' are both
+        // word characters, so there is no boundary between them for \b to
+        // land on — the rule was checking three attributes and silently
+        // skipping a fourth it claimed to cover. Listing 'formaction' as its
+        // own alternative gives it a boundary of its own, at the 'f'.
+        $pattern = '/\b(href|src|action|formaction)\s*=\s*[\'"]?<\?=\s*(\$\w+)\(/';
 
         if (preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) === false) {
             return [];
@@ -390,10 +418,20 @@ final class TemplateStandardsTest extends TestCase
      * Classes::identity() always carries the 'ra-' prefix at render time
      * even though the literal string is not in the source, so a call to
      * either counts.
+     *
+     * str_contains($contents, 'ra-') used to stand in for this: it also
+     * matches the word data-ra-behavior in a docblock, so a template with no
+     * classes at all and one comment mentioning data-ra-* attributes passed.
+     * This requires either a Classes:: call or a real class="..." attribute
+     * whose value carries a token starting 'ra-'.
      */
     private function hasRaClass(string $contents): bool
     {
-        return str_contains($contents, 'ra-') || str_contains($contents, 'Classes::');
+        if (str_contains($contents, 'Classes::')) {
+            return true;
+        }
+
+        return preg_match('/\bclass\s*=\s*(["\'])[^"\']*\bra-[a-z0-9-]+\b[^"\']*\1/', $contents) === 1;
     }
 
     /**

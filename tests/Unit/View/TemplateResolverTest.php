@@ -255,4 +255,59 @@ final class TemplateResolverTest extends TestCase
 
         $this->assertCount(1, $resolver->resolutions());
     }
+
+    public function testAResolutionThroughACopyMadeByWithOverridesIsVisibleOnTheOriginal(): void
+    {
+        // A page-level template override is the normal path for any page
+        // that configures `templates`, and rendering happens through the
+        // copy withOverrides() returns, never through the original. Before
+        // the log was shared, the original's resolutions() stayed empty for
+        // exactly the pages the development console exists to explain.
+        $resolver = $this->resolver();
+        $scoped = $resolver->withOverrides(['ui/button' => 'ui/badge']);
+
+        $scoped->resolve('ui/button');
+
+        $this->assertSame($scoped->resolutions(), $resolver->resolutions());
+        $this->assertSame(
+            [['name' => 'ui/button', 'file' => $this->root . '/theme/ui/badge.php', 'override' => 'ui/badge']],
+            $resolver->resolutions(),
+        );
+    }
+
+    public function testAChainOfCopiesAllShareTheSameLog(): void
+    {
+        $resolver = $this->resolver();
+        $first = $resolver->withOverrides(['ui/button' => 'ui/badge']);
+        $second = $first->withOverrides([]);
+
+        $second->resolve('ui/button');
+        $resolver->resolve('layout/base');
+
+        $this->assertCount(2, $resolver->resolutions());
+        $this->assertCount(2, $second->resolutions());
+    }
+
+    public function testHasDoesNotRecordAResolution(): void
+    {
+        // A probe for whether a template exists is not the same as having
+        // rendered it. TemplateErrorPage calls has() twice per error before
+        // it ever renders anything; both calls logging would show
+        // error/500 in the console whether or not it actually rendered.
+        $resolver = $this->resolver();
+
+        $resolver->has('ui/button');
+        $resolver->has('ui/nothing');
+
+        $this->assertSame([], $resolver->resolutions());
+    }
+
+    public function testHasStillAnswersCorrectlyAfterNotRecording(): void
+    {
+        $resolver = $this->resolver();
+
+        $this->assertTrue($resolver->has('ui/button'));
+        $this->assertFalse($resolver->has('ui/nothing'));
+        $this->assertSame([], $resolver->resolutions());
+    }
 }

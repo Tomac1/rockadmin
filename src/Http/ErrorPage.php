@@ -16,6 +16,10 @@ use Throwable;
  */
 interface ErrorPage
 {
-    /** The rendered page, or null to leave the built-in HTML in place. */
+    /**
+     * The rendered page, or null to leave the built-in HTML in place. An
+     * empty string is treated the same as null by ErrorHandler: a page
+     * implementation that produced nothing is not a page.
+     */
     public function render(Throwable $error, int $status, bool $debug): ?string;
 }

@@ -97,6 +97,25 @@ final class ViewObjectsTest extends TestCase
         $this->assertSame('ra-menu-item ra-menu-item-active nav-link active', $active->classes());
     }
 
+    public function testAMenuItemCarriesAnIdentityClassWhenGivenAKey(): void
+    {
+        // Milestone 5 writes the real menu against this. Without a key
+        // (the case above) a menu item carries no identity class, exactly
+        // as before.
+        $plain = new MenuItemView('Ads', '/admin/p/ads', key: 'ads');
+        $active = new MenuItemView('Ads', '/admin/p/ads', active: true, key: 'ads');
+
+        $this->assertSame('ra-menu-item ra-menu-item-ads nav-link', $plain->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-ads ra-menu-item-active nav-link active', $active->classes());
+    }
+
+    public function testAMenuItemsKeyIsRefusedTheSameWayAnyIdentityIs(): void
+    {
+        $this->expectException(ViewException::class);
+
+        (new MenuItemView('Ads', '/admin/p/ads', key: 'not valid!'))->classes();
+    }
+
     /** @return array<string, array{string, string}> */
     public static function flashLevels(): array
     {

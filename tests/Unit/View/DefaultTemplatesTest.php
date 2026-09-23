@@ -129,6 +129,17 @@ final class DefaultTemplatesTest extends TestCase
 
         $this->assertStringContainsString('ra-flash ra-flash-success', $html);
         $this->assertStringContainsString('Saved.', $html);
+
+        // Bootstrap 5.3 ships `.toast:not(.show){display:none}`. Without the
+        // `show` class the flash is in the DOM but invisible; asserting the
+        // classes and the message text alone, as this test did before, is
+        // also true of markup nobody can see.
+        if (preg_match('/class="([^"]*)"\s+role="status"[^>]*data-ra-toast/', $html, $match) !== 1) {
+            $this->fail('No element carrying the toast class was rendered.');
+        }
+
+        $classes = explode(' ', $match[1]);
+        $this->assertContains('show', $classes, 'The toast is missing the "show" class and is therefore invisible.');
     }
 
     public function testNoFlashesLeaveTheToastContainerEmptyRatherThanAbsent(): void

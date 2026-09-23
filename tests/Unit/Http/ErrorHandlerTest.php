@@ -183,6 +183,26 @@ final class ErrorHandlerTest extends TestCase
         $this->assertStringNotContainsString('template blew up', $response->body);
     }
 
+    public function testAnErrorPageReturningAnEmptyStringFallsBackTooRatherThanRenderingBlank(): void
+    {
+        // pageBody(...) ?? body(...) treats '' as present, since '' is not
+        // null: an ErrorPage that renders nothing produced a blank 500
+        // instead of the built-in page. Empty must be treated the same as
+        // null.
+        $page = new class () implements ErrorPage {
+            public function render(\Throwable $error, int $status, bool $debug): string
+            {
+                return '';
+            }
+        };
+
+        $response = (new ErrorHandler(page: $page))->toResponse(new NotFoundException('no such page'));
+
+        $this->assertSame(404, $response->status);
+        $this->assertStringContainsString('Not found', $response->body);
+        $this->assertNotSame('', $response->body);
+    }
+
     public function testAnErrorPageWhoseResolverHasNoMatchingTemplateFallsBackToo(): void
     {
         // A resolver pointed at an empty directory: neither error/404 nor

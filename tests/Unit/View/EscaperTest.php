@@ -269,4 +269,51 @@ final class EscaperTest extends TestCase
         // to draw its line somewhere and this is where: 'on' plus nothing.
         $this->assertSame(' on="x"', $this->escaper->attributes(['on' => 'x']));
     }
+
+    /** @return array<string, array{string}> */
+    public static function urlAttributeNames(): array
+    {
+        return [
+            'href' => ['href'],
+            'src' => ['src'],
+            'action' => ['action'],
+            'formaction' => ['formaction'],
+            'xlink:href' => ['xlink:href'],
+            'poster' => ['poster'],
+            'data' => ['data'],
+            'srcset' => ['srcset'],
+            'srcdoc' => ['srcdoc'],
+            'uppercase formaction' => ['FORMACTION'],
+        ];
+    }
+
+    #[DataProvider('urlAttributeNames')]
+    public function testAttributesSchemeChecksEveryUrlAttribute(string $name): void
+    {
+        // attributes() used to only escape a value, never check its scheme,
+        // so ['formaction' => 'javascript:alert(1)'] was written out
+        // verbatim. The one caller today puts $attrs() on an anchor that
+        // already carries an href, so nothing exploits this yet — but
+        // 'attrs' becomes a configuration key on every action (spec 8.5),
+        // and milestone 6 puts it on form controls.
+        $this->expectException(ViewException::class);
+
+        $this->escaper->attributes([$name => 'javascript:alert(1)']);
+    }
+
+    public function testAttributesStillEscapesAnOrdinaryUrlAttributeValue(): void
+    {
+        $this->assertSame(
+            ' href="/p/ads?q=&quot;x&quot;"',
+            $this->escaper->attributes(['href' => '/p/ads?q="x"']),
+        );
+    }
+
+    public function testAttributesAllowsAnAllowedSchemeOnAUrlAttribute(): void
+    {
+        $this->assertSame(
+            ' action="https://example.com/submit"',
+            $this->escaper->attributes(['action' => 'https://example.com/submit']),
+        );
+    }
 }

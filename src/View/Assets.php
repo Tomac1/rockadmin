@@ -54,6 +54,18 @@ final class Assets
     public function url(string $path): string
     {
         $normalized = $this->normalize($path);
+
+        // Refusing here, rather than letting AssetHandler 404 the URL this
+        // mints, is what makes the failure land where someone can read it:
+        // whoever wrote the path in a template or in configuration, instead
+        // of whoever's browser request failed to load a stylesheet.
+        $extension = AssetTypes::extensionOf($normalized);
+        if (!AssetTypes::isKnown($extension)) {
+            throw new ViewException(
+                "Refusing '{$normalized}' as an asset path: '.{$extension}' is not a file type this admin serves.",
+            );
+        }
+
         $file = $this->root($normalized);
 
         if (!is_file($file)) {
