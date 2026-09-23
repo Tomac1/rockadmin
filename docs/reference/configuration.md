@@ -11,6 +11,9 @@ resolve once, while the configuration loads. `{{user.*}}` and
 `{{workspace.*}}` survive as placeholders and bind per request, so they reach
 the database as bound parameters and never as SQL text.
 
+The pages themselves are described in their own files and documented in
+[the page reference](pages.md).
+
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `url_mode` | string | `path` | `path` | How links are built: 'path' needs a rewrite rule, 'query' does not. |
