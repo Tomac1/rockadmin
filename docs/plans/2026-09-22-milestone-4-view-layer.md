@@ -2963,3 +2963,60 @@ git commit -m "Enforce the template standard and give the theme somewhere to liv
   templates carry no translation call. Section 13 puts UI localisation out of
   v1 deliberately; adding a lookup now would be designing against an
   imagined translator.
+
+## Amendments made during execution
+
+Written after the fact. The plan above is what was dispatched; this section
+records where reality differed.
+
+**The standard banned a script tag no page could do without.** Rule 1 forbade
+every `<script` in a template, but `layout/base.php` has to reference the
+stylesheets and the bundle somewhere — no page could exist and pass. The ban
+was always about behaviour surviving AJAX insertion, so it now forbids a
+script with a body anywhere and a `src`-only tag everywhere except that one
+template. Amended before Task 8 was dispatched.
+
+**Templates needed a ninth helper.** The plan escaped URLs with `$e()`, which
+closes the attribute and says nothing about the scheme — so the escaper's
+scheme allow-list, added during Task 1, would have been bypassed by every link
+in the admin. `$href` was added to the helper set and to the template standard
+before Task 3 was dispatched.
+
+**Five defects in the plan's own test code** were fixed before Task 1 ran: an
+invalid-UTF-8 expectation that dropped a surviving character, four consecutive
+`expectExceptionMessage()` calls of which PHPUnit honours only the last, a
+Windows path comparison against forward slashes, a fixture written into a
+directory the test never created, and a scope assertion contradicted by the
+implementation the same plan specified.
+
+**The renderer's scope is described, not counted.** The plan asked for exactly
+nine variables in a template's scope and specified `func_get_arg()` to achieve
+it, which cost six PHPStan errors. The property that matters is that nothing
+in scope is an object a template could work backwards from; the closure takes
+named parameters again and the template's own path stays visible.
+
+**The escaper became an allow-list.** The plan specified a deny-list of
+executable schemes. A deny-list fails open — a leading C0 control byte hid the
+scheme entirely — so it allows `http`, `https`, `mailto`, `tel` and a relative
+URL, and refuses everything else including a scheme-relative one.
+
+**`Classes` translates rather than refuses.** An identity comes from a
+configuration key, and this project writes those in snake_case; the plan held
+it to the CSS kebab-case rule, so a page keyed `user_accounts` threw and took
+the page down.
+
+**The error page went behind an interface.** The plan passed a `Renderer` into
+`ErrorHandler`. `Http` sits below `View`, so `ErrorPage` is an interface there
+and `TemplateErrorPage` implements it.
+
+**Three schema keys were decorative.** `template_paths`, `assets.css`/`assets.js`
+and `theme.dark` were declared and read by nothing, so a project could not
+switch on this milestone's headline feature. `ViewFactory` wires them.
+
+**The demo existed so a visual defect could not ship, and one did.** Flash
+messages rendered invisible — Bootstrap hides a toast without `.show` — while
+a passing test asserted their classes and their text. The navbar's menu was
+black on near-black, the primary button stayed Bootstrap blue because
+`.btn-primary` does not read `--bs-primary`, and dark mode under `auto`
+re-tinted seven variables and stopped. All four were found by the final review
+opening the page. Nobody had looked at it.
