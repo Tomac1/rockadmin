@@ -593,7 +593,10 @@ final class PageRepository
         }
 
         if (!\is_array($raw)) {
-            return [];
+            throw new PageException(
+                "Page '{$pageName}': column '{$columnKey}': options must be an @enum: reference or a map "
+                . 'of value to label, not a ' . get_debug_type($raw) . '.',
+            );
         }
 
         $options = [];
@@ -610,7 +613,18 @@ final class PageRepository
             if (\is_array($entry) && \is_string($entry['label'] ?? null)) {
                 $color = \is_string($entry['color'] ?? null) ? $entry['color'] : null;
                 $options[$value] = new EnumOption($value, $entry['label'], $color);
+
+                continue;
             }
+
+            // Dropping this silently is how a mistyped 'lable' becomes an
+            // option that never appears in a filter, with nothing anywhere
+            // saying why. Every other malformed thing in a page file is
+            // refused by name; so is this.
+            throw new PageException(
+                "Page '{$pageName}': column '{$columnKey}': the option '{$value}' is neither a label nor "
+                . "['label' => ..., 'color' => ...].",
+            );
         }
 
         return $options;

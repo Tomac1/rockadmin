@@ -17,6 +17,9 @@ namespace RockAdmin\Config;
  */
 final class Reference
 {
+    /** How deep an example's nesting is written out before it is elided. */
+    private const MAX_EXAMPLE_DEPTH = 2;
+
     /** Rendered Markdown for a whole schema, ready to commit. */
     public static function markdown(Schema $schema, string $title, string $intro = ''): string
     {
@@ -142,7 +145,7 @@ final class Reference
     }
 
     /** @param array<array-key, mixed> $value */
-    private static function inlineArray(array $value): string
+    private static function inlineArray(array $value, int $depth = 0): string
     {
         $parts = [];
 
@@ -152,7 +155,15 @@ final class Reference
                 \is_int($item), \is_float($item) => (string) $item,
                 \is_bool($item) => $item ? 'true' : 'false',
                 $item === null => 'null',
-                \is_array($item) => '[…]',
+                // Nesting is written out to the depth an example needs and no
+                // further. The shapes that matter here are one level deep — a
+                // map of option keys to a label and a colour, a list of
+                // columns — and an example that renders as […] documents
+                // nothing, which was the whole complaint that produced this.
+                // Past that depth the value has stopped being an example.
+                \is_array($item) => $depth < self::MAX_EXAMPLE_DEPTH
+                    ? self::inlineArray($item, $depth + 1)
+                    : '[…]',
                 default => '…',
             };
 

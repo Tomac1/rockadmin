@@ -173,4 +173,38 @@ final class ReferenceTest extends TestCase
             $this->assertStringContainsString("`{$name}`", $markdown, "The key {$name} is not in the reference.");
         }
     }
+
+    public function testANestedExampleIsWrittenOutRatherThanElided(): void
+    {
+        // An enum option carrying a badge colour is a map of maps, and it is
+        // the one shape nobody can guess. Rendering it as […] documented that
+        // something goes there and nothing about what.
+        $schema = new Schema([
+            'options' => new SchemaKey(
+                ValueType::Array,
+                description: 'The options.',
+                example: ['active' => ['label' => 'Active', 'color' => 'success']],
+            ),
+        ]);
+
+        $markdown = Reference::markdown($schema, 'Reference');
+
+        $this->assertStringContainsString(
+            "`['active' => ['label' => 'Active', 'color' => 'success']]`",
+            $markdown,
+        );
+    }
+
+    public function testNestingIsElidedOnceItHasStoppedBeingAnExample(): void
+    {
+        $schema = new Schema([
+            'deep' => new SchemaKey(
+                ValueType::Array,
+                description: 'Too deep.',
+                example: ['a' => ['b' => ['c' => ['d' => 1]]]],
+            ),
+        ]);
+
+        $this->assertStringContainsString('[…]', Reference::markdown($schema, 'Reference'));
+    }
 }

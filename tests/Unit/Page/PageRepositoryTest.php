@@ -821,4 +821,43 @@ final class PageRepositoryTest extends TestCase
         $this->assertSame($first, $second);
         $this->assertSame('Ads', $second->title);
     }
+
+    public function testAMalformedOptionIsRefusedRatherThanQuietlyDropped(): void
+    {
+        // A mistyped 'lable' used to leave an option that simply never
+        // appeared in a filter, with nothing anywhere saying why. Every other
+        // malformed thing in a page file is refused by name.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => ['type' => 'enum', 'options' => ['active' => ['lable' => 'Active']]],
+                ]]],
+            ]
+            PHP);
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage("the option 'active' is neither a label nor");
+
+        $this->repository()->get('ads');
+    }
+
+    public function testOptionsThatAreNotAMapAtAllAreRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'state' => ['type' => 'enum', 'options' => 42],
+                ]]],
+            ]
+            PHP);
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage('options must be an @enum: reference');
+
+        $this->repository()->get('ads');
+    }
 }
