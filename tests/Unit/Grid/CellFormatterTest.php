@@ -232,6 +232,86 @@ final class CellFormatterTest extends TestCase
         $this->assertStringNotContainsString($today, $cell->text);
     }
 
+    #[DataProvider('silentlyAcceptedRelativeStringsProvider')]
+    public function testARelativeTimeStringIsNotSilentlyTreatedAsADate(string $raw): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain);
+
+        $cell = $this->formatter->format($column, $raw);
+
+        // A relative string genuinely parses against DateTimeImmutable's own
+        // constructor, so passing it through as text is only convincing
+        // proof if the result does not also happen to be today's (or
+        // tomorrow's, or next week's) date rendered as text.
+        $this->assertSame($raw, $cell->text);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function silentlyAcceptedRelativeStringsProvider(): array
+    {
+        return [
+            'now' => ['now'],
+            'tomorrow' => ['tomorrow'],
+            'relative offset' => ['+1 week'],
+        ];
+    }
+
+    public function testARolledOverInvalidDateIsNotSilentlyAccepted(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d']);
+
+        // 30 February does not exist; DateTimeImmutable "corrects" it to
+        // 2 March without throwing, which is a wrong date that looks right.
+        $cell = $this->formatter->format($column, '2026-02-30');
+
+        $this->assertSame('2026-02-30', $cell->text);
+    }
+
+    public function testADateTimeObjectIsFormattedDirectlyRatherThanEncoded(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d']);
+
+        $cell = $this->formatter->format($column, new \DateTimeImmutable('2024-06-01 08:00:00'));
+
+        $this->assertSame('2024-06-01', $cell->text);
+    }
+
+    public function testAUnixTimestampIntIsFormattedAsADatetime(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d']);
+
+        $cell = $this->formatter->format($column, 1717228800); // 2024-06-01 UTC
+
+        $this->assertSame('2024-06-01', $cell->text);
+    }
+
+    public function testAMysqlDatetimeWithMicrosecondsIsParsed(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d H:i:s']);
+
+        $cell = $this->formatter->format($column, '2024-01-15 10:30:45.123456');
+
+        $this->assertSame('2024-01-15 10:30:45', $cell->text);
+    }
+
+    public function testAPostgresTimestampWithWholeHourOffsetIsParsed(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d H:i:s']);
+
+        $cell = $this->formatter->format($column, '2024-01-15 10:30:45.123456+01');
+
+        $this->assertSame('2024-01-15 10:30:45', $cell->text);
+    }
+
+    public function testAPostgresTimestampWithHalfHourOffsetIsParsed(): void
+    {
+        $column = $this->column(type: ColumnType::Datetime, display: Display::Plain, options: ['format' => 'Y-m-d H:i:s']);
+
+        $cell = $this->formatter->format($column, '2024-01-15 16:00:45.123456+05:30');
+
+        $this->assertSame('2024-01-15 16:00:45', $cell->text);
+    }
+
     // -- bool -----------------------------------------------------------
 
     #[DataProvider('truthySpellingsProvider')]
@@ -318,6 +398,34 @@ final class CellFormatterTest extends TestCase
 
         $this->assertSame('{"a":1}', $cell->text);
         $this->assertArrayNotHasKey('title', $cell->attributes);
+    }
+
+    public function testAJsonValueAtExactlyTheLimitIsNotTruncated(): void
+    {
+        $column = $this->column(type: ColumnType::Json, display: Display::Plain);
+        // json_encode() wraps a string in quotes, so 58 characters of payload
+        // encode to exactly 60 — the truncation limit itself.
+        $value = str_repeat('a', 58);
+        $encoded = (string) json_encode($value);
+        $this->assertSame(60, \strlen($encoded), 'fixture must sit exactly on the limit');
+
+        $cell = $this->formatter->format($column, $value);
+
+        $this->assertSame($encoded, $cell->text);
+        $this->assertArrayNotHasKey('title', $cell->attributes);
+    }
+
+    public function testAJsonValueOneCharacterPastTheLimitIsTruncated(): void
+    {
+        $column = $this->column(type: ColumnType::Json, display: Display::Plain);
+        $value = str_repeat('a', 59);
+        $encoded = (string) json_encode($value);
+        $this->assertSame(61, \strlen($encoded), 'fixture must sit one character past the limit');
+
+        $cell = $this->formatter->format($column, $value);
+
+        $this->assertSame(mb_substr($encoded, 0, 60) . '…', $cell->text);
+        $this->assertSame($encoded, $cell->attributes['title']);
     }
 
     // -- classes ------------------------------------------------------------

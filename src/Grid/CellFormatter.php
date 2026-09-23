@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace RockAdmin\Grid;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
 use RockAdmin\View\Classes;
-use Throwable;
 
 /**
  * Turns a raw database value into a `CellView`: what it says, how it is
@@ -45,6 +45,43 @@ final class CellFormatter
      * this list — including `0`, `'0'`, `false`, `'f'`, `'false'` — is false.
      */
     private const array TRUE_VALUES = [true, 1, '1', 't', 'true'];
+
+    /**
+     * The shapes MySQL and PostgreSQL actually hand back through PDO for a
+     * DATE, DATETIME/TIMESTAMP and TIMESTAMPTZ column, checked by hand
+     * against both rather than assumed:
+     *
+     * - MySQL DATE:                  '2024-01-15'
+     * - MySQL DATETIME/TIMESTAMP:    '2024-01-15 10:30:45' (no fractional
+     *   seconds unless the column declares one, e.g. DATETIME(6))
+     * - MySQL DATETIME(6)/TIMESTAMP(6): '2024-01-15 10:30:45.123456'
+     * - PostgreSQL DATE:             '2024-01-15'
+     * - PostgreSQL TIMESTAMP:        '2024-01-15 10:30:45.123456' (fractional
+     *   part present whenever non-zero)
+     * - PostgreSQL TIMESTAMPTZ:      '2024-01-15 09:30:45.123456+01' (a bare
+     *   two-digit offset when the offset is a whole hour) or
+     *   '2024-01-15 16:00:45.123456+05:30' (with minutes otherwise) — PDO
+     *   converts to the session time zone, so this is the connection's own
+     *   offset rather than one the developer chose.
+     *
+     * `parseDatetime()` normalises the whole-hour offset to `+01:00` before
+     * matching against these, so one `P`-suffixed format covers both.
+     *
+     * ISO 8601's `T` separator is included even though neither database
+     * produces it, because a host application building its own RowSource is
+     * free to hand back an ISO string instead of a raw driver row.
+     */
+    private const array DATETIME_FORMATS = [
+        'Y-m-d\TH:i:s.uP',
+        'Y-m-d\TH:i:sP',
+        'Y-m-d H:i:s.uP',
+        'Y-m-d H:i:sP',
+        'Y-m-d\TH:i:s.u',
+        'Y-m-d\TH:i:s',
+        'Y-m-d H:i:s.u',
+        'Y-m-d H:i:s',
+        'Y-m-d',
+    ];
 
     public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView
     {
@@ -180,30 +217,84 @@ final class CellFormatter
             ? $column->options['format']
             : self::DEFAULT_DATETIME_FORMAT;
 
-        if (!\is_string($value) && !\is_int($value)) {
+        // A driver or a hand-built RowSource may already hand back a date
+        // object; format it directly rather than falling through to json_encode().
+        if ($value instanceof DateTimeInterface) {
+            return $value->format($format);
+        }
+
+        // An int in a datetime column is read as a Unix timestamp. The
+        // column's own type is what supplies the "this is a datetime"
+        // context here — a database driver never returns a bare integer
+        // for a date/time column on its own, so an int reaching this point
+        // was put there deliberately, by a RowSource or a computed column
+        // such as UNIX_TIMESTAMP(), and a Unix timestamp is the one
+        // unambiguous way to encode a datetime as an integer.
+        if (\is_int($value)) {
+            return (new DateTimeImmutable('@' . $value))->format($format);
+        }
+
+        if (!\is_string($value)) {
             return $this->stringify($value);
         }
 
-        // An empty or blank string, and several other odd inputs, are valid
-        // *relative* time strings to DateTimeImmutable and silently resolve
-        // to "now" instead of failing — which would turn a missing value
-        // into a plausible-looking today. A blank value stays blank text.
-        if (\is_string($value) && trim($value) === '') {
-            return $value;
+        $date = $this->parseDatetime($value);
+
+        // A value that does not genuinely look like a date — including one
+        // that merely parses, such as 'now', 'tomorrow' or a rolled-over
+        // '2026-02-30' — passes through as text rather than becoming a
+        // plausible wrong date: an odd string makes somebody investigate,
+        // a wrong-looking-right date does not.
+        return $date === null ? $value : $date->format($format);
+    }
+
+    /**
+     * Accepts a value only when it matches one of the shapes MySQL or
+     * PostgreSQL actually produce (see DATETIME_FORMATS), and only when
+     * DateTimeImmutable parsed every field of that shape without a warning.
+     *
+     * createFromFormat() is deliberately used in place of the ordinary
+     * constructor: the constructor accepts anything strtotime() accepts,
+     * including relative phrases like 'now' or '+1 week' and an
+     * out-of-range date like '2026-02-30', which it silently rolls over to
+     * 2 March instead of rejecting. createFromFormat() against an exact
+     * format rejects the relative phrases outright (they simply do not
+     * match 'Y-m-d H:i:s'), and getLastErrors() exposes the rollover as a
+     * warning even though the call itself still "succeeds".
+     */
+    private function parseDatetime(string $value): ?DateTimeImmutable
+    {
+        // PostgreSQL's timestamptz gives a bare two-digit offset ('+01')
+        // when the offset is a whole hour, and only adds the minutes
+        // ('+05:30') otherwise. PHP's 'P' format code requires the colon
+        // and minutes in every case, so a whole-hour offset is normalised
+        // to match before parsing. The pattern only fires right after a
+        // two-digit seconds field (optionally with a fractional part), so
+        // it cannot mistake the '-15' at the end of a plain '2024-01-15'
+        // date for a timezone offset.
+        $normalized = preg_replace('/(:\d{2}(?:\.\d+)?)([+-]\d{2})$/', '$1$2:00', $value) ?? $value;
+
+        foreach (self::DATETIME_FORMATS as $format) {
+            // The '!' prefix resets every field DATETIME_FORMATS does not
+            // mention to the Unix epoch instead of the current moment, so a
+            // date-only value such as '2024-01-15' becomes midnight on that
+            // day rather than "today, but at whatever time it is now".
+            $date = DateTimeImmutable::createFromFormat('!' . $format, $normalized);
+
+            if ($date === false) {
+                continue;
+            }
+
+            $errors = DateTimeImmutable::getLastErrors();
+
+            if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+                continue;
+            }
+
+            return $date;
         }
 
-        try {
-            $date = \is_int($value)
-                ? new DateTimeImmutable('@' . $value)
-                : new DateTimeImmutable($value);
-        } catch (Throwable) {
-            // A value that cannot be parsed passes through as text rather
-            // than becoming an arbitrary date: a wrong-looking string makes
-            // somebody investigate, a plausible wrong date does not.
-            return (string) $value;
-        }
-
-        return $date->format($format);
+        return null;
     }
 
     /** @return array{string, null, ?string, array<string, scalar|null>} */
