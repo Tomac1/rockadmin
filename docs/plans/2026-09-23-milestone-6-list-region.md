@@ -1253,6 +1253,124 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
 
 ---
 
+### Task 9: The preview region
+
+A grid whose rows cannot be opened is half a tool. This adds the second region
+type — one row, rendered as a field list — reachable at `/p/{page}/{id}` as a
+standalone page and at `/r/{page}/{region}?id=42` as a fragment, which is what
+milestone 8 will later open in an offcanvas without changing anything here.
+
+**Files:**
+- Create: `src/Grid/PreviewRegion.php`
+- Create: `src/Grid/PreviewView.php`
+- Create: `src/Grid/FieldView.php`
+- Create: `src/Http/DetailHandler.php`
+- Create: `templates/region/preview/region.php`, `field.php`, `missing.php`
+- Modify: `src/Page/PageSchema.php` — a region's `fields` key
+- Modify: `src/Page/RegionDefinition.php` — resolved fields
+- Test: `tests/Unit/Grid/PreviewRegionTest.php`
+- Test: `tests/Unit/Http/DetailHandlerTest.php`
+- Test: `tests/Integration/Grid/PreviewTest.php`
+
+**Interfaces:**
+- Consumes: `PageDefinition`, `RegionDefinition`, `ColumnDefinition`,
+  `CellFormatter`, `RowSource`, `QueryFactory` — everything Tasks 2-6 built.
+- Produces:
+  ```php
+  namespace RockAdmin\Grid;
+
+  final class PreviewRegion
+  {
+      public function __construct(
+          private readonly RowSource $rows,
+          private readonly QueryFactory $queries,
+          private readonly CellFormatter $cells,
+      );
+
+      /** Null when no row has that key — the caller turns that into a 404. */
+      public function render(PageDefinition $page, RegionDefinition $region, string $id): ?PreviewView;
+  }
+
+  final class PreviewView
+  {
+      public readonly string $key;          // the region key
+      public readonly string $title;        // the row's own label, not the page's
+      public readonly string $id;
+      /** @var list<FieldView> */
+      public readonly array $fields;
+      public function classes(): string;
+  }
+
+  final class FieldView
+  {
+      public readonly string $key;
+      public readonly string $label;
+      public readonly CellView $cell;
+      public readonly bool $wide;   // long text and json span the full width
+      public function classes(): string;
+  }
+  ```
+
+**Which fields a preview shows**, from spec 8.5, exactly:
+
+| Configuration | Meaning |
+|---|---|
+| key omitted | inherit the grid's columns |
+| `'fields' => ['a', 'b']` | exactly these, in this order |
+| `'fields' => '@all'` | every column of the entity's table |
+| `'fields' => []` | none — legal, but the loader warns, since it is almost always a mistake |
+
+`@all` needs the table's real columns, which only the database knows. Add
+`Connection::columns(string $table): list<string>` to milestone 3's connection
+— `Dialect` already isolates everything else per-server, so put the two
+information-schema queries there rather than in `Connection`. On MySQL that is
+`SHOW COLUMNS`; on PostgreSQL, `information_schema.columns`. Write it with an
+integration test on both drivers before anything else in this task, because
+everything else here depends on it being right.
+
+**A preview reuses the grid's query machinery.** Build a `Query` for the
+region's fields with a `Filter` on the entity key and a `Page` of one row. Do
+not write a second query path: a preview that fetches differently from the
+grid it came from will eventually disagree with it about what a column means.
+
+**Long values get their own row.** A `json` cell, a `text` cell past a
+sensible length and anything the column marks `wide` span the full width
+rather than squeezing into a definition-list column. Everything else is a
+label-and-value pair.
+
+**A missing row is a 404, not an empty preview.** `DetailHandler` throws
+`NotFoundException` when `render()` returns null, because `/p/ads/999999` is a
+URL that names nothing.
+
+- [ ] **Step 1: Write the failing tests**
+
+```php
+public function testAPreviewRendersOneFieldPerColumn(): void
+public function testFieldsDefaultToTheGridsColumns(): void
+public function testAnExplicitFieldListIsUsedInItsOwnOrder(): void
+public function testAFieldNamingAnUndeclaredColumnIsRefusedAtLoad(): void
+public function testAllExpandsToEveryColumnOfTheTable(): void
+public function testAnEmptyFieldListWarnsRatherThanFailing(): void
+public function testAJsonFieldIsWide(): void
+public function testAMissingRowIsNull(): void
+public function testThePreviewAndTheGridFormatTheSameValueIdentically(): void
+public function testThePreviewIssuesOneStatementForOneRow(): void
+```
+
+That ninth test is the seam: format the same column through `ListRegion` and
+through `PreviewRegion` and assert the two `CellView`s are equal. Two renderers
+over one formatter is exactly the shape that drifts, and milestones 1 through 4
+each lost a day to one.
+
+- [ ] **Step 2-6: Fail, implement, verify on both drivers, gate, commit**
+
+```bash
+git add src templates tests
+git commit -m "Open a row: one region, as a page and as a fragment"
+```
+
+---
+
 ## Milestone acceptance
 
 1. `composer run check` is green, with the database variables exported so the
@@ -1265,9 +1383,11 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
 5. A filter, a search, a sort and a page change each survive a round trip
    through the URL, and a link copied out of the address bar reproduces the
    same grid.
-6. The same region renders identically as a page and as a fragment.
-7. Everything works with JavaScript disabled.
-8. Every new configuration key is in `docs/reference/`, and
+6. The same region renders identically as a page and as a fragment, and a
+   preview formats a value exactly as the grid it came from does.
+7. A row opens at `/p/{page}/{id}` showing every field the page declares.
+8. Everything works with JavaScript disabled.
+9. Every new configuration key is in `docs/reference/`, and
    `ReferenceIsCurrentTest` proves it.
 
 ## What this milestone deliberately leaves out
@@ -1276,8 +1396,8 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
   type, bulk actions and the header's action buttons. They are built on routes
   that mutate, which is milestone 7.
 - **Forms and writes** — milestone 7.
-- **The `preview`, `form`, `nav` and `stat` region types.** This milestone
-  builds `list` and the machinery all of them share.
+- **The `form`, `nav` and `stat` region types.** This milestone builds `list`
+  and `preview`, and the machinery all of them share.
 - **Permissions and `{{user.*}}` binding** — milestone 5. Until then a page's
   `scope` may reference `{{workspace.*}}` and the placeholder will survive
   unbound, which the query builder already refuses loudly rather than
