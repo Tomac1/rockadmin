@@ -186,7 +186,7 @@ chooses from. Nothing loads yet — this task declares the vocabulary.
       case Text = 'text'; case Int = 'int'; case Money = 'money';
       case Datetime = 'datetime'; case Bool = 'bool'; case Enum = 'enum';
       case Json = 'json';
-      public static function from(string $value): self;      // refuses with PageException
+      public static function parse(string $value): self;     // refuses with PageException
       public function defaultDisplay(): Display;
       public function allows(Display $display): bool;
       public function defaultAlignment(): string;            // 'start' or 'end'
@@ -340,8 +340,9 @@ Expected: FAIL — none of these classes exist.
 
 - [ ] **Step 3: Write the implementation**
 
-`ColumnType::from()` shadows the enum's own `from()` deliberately: the native
-one throws `\ValueError` with a message nobody can act on. Use
+`ColumnType::parse()` exists because a backed enum's own `from()` cannot be
+redeclared, and its `\ValueError` names no alternatives. `Display::parse()`
+is its twin. Use
 `Schema::nearestOf()` — it already exists and already solves "did you mean" —
 to suggest the closest case, and list all seven when nothing is close.
 
