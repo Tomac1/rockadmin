@@ -43,12 +43,12 @@ final class ColumnTypeTest extends TestCase
     #[DataProvider('typeDefaults')]
     public function testATypeKnowsHowItLooksWhenNobodySays(string $type, string $display): void
     {
-        $this->assertSame($display, ColumnType::from($type)->defaultDisplay()->value);
+        $this->assertSame($display, ColumnType::parse($type)->defaultDisplay()->value);
     }
 
     public function testABooleanMayBeACheckOrTheWordsYesAndNo(): void
     {
-        $bool = ColumnType::from('bool');
+        $bool = ColumnType::parse('bool');
 
         $this->assertTrue($bool->allows(Display::Check));
         $this->assertTrue($bool->allows(Display::YesNo));
@@ -59,17 +59,17 @@ final class ColumnTypeTest extends TestCase
     {
         // The pair means nothing, so it is refused rather than rendered as
         // something the writer did not intend.
-        $this->assertFalse(ColumnType::from('money')->allows(Display::Progress));
+        $this->assertFalse(ColumnType::parse('money')->allows(Display::Progress));
     }
 
     public function testNumbersAlignToTheEndAndEverythingElseToTheStart(): void
     {
         // A ragged right edge makes a column of numbers unreadable, which is
         // the whole reason anyone puts numbers in a grid.
-        $this->assertSame('end', ColumnType::from('money')->defaultAlignment());
-        $this->assertSame('end', ColumnType::from('int')->defaultAlignment());
-        $this->assertSame('start', ColumnType::from('text')->defaultAlignment());
-        $this->assertSame('start', ColumnType::from('datetime')->defaultAlignment());
+        $this->assertSame('end', ColumnType::parse('money')->defaultAlignment());
+        $this->assertSame('end', ColumnType::parse('int')->defaultAlignment());
+        $this->assertSame('start', ColumnType::parse('text')->defaultAlignment());
+        $this->assertSame('start', ColumnType::parse('datetime')->defaultAlignment());
     }
 
     public function testAnUnknownTypeIsRefusedAndSuggestsTheNearest(): void
@@ -79,18 +79,41 @@ final class ColumnTypeTest extends TestCase
         $this->expectException(PageException::class);
         $this->expectExceptionMessage('text');
 
-        ColumnType::from('texte');
+        ColumnType::parse('texte');
     }
 
     public function testTheRefusalListsEveryTypeWhenNothingIsClose(): void
     {
         try {
-            ColumnType::from('quantum');
+            ColumnType::parse('quantum');
             $this->fail('An unknown type should throw.');
         } catch (PageException $e) {
             foreach (ColumnType::cases() as $type) {
                 $this->assertStringContainsString($type->value, $e->getMessage());
             }
+        }
+    }
+
+    public function testADisplayIsParsedAndAnUnknownOneIsRefused(): void
+    {
+        $this->assertSame(Display::Badge, Display::parse('badge'));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage('progress');
+
+        Display::parse('progres');
+    }
+
+    public function testEveryCaseSurvivesARoundTripThroughItsOwnValue(): void
+    {
+        // Both are backed enums, so a value read out of configuration and a
+        // value written back into a URL or a cache are the same string.
+        foreach (ColumnType::cases() as $type) {
+            $this->assertSame($type, ColumnType::parse($type->value));
+        }
+
+        foreach (Display::cases() as $display) {
+            $this->assertSame($display, Display::parse($display->value));
         }
     }
 }
