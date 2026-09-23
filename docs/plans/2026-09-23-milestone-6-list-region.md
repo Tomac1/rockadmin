@@ -137,6 +137,7 @@ src/Grid/FilterInput.php         one filter as it arrived, before it is trusted
 src/Grid/QueryFactory.php        definition + state -> RockAdmin\Db\Query
 src/Grid/ListRegion.php          runs the query, builds the view
 src/Grid/ListView.php            what the list templates read
+src/Grid/ColumnView.php          one header: label, classes, sort link
 src/Grid/RowView.php             one row, with its cells and its identity
 src/Grid/CellView.php            one cell: value, formatted text, classes, link
 src/Grid/PaginationView.php      pages, current page, total, page links
@@ -971,7 +972,7 @@ git commit -m "Format a value for a grid cell without losing zero or false"
   {
       public readonly string $key;              // the region key
       public readonly string $pageName;
-      /** @var list<ColumnDefinition> */
+      /** @var list<ColumnView> */
       public readonly array $columns;
       /** @var list<RowView> */
       public readonly array $rows;
@@ -983,10 +984,25 @@ git commit -m "Format a value for a grid cell without losing zero or false"
       public readonly string $regionUrl;        // /r/{page}/{region}, for refreshes
       public function isEmpty(): bool;
       public function classes(): string;
-      public function sortUrl(ColumnDefinition $column): string;
-      public function sortDirection(ColumnDefinition $column): ?string;
+  }
+
+  final class ColumnView
+  {
+      public readonly string $key;
+      public readonly string $label;
+      public readonly string $classes;         // ra-grid-head ra-grid-head-<key> ...
+      public readonly string $align;
+      public readonly ?string $width;
+      public readonly ?string $sortUrl;        // null when the column is not sortable
+      public readonly ?string $sortDirection;  // 'ascending', 'descending' or null
   }
   ```
+
+**Why the columns are a view and not the definitions.** Handing templates a
+`ColumnDefinition` would hand them configuration, which rule 4 of this project
+forbids — and it would force `ListView` to hold a `UrlGenerator` and a
+`GridState` so it could answer `sortUrl()` while rendering. Everything a
+header needs is decided once, in `ListRegion`, and arrives already decided.
 
   `RowView` carries the row's key value, its `CellView`s in column order, its
   detail URL and its `ra-grid-row` classes. `PaginationView` carries the
@@ -1012,6 +1028,9 @@ public function testARowCarriesItsKeyValueSoTheTemplateCanIdentifyIt(): void
 public function testAColumnThatLinksGivesItsCellTheRowsDetailUrl(): void
 public function testTheSortUrlForAColumnTogglesItsDirection(): void
 public function testTheSortUrlKeepsTheCurrentFiltersAndSearch(): void
+public function testAnUnsortableColumnHasNoSortUrl(): void
+public function testOnlyTheCurrentSortColumnCarriesADirection(): void
+public function testNoViewObjectCarriesAColumnDefinition(): void
 public function testAnEmptyResultIsAnEmptyViewRatherThanAnError(): void
 public function testTheRegionUrlIsTheFragmentAddressForThisRegion(): void
 public function testFiltersCarryTheValueTheUrlAlreadyHeld(): void
