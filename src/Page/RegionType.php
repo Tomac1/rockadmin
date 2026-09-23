@@ -15,7 +15,7 @@ namespace RockAdmin\Page;
  */
 enum RegionType: string
 {
-    case ListRegion = 'list';
+    case List = 'list';
     case Preview = 'preview';
 
     /** @throws PageException when the value names no region type */

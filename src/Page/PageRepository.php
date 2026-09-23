@@ -302,7 +302,7 @@ final class PageRepository
         $typeValue = \is_string($regionConfig['type'] ?? null) ? $regionConfig['type'] : '';
 
         try {
-            $type = RegionType::parse($typeValue)->value;
+            $type = RegionType::parse($typeValue);
         } catch (PageException $e) {
             throw new PageException(
                 "Page '{$pageName}': region '{$regionKey}': {$e->getMessage()}",

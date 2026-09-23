@@ -17,7 +17,7 @@ final class RegionDefinition
      */
     public function __construct(
         public readonly string $key,
-        public readonly string $type,
+        public readonly RegionType $type,
         public readonly int $perPage,
         public readonly array $columns,
         public readonly array $sort,

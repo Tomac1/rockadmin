@@ -13,6 +13,7 @@ use RockAdmin\Page\Display;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\RegionDefinition;
+use RockAdmin\Page\RegionType;
 
 #[CoversClass(PageDefinition::class)]
 #[CoversClass(RegionDefinition::class)]
@@ -44,7 +45,7 @@ final class PageDefinitionTest extends TestCase
             $columns[$columnKey] = $this->column($columnKey);
         }
 
-        return new RegionDefinition($key, 'list', 25, $columns, [], []);
+        return new RegionDefinition($key, RegionType::List, 25, $columns, [], []);
     }
 
     private function page(RegionDefinition ...$regions): PageDefinition

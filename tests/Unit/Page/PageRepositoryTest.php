@@ -15,6 +15,7 @@ use RockAdmin\Db\SortDirection;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
 use RockAdmin\Page\PageException;
+use RockAdmin\Page\RegionType;
 use RockAdmin\Page\PageRepository;
 
 #[CoversClass(PageRepository::class)]
@@ -859,5 +860,21 @@ final class PageRepositoryTest extends TestCase
         $this->expectExceptionMessage('options must be an @enum: reference');
 
         $this->repository()->get('ads');
+    }
+
+    public function testARegionCarriesItsTypeAsTheClosedEnumNotAString(): void
+    {
+        // The enum exists to make the set closed; handing consumers back a
+        // string would mean every one of them re-parses it, and the second
+        // parser is always the one that forgets a case.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $this->assertSame(RegionType::List, $this->repository()->get('ads')->region('grid')->type);
     }
 }
