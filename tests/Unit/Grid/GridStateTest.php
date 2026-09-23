@@ -445,4 +445,26 @@ final class GridStateTest extends TestCase
 
         $this->assertFalse($state->isEmpty());
     }
+
+    public function testIsEmptyIsFalseOnceThereIsAFilter(): void
+    {
+        // The templates ask this to choose between "nothing here yet" and
+        // "nothing matches these filters", with a link to clear them. An
+        // isEmpty() that only looked at the search term would tell somebody
+        // who filtered their way to no rows that the table is empty.
+        $region = $this->region(['state' => $this->column('state', filter: $this->filter())]);
+
+        $state = GridState::fromQuery(['grid' => ['f' => ['state' => 'active']]], 'grid', $region);
+
+        $this->assertFalse($state->isEmpty());
+    }
+
+    public function testIsEmptyIsFalseOnceThePageHasMoved(): void
+    {
+        $region = $this->region(['title' => $this->column('title')]);
+
+        $state = GridState::fromQuery(['grid' => ['page' => '3']], 'grid', $region);
+
+        $this->assertFalse($state->isEmpty());
+    }
 }
