@@ -87,6 +87,19 @@ final class UrlGeneratorTest extends TestCase
         new UrlGenerator('/admin', 'magic');
     }
 
+    public function testASchemeRelativeBaseIsRefused(): void
+    {
+        // A base of "//host/admin" makes every link this generator builds
+        // scheme-relative, which Escaper::url() then refuses as an open
+        // redirect — so a page built on top of one would throw on every
+        // link, including the error page's own, rather than failing once
+        // here where the misconfiguration is.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('//evil.com/admin');
+
+        new UrlGenerator('//evil.com/admin');
+    }
+
     /** @return array<string, array{string}> */
     public static function roundTripValues(): array
     {

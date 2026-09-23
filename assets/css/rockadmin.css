@@ -1,0 +1,387 @@
+/*
+ * The RockAdmin theme.
+ *
+ * This file redefines Bootstrap's own custom properties rather than
+ * overriding its component classes, so there is no fork of Bootstrap to
+ * maintain: every component still reads --bs-primary, --bs-border-radius and
+ * the rest, it just reads different values here. Loaded after
+ * bootstrap.min.css and before a project's own stylesheet, so a project
+ * overrides this without !important either.
+ *
+ * Density is the single biggest difference between something that looks like
+ * a website and something that looks like a tool: an admin table wants more
+ * rows on screen than a marketing page does. Everything else — the font
+ * stack, the palette, the restrained radius and shadow — matters, but
+ * density is why a grid reads as a grid.
+ */
+
+:root {
+    /* Type: a system stack, no font request leaves the machine, and a base
+       size smaller than Bootstrap's so more of a table fits above the fold. */
+    --bs-font-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    --bs-body-font-family: var(--bs-font-sans-serif);
+    --bs-body-font-size: 0.9rem;
+    --bs-body-line-height: 1.4;
+
+    /* Shape: restrained radius and no default shadow. Bootstrap's own
+       defaults are exactly what makes a page read as "stock Bootstrap". */
+    --bs-border-radius: 0.25rem;
+    --bs-border-radius-sm: 0.2rem;
+    --bs-border-radius-lg: 0.3rem;
+    --bs-box-shadow: none;
+    --bs-box-shadow-sm: none;
+
+    /* Palette: RockAdmin's own, not Bootstrap's blue. Desaturated slate for
+       primary actions, a neutral gray scale for the shell. */
+    --bs-primary: #3a5470;
+    --bs-primary-rgb: 58, 84, 112;
+    --bs-secondary: #6c757d;
+    --bs-secondary-rgb: 108, 117, 125;
+    --bs-success: #2e7d5b;
+    --bs-success-rgb: 46, 125, 91;
+    --bs-info: #3d7d99;
+    --bs-info-rgb: 61, 125, 153;
+    --bs-warning: #b3791f;
+    --bs-warning-rgb: 179, 121, 31;
+    --bs-danger: #b3402f;
+    --bs-danger-rgb: 179, 64, 47;
+    --bs-light: #f5f6f7;
+    --bs-light-rgb: 245, 246, 247;
+    --bs-dark: #22262b;
+    --bs-dark-rgb: 34, 38, 43;
+
+    --bs-body-color: #22262b;
+    --bs-body-bg: #ffffff;
+    --bs-border-color: #dee1e4;
+    --bs-link-color: var(--bs-primary);
+    --bs-link-hover-color: #2c405a;
+    /* `a` and `a:hover` are written in Bootstrap's own CSS as
+       rgba(var(--bs-link-color-rgb), …) and rgba(var(--bs-link-hover-color-rgb), …),
+       never as var(--bs-link-color) directly, so the hex tokens above are not
+       enough on their own: without these two, both rules read an unset custom
+       property, the whole `color` declaration is invalid, and every link falls
+       back to the inherited text colour instead of the theme's slate. */
+    --bs-link-color-rgb: var(--bs-primary-rgb);
+    --bs-link-hover-color-rgb: 44, 64, 90;
+
+    /* The shell: tokens Bootstrap has no equivalent for, so they are ours
+       to name. Templates and this stylesheet are the only readers. */
+    --ra-sidebar-width: 15rem;
+    --ra-header-height: 3rem;
+    --ra-grid-row-padding: 0.35rem;
+
+    /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
+       those flip with the page theme, and the navbar does not. It is the
+       dark bar the content sits under in both modes, so its foreground and
+       background are stated once here and never redefined in a theme block.
+       Tying them to --bs-light was how the menu came to render near-black
+       text on a near-black bar the moment dark mode arrived. */
+    --ra-shell-bg: #22262b;
+    --ra-shell-fg: #f5f6f7;
+    --ra-shell-fg-rgb: 245, 246, 247;
+}
+
+/*
+ * Density. A grid cell, a table row and a form control all get less padding
+ * than Bootstrap's defaults, so a screen shows more rows without shrinking
+ * the type past legibility.
+ */
+.ra-grid-cell,
+.table > :not(caption) > * > * {
+    padding-top: var(--ra-grid-row-padding);
+    padding-bottom: var(--ra-grid-row-padding);
+}
+
+.table {
+    --bs-table-color: var(--bs-body-color);
+    font-size: 0.85rem;
+}
+
+.form-control,
+.form-select {
+    min-height: calc(1.4em + 0.5rem + 2px);
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.form-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.btn {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+    font-size: 0.85rem;
+}
+
+/*
+ * Bootstrap's .btn-primary and its siblings do not read --bs-primary and
+ * friends: each hardcodes its own --bs-btn-bg, --bs-btn-border-color and the
+ * hover/active/disabled variants as literal hex from Bootstrap's own
+ * palette (bootstrap.min.css: .btn-primary{--bs-btn-bg:#0d6efd;...}). Only
+ * .text-bg-* and a handful of utilities read the semantic custom properties
+ * this file redefines above — a button does not — so without this block
+ * every button in the admin is Bootstrap blue (or green, or red) regardless
+ * of the palette declared above, which is exactly what spec 8.8 rules out.
+ *
+ * Hover and active shades are mixed with black at the same weights
+ * Bootstrap's own Sass uses (shade-color($color, 15%) / shade-color($color,
+ * 20%) for the background, 20%/25% for the border) via color-mix(), so the
+ * result matches Bootstrap's shading without a Sass build step.
+ */
+.btn-primary,
+.btn-secondary,
+.btn-success,
+.btn-info,
+.btn-warning,
+.btn-danger,
+.btn-light,
+.btn-dark {
+    --bs-btn-border-color: var(--ra-btn-color);
+    --bs-btn-hover-bg: color-mix(in srgb, var(--ra-btn-color) 85%, black);
+    --bs-btn-hover-border-color: color-mix(in srgb, var(--ra-btn-color) 80%, black);
+    --bs-btn-active-bg: color-mix(in srgb, var(--ra-btn-color) 80%, black);
+    --bs-btn-active-border-color: color-mix(in srgb, var(--ra-btn-color) 75%, black);
+    --bs-btn-disabled-bg: var(--ra-btn-color);
+    --bs-btn-disabled-border-color: var(--ra-btn-color);
+    --bs-btn-bg: var(--ra-btn-color);
+}
+
+.btn-primary { --ra-btn-color: var(--bs-primary); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-secondary { --ra-btn-color: var(--bs-secondary); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-success { --ra-btn-color: var(--bs-success); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-info { --ra-btn-color: var(--bs-info); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-warning { --ra-btn-color: var(--bs-warning); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-danger { --ra-btn-color: var(--bs-danger); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
+.btn-dark { --ra-btn-color: var(--bs-dark); --bs-btn-color: var(--bs-light); --bs-btn-hover-color: var(--bs-light); --bs-btn-active-color: var(--bs-light); --bs-btn-disabled-color: var(--bs-light); }
+/* .btn-light's background follows --bs-light, which is a dark shade in dark
+   mode, so its text colour has to follow too — a fixed #000 would be the
+   navbar's bug again, dormant until a template uses this class. */
+.btn-light { --ra-btn-color: var(--bs-light); --bs-btn-color: var(--bs-dark); --bs-btn-hover-color: var(--bs-dark); --bs-btn-active-color: var(--bs-dark); --bs-btn-disabled-color: var(--bs-dark); }
+
+/* The shell itself. */
+.ra-navbar {
+    min-height: var(--ra-header-height);
+    background-color: var(--ra-shell-bg);
+    color: var(--ra-shell-fg);
+    padding: 0 1rem;
+
+    /* The navbar's background is always the dark shell colour, in both light
+       and dark mode. Bootstrap's .navbar computes its link colours from
+       --bs-emphasis-color-rgb, which follows the *page* theme — 0,0,0 in
+       light mode — so left alone the menu is near-black text on a
+       near-black bar. These are set here, on the one element whose
+       background never follows the page theme, rather than with
+       data-bs-theme="dark" on the element: that attribute would also swing
+       every other themed token in this subtree (body background, borders,
+       form controls in the dropdown) to their dark-mode values, which is
+       more than a contrast fix asks for.
+
+       They are declared on .ra-navbar itself, so a dark-mode block on :root
+       could never reach them: a rule targeting an ancestor only applies to
+       this element by inheritance, and inheritance never overrides the
+       element's own declaration. Hence --ra-shell-*, which do not change. */
+    --bs-navbar-color: rgba(var(--ra-shell-fg-rgb), 0.75);
+    --bs-navbar-hover-color: rgba(var(--ra-shell-fg-rgb), 0.95);
+    --bs-navbar-active-color: var(--ra-shell-fg);
+}
+
+.ra-navbar-brand {
+    color: var(--ra-shell-fg);
+    font-weight: 600;
+}
+
+.ra-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.ra-page-title {
+    font-size: 1.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.ra-page-description {
+    color: var(--bs-secondary);
+    margin-bottom: 0;
+}
+
+.ra-main {
+    padding: 0;
+}
+
+.ra-layout {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.ra-layout-two-column .ra-layout-side,
+.ra-layout-sidebar-detail .ra-layout-list {
+    flex: 0 0 var(--ra-sidebar-width);
+}
+
+.ra-layout-two-column .ra-layout-main,
+.ra-layout-sidebar-detail .ra-layout-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ra-toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1080;
+}
+
+.ra-error-main {
+    max-width: 32rem;
+    margin: 4rem auto;
+    padding: 0 1rem;
+    text-align: center;
+}
+
+.ra-error-detail {
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background-color: var(--bs-light);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+}
+
+/*
+ * Dark mode ships now. The media-query block only applies when the document
+ * carries no explicit data-bs-theme, so an operator's choice always wins
+ * over the operating system's.
+ *
+ * This mirrors more than the theme's own six tokens. Every dark-mode
+ * behaviour Bootstrap ships — color-scheme, the emphasis and secondary/
+ * tertiary surface tokens, the light select-arrow SVG, the form-switch dot,
+ * the navbar link colours, and the close-button filter — is keyed on
+ * [data-bs-theme=dark] in bootstrap.min.css and nowhere else. Setting only
+ * the six custom properties above means an operator who has done nothing —
+ * left dark_mode at 'auto' and let the OS decide — gets a page where the
+ * body is dark but every one of those stays in its light-mode form: a
+ * select's arrow is a dark glyph on a dark field, a close button is a black
+ * glyph on a dark toast, and translucent surfaces (built from
+ * --bs-body-bg-rgb, which nothing here set) are tinted from white. The two
+ * blocks below — the media query and the explicit attribute — carry
+ * identical values so 'auto' under OS dark mode and dark_mode: 'on' produce
+ * the same page, which is the promise ShellView::themeAttribute() makes.
+ *
+ * --bs-light-rgb and --bs-dark-rgb are included for the same reason: they
+ * back bg-light, bg-dark, text-bg-light, text-bg-dark, border-light and
+ * border-dark, none of which are exercised by this milestone's templates,
+ * but which would otherwise silently read the light-mode --bs-light /
+ * --bs-dark hex as rgb components frozen at their light-mode values while
+ * the hex tokens themselves change underneath them — found while fixing the
+ * identical --bs-body-bg-rgb problem below, not asked for separately.
+ */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-bs-theme]) {
+        color-scheme: dark;
+        --bs-body-color: #dfe3e6;
+        --bs-body-color-rgb: 223, 227, 230;
+        --bs-body-bg: #16181b;
+        --bs-body-bg-rgb: 22, 24, 27;
+        --bs-border-color: #363b41;
+        --bs-light: #22262b;
+        --bs-light-rgb: 34, 38, 43;
+        --bs-dark: #0e1012;
+        --bs-dark-rgb: 14, 16, 18;
+        --bs-link-color: #7ea3c4;
+        --bs-link-hover-color: #9cbcd8;
+        --bs-link-color-rgb: 126, 163, 196;
+        --bs-link-hover-color-rgb: 156, 188, 216;
+
+        --bs-emphasis-color: #fff;
+        --bs-emphasis-color-rgb: 255, 255, 255;
+        --bs-secondary-color: rgba(223, 227, 230, 0.75);
+        --bs-secondary-color-rgb: 223, 227, 230;
+        --bs-secondary-bg: #343a40;
+        --bs-secondary-bg-rgb: 52, 58, 64;
+        --bs-tertiary-color: rgba(223, 227, 230, 0.5);
+        --bs-tertiary-color-rgb: 223, 227, 230;
+        --bs-tertiary-bg: #2b3035;
+        --bs-tertiary-bg-rgb: 43, 48, 53;
+
+        --bs-navbar-color: rgba(255, 255, 255, 0.55);
+        --bs-navbar-hover-color: rgba(255, 255, 255, 0.75);
+        --bs-navbar-disabled-color: rgba(255, 255, 255, 0.25);
+        --bs-navbar-active-color: #fff;
+    }
+
+    :root:not([data-bs-theme]) .ra-error-detail {
+        background-color: #1c1f23;
+    }
+
+    :root:not([data-bs-theme]) .form-select {
+        --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23dee2e6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    }
+
+    :root:not([data-bs-theme]) .form-switch .form-check-input:not(:checked):not(:focus) {
+        --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255, 255, 255, 0.25%29'/%3e%3c/svg%3e");
+    }
+
+    :root:not([data-bs-theme]) .btn-close {
+        filter: var(--bs-btn-close-white-filter);
+    }
+}
+
+[data-bs-theme="dark"] {
+    color-scheme: dark;
+    --bs-body-color: #dfe3e6;
+    --bs-body-color-rgb: 223, 227, 230;
+    --bs-body-bg: #16181b;
+    --bs-body-bg-rgb: 22, 24, 27;
+    --bs-border-color: #363b41;
+    --bs-light: #22262b;
+    --bs-light-rgb: 34, 38, 43;
+    --bs-dark: #0e1012;
+    --bs-dark-rgb: 14, 16, 18;
+    --bs-link-color: #7ea3c4;
+    --bs-link-hover-color: #9cbcd8;
+    --bs-link-color-rgb: 126, 163, 196;
+    --bs-link-hover-color-rgb: 156, 188, 216;
+
+    --bs-emphasis-color: #fff;
+    --bs-emphasis-color-rgb: 255, 255, 255;
+    --bs-secondary-color: rgba(223, 227, 230, 0.75);
+    --bs-secondary-color-rgb: 223, 227, 230;
+    --bs-secondary-bg: #343a40;
+    --bs-secondary-bg-rgb: 52, 58, 64;
+    --bs-tertiary-color: rgba(223, 227, 230, 0.5);
+    --bs-tertiary-color-rgb: 223, 227, 230;
+    --bs-tertiary-bg: #2b3035;
+    --bs-tertiary-bg-rgb: 43, 48, 53;
+
+    --bs-navbar-color: rgba(255, 255, 255, 0.55);
+    --bs-navbar-hover-color: rgba(255, 255, 255, 0.75);
+    --bs-navbar-disabled-color: rgba(255, 255, 255, 0.25);
+    --bs-navbar-active-color: #fff;
+}
+
+[data-bs-theme="dark"] .ra-error-detail {
+    background-color: #1c1f23;
+}
+
+[data-bs-theme="dark"] .form-select {
+    --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23dee2e6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+}
+
+[data-bs-theme="dark"] .form-switch .form-check-input:not(:checked):not(:focus) {
+    --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255, 255, 255, 0.25%29'/%3e%3c/svg%3e");
+}
+
+[data-bs-theme="dark"] .btn-close {
+    filter: var(--bs-btn-close-white-filter);
+}

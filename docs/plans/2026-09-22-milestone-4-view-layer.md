@@ -220,7 +220,8 @@ final class EscaperTest extends TestCase
     {
         // htmlspecialchars() without ENT_SUBSTITUTE returns '' on malformed
         // input, which silently deletes a label instead of showing it broken.
-        $this->assertSame("\u{FFFD}", $this->escaper->text("\xC3\x28"));
+        // The lone 0xC3 is replaced; the '(' after it is valid and survives.
+        $this->assertSame("\u{FFFD}(", $this->escaper->text("\xC3\x28"));
     }
 
     /** @return array<string, array{mixed, string}> */
@@ -601,7 +602,9 @@ final class TemplateResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/ra-templates-' . bin2hex(random_bytes(6));
+        // The resolver reports forward slashes, so the expectations must use
+        // them too — sys_get_temp_dir() returns backslashes on Windows.
+        $this->root = str_replace('\', '/', sys_get_temp_dir()) . '/ra-templates-' . bin2hex(random_bytes(6));
         $this->write('sdk/ui/button.php', 'sdk button');
         $this->write('sdk/layout/base.php', 'sdk base');
         $this->write('project/ui/button.php', 'project button');
@@ -689,13 +692,18 @@ final class TemplateResolverTest extends TestCase
     {
         // The error a project hits most often. It has to say where to put the
         // file, not merely that one is absent.
-        $this->expectException(ViewException::class);
-        $this->expectExceptionMessage('ui/nothing');
-        $this->expectExceptionMessage($this->root . '/project');
-        $this->expectExceptionMessage($this->root . '/theme');
-        $this->expectExceptionMessage($this->root . '/sdk');
-
-        $this->resolver()->resolve('ui/nothing');
+        // Asserted by catching rather than with expectExceptionMessage(),
+        // because a second call to that method replaces the first and three
+        // of these four checks would silently not happen.
+        try {
+            $this->resolver()->resolve('ui/nothing');
+            $this->fail('A missing template should throw.');
+        } catch (ViewException $e) {
+            $this->assertStringContainsString('ui/nothing', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/project', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/theme', $e->getMessage());
+            $this->assertStringContainsString($this->root . '/sdk', $e->getMessage());
+        }
     }
 
     public function testAnOverrideRedirectsOneNameToAnother(): void
@@ -1042,7 +1050,7 @@ git commit -m "Let a project replace one template without copying the rest"
   }
   ```
 
-**What a template sees.** Exactly these eight variables and nothing else:
+**What a template sees.** Exactly these nine variables and nothing else:
 
 | Variable | Type | What it does |
 |---|---|---|
@@ -1051,6 +1059,7 @@ git commit -m "Let a project replace one template without copying the rest"
 | `$raw` | `Closure(mixed): string` | writes unescaped, deliberately |
 | `$attr` | `Closure(mixed): string` | escapes one attribute value |
 | `$attrs` | `Closure(array): string` | builds a whole attribute list |
+| `$href` | `Closure(mixed): string` | escapes a URL for an `href`, `src` or `action`, refusing a scheme that executes |
 | `$url` | `Closure(string, array): string` | a URL from a path |
 | `$route` | `Closure(string, array, array): string` | a URL from a route name |
 | `$partial` | `Closure(string, mixed): string` | renders another template |
@@ -1188,7 +1197,7 @@ final class RendererTest extends TestCase
 
         $this->assertStringStartsWith('no-this|', $out);
         $this->assertSame(
-            ['attr', 'attrs', 'e', 'partial', 'raw', 'route', 'url', 'view'],
+            ['attr', 'attrs', 'e', 'href', 'partial', 'raw', 'route', 'url', 'view'],
             $this->definedVariables($out),
         );
     }
@@ -1257,6 +1266,7 @@ final class RendererTest extends TestCase
 
     public function testWithOverridesScopesTheResolver(): void
     {
+        mkdir($this->root . '/sdk/ui', 0o777, true);
         $this->template('ui/button', 'default');
         mkdir($this->root . '/sdk/ads', 0o777, true);
         file_put_contents($this->root . '/sdk/ads/button.php', 'ads');
@@ -1269,6 +1279,8 @@ final class RendererTest extends TestCase
 
         unlink($this->root . '/sdk/ads/button.php');
         rmdir($this->root . '/sdk/ads');
+        unlink($this->root . '/sdk/ui/button.php');
+        rmdir($this->root . '/sdk/ui');
     }
 }
 ```
@@ -1327,6 +1339,11 @@ final class Renderer
             'e' => static fn (mixed $value): string => $escaper->text($value),
             'raw' => static fn (mixed $value): string => $escaper->raw($value),
             'attr' => static fn (mixed $value): string => $escaper->attr($value),
+            // Every href, src and action goes through this rather than $e():
+            // it is the only helper that checks the scheme, and a URL that
+            // reaches a template from a data column is not something the
+            // admin built.
+            'href' => static fn (mixed $value): string => $escaper->url($value),
             /** @param array<string, scalar|null> $attributes */
             'attrs' => static fn (array $attributes): string => $escaper->attributes($attributes),
             /** @param array<string, scalar|null> $query */
@@ -1365,12 +1382,15 @@ final class Renderer
      */
     private function execute(string $file, mixed $view): string
     {
+        // Declared with no parameters on purpose. A named parameter would be
+        // a variable in the template's scope, and the whole point of this
+        // closure is that the template sees exactly the nine documented
+        // names and nothing else — func_get_arg() leaves no variable behind.
         $run = Closure::bind(
-            static function (string $raRockAdminTemplateFile, array $raRockAdminScope): void {
-                extract($raRockAdminScope, EXTR_OVERWRITE);
-                unset($raRockAdminScope);
+            static function (): void {
+                extract(func_get_arg(1), EXTR_OVERWRITE);
 
-                require $raRockAdminTemplateFile;
+                require func_get_arg(0);
             },
             null,
             null,
@@ -1396,16 +1416,32 @@ final class Renderer
 }
 ```
 
-**Note on the variable names inside the closure:** `$raRockAdminTemplateFile`
-and `$raRockAdminScope` are deliberately ugly. They are in scope while the
-template runs, so they have to be names no template would ever use. `$file`
-and `$scope` would collide with a view that happens to be about files.
+**Why `func_get_arg()` and not parameters.** Any parameter name would be a
+variable the template can see, and `testATemplateCannotSeeTheRendererOrTheResolver`
+enumerates that scope. `extract()` before the `require` is what puts the nine
+documented names there; nothing else may join them. This is the one place in
+the project where `func_get_arg()` is the clearer choice, so it carries the
+comment explaining why.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/Unit/View/RendererTest.php`
 Expected: PASS. In particular `testATemplateCannotSeeTheRendererOrTheResolver`
-must report exactly the eight documented variables.
+must report exactly the nine documented variables.
+
+Add one more test while you are here: that `$href` refuses a URL whose scheme
+executes, so a link built from a data column cannot carry one into a page.
+
+```php
+public function testHrefRefusesASchemeThatExecutes(): void
+{
+    $this->template('x', '<a href="<?= $href($view) ?>">x</a>');
+
+    $this->expectException(\RockAdmin\View\ViewException::class);
+
+    $this->renderer()->render('x', 'javascript:alert(1)');
+}
+```
 
 - [ ] **Step 5: Run the full gate**
 
@@ -2730,11 +2766,12 @@ Write the templates. A worked example of the standard, for `ui/button.php`:
  *
  * @var \RockAdmin\View\ButtonView $view
  * @var \Closure $e
+ * @var \Closure $href
  * @var \Closure $attrs
  * @var \Closure $partial
  */
 ?>
-<a class="<?= $e($view->classes()) ?>" href="<?= $e($view->url) ?>"<?= $attrs($view->attributes) ?>>
+<a class="<?= $e($view->classes()) ?>" href="<?= $href($view->url) ?>"<?= $attrs($view->attributes) ?>>
     <?php if ($view->icon !== null) { ?>
         <?= $partial('ui/icon', $view->icon) ?>
     <?php } ?>
@@ -2743,8 +2780,9 @@ Write the templates. A worked example of the standard, for `ui/button.php`:
 ```
 
 Note what it does: a docblock declaring every variable it uses so PHPStan can
-see the types, `ra-` classes on both elements, escaping on every echo, and no
-URL it built itself.
+see the types, `ra-` classes on both elements, escaping on every echo, `$href`
+rather than `$e` for the URL — it is the only helper that checks the scheme —
+and no URL it built itself.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2789,10 +2827,20 @@ Create `tests/Unit/View/TemplateStandardsTest.php`. It walks every `.php` file
 under `templates/` with a `RecursiveDirectoryIterator`, and runs one test per
 file through a data provider so a failure names the file. The rules:
 
-1. **No script tag.** The file contains no `<script` in any casing.
+1. **No script tag that carries behaviour.** No `<script>` with a body, in any
+   casing, anywhere. A `<script src="...">` with an empty body is allowed in
+   `templates/layout/base.php` and nowhere else — the page has to load its
+   assets somewhere, and that is the one template that writes a document.
+   Every other template can be returned as a fragment and inserted into a
+   live page, where a script tag either does not run or runs twice.
 2. **Every `<?=` escapes.** Every short echo tag is immediately followed
-   (ignoring whitespace) by a call to `$e(`, `$raw(`, `$attr(`, `$attrs(` or
-   `$partial(`. Anything else fails, naming the offending line.
+   (ignoring whitespace) by a call to `$e(`, `$raw(`, `$attr(`, `$attrs(`,
+   `$href(` or `$partial(`. Anything else fails, naming the offending line.
+2b. **Every URL attribute uses `$href`.** An `href=`, `src=` or `action=`
+   attribute whose value is a short echo tag must call `$href(`, not `$e(`.
+   `$e()` escapes the characters that would end the attribute but says
+   nothing about the scheme, so `$e()` on a URL from a data column is how a
+   `javascript:` link reaches a page.
 3. **No hardcoded URL.** No `href="/`, `src="/`, `action="/`, `http://` or
    `https://` outside a comment. Every URL comes from `$url()`, `$route()` or
    a view object.
@@ -2915,3 +2963,60 @@ git commit -m "Enforce the template standard and give the theme somewhere to liv
   templates carry no translation call. Section 13 puts UI localisation out of
   v1 deliberately; adding a lookup now would be designing against an
   imagined translator.
+
+## Amendments made during execution
+
+Written after the fact. The plan above is what was dispatched; this section
+records where reality differed.
+
+**The standard banned a script tag no page could do without.** Rule 1 forbade
+every `<script` in a template, but `layout/base.php` has to reference the
+stylesheets and the bundle somewhere — no page could exist and pass. The ban
+was always about behaviour surviving AJAX insertion, so it now forbids a
+script with a body anywhere and a `src`-only tag everywhere except that one
+template. Amended before Task 8 was dispatched.
+
+**Templates needed a ninth helper.** The plan escaped URLs with `$e()`, which
+closes the attribute and says nothing about the scheme — so the escaper's
+scheme allow-list, added during Task 1, would have been bypassed by every link
+in the admin. `$href` was added to the helper set and to the template standard
+before Task 3 was dispatched.
+
+**Five defects in the plan's own test code** were fixed before Task 1 ran: an
+invalid-UTF-8 expectation that dropped a surviving character, four consecutive
+`expectExceptionMessage()` calls of which PHPUnit honours only the last, a
+Windows path comparison against forward slashes, a fixture written into a
+directory the test never created, and a scope assertion contradicted by the
+implementation the same plan specified.
+
+**The renderer's scope is described, not counted.** The plan asked for exactly
+nine variables in a template's scope and specified `func_get_arg()` to achieve
+it, which cost six PHPStan errors. The property that matters is that nothing
+in scope is an object a template could work backwards from; the closure takes
+named parameters again and the template's own path stays visible.
+
+**The escaper became an allow-list.** The plan specified a deny-list of
+executable schemes. A deny-list fails open — a leading C0 control byte hid the
+scheme entirely — so it allows `http`, `https`, `mailto`, `tel` and a relative
+URL, and refuses everything else including a scheme-relative one.
+
+**`Classes` translates rather than refuses.** An identity comes from a
+configuration key, and this project writes those in snake_case; the plan held
+it to the CSS kebab-case rule, so a page keyed `user_accounts` threw and took
+the page down.
+
+**The error page went behind an interface.** The plan passed a `Renderer` into
+`ErrorHandler`. `Http` sits below `View`, so `ErrorPage` is an interface there
+and `TemplateErrorPage` implements it.
+
+**Three schema keys were decorative.** `template_paths`, `assets.css`/`assets.js`
+and `theme.dark` were declared and read by nothing, so a project could not
+switch on this milestone's headline feature. `ViewFactory` wires them.
+
+**The demo existed so a visual defect could not ship, and one did.** Flash
+messages rendered invisible — Bootstrap hides a toast without `.show` — while
+a passing test asserted their classes and their text. The navbar's menu was
+black on near-black, the primary button stayed Bootstrap blue because
+`.btn-primary` does not read `--bs-primary`, and dark mode under `auto`
+re-tinted seven variables and stopped. All four were found by the final review
+opening the page. Nobody had looked at it.

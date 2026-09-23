@@ -21,10 +21,14 @@ use Throwable;
  */
 final class ErrorHandler
 {
-    /** @param (Closure(Throwable): void)|null $logger null means nothing is recorded */
+    /**
+     * @param (Closure(Throwable): void)|null $logger null means nothing is recorded
+     * @param ErrorPage|null                  $page   null means only the built-in HTML is ever shown
+     */
     public function __construct(
         private readonly bool $debug = false,
         private readonly ?Closure $logger = null,
+        private readonly ?ErrorPage $page = null,
     ) {
     }
 
@@ -44,11 +48,33 @@ final class ErrorHandler
 
         $status = $e instanceof HttpException ? $e->status : 500;
 
-        return Response::html($this->body($e, $status), $status)
+        $pageBody = $this->pageBody($e, $status);
+        $body = $pageBody === null || $pageBody === '' ? $this->body($e, $status) : $pageBody;
+
+        return Response::html($body, $status)
             // An error page is never worth caching, and a sniffed content type
             // on a page that may quote user input is worth even less.
             ->withHeader('Cache-Control', 'no-store')
             ->withHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    /**
+     * The page's own HTML, or null to fall back to the built-in body: when
+     * there is no page, when the page itself returns null, and when the page
+     * throws. A second exception from the error page is not worth showing
+     * instead of the first one nobody has read yet, so it is swallowed here.
+     */
+    private function pageBody(Throwable $e, int $status): ?string
+    {
+        if ($this->page === null) {
+            return null;
+        }
+
+        try {
+            return $this->page->render($e, $status, $this->debug);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function body(Throwable $e, int $status): string

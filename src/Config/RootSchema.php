@@ -52,6 +52,14 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'template_paths' => new SchemaKey(
+                ValueType::Array,
+                default: [],
+                description: 'Directories searched for templates before the SDK\'s own, highest priority '
+                    . 'first. A file with the same name as an SDK template replaces it; nothing needs '
+                    . 'copying or registering.',
+                example: ['resources/rockadmin', 'vendor/company/admin-theme'],
+            ),
             'mail' => new SchemaKey(
                 ValueType::Array,
                 description: 'How the admin sends a password reset.',
@@ -88,6 +96,18 @@ final class RootSchema
                         description: 'Script URLs a project adds on top of the SDK’s own, for '
                             . 'custom widgets or page behaviour.',
                         example: ['/js/admin.js'],
+                    ),
+                ]),
+            ),
+            'theme' => new SchemaKey(
+                ValueType::Array,
+                description: 'The default look. Replace it wholesale with a stylesheet in assets.css.',
+                children: new Schema([
+                    'dark' => new SchemaKey(
+                        ValueType::String,
+                        default: 'auto',
+                        description: "Dark mode: 'auto' follows the operating system, 'on' and 'off' decide.",
+                        example: 'auto',
                     ),
                 ]),
             ),
