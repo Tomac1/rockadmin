@@ -30,8 +30,10 @@ use RockAdmin\Db\Connection;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
+use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Grid\QueryFactory;
 use RockAdmin\Http\ArraySessionStore;
+use RockAdmin\Http\DetailHandler;
 use RockAdmin\Http\ErrorHandler;
 use RockAdmin\Http\Handler;
 use RockAdmin\Http\HandlerRegistry;
@@ -199,6 +201,7 @@ $handlers->register('dashboard', new class ($renderer, $urls, $assets, $flashes,
 if ($connection !== null) {
     $rows = new SqlRowSource($connection);
     $listRegion = new ListRegion($rows, new QueryFactory(), new CellFormatter(), $urls);
+    $previewRegion = new PreviewRegion($rows, new CellFormatter());
 
     $handlers->register('page.index', new PageHandler(
         $pages,
@@ -210,7 +213,17 @@ if ($connection !== null) {
         $darkMode,
         ($menu)(),
     ));
-    $handlers->register('region', new RegionHandler($pages, $listRegion, $renderer));
+    $handlers->register('page.detail', new DetailHandler(
+        $pages,
+        $previewRegion,
+        $renderer,
+        $assets,
+        $flashes,
+        $brand,
+        $darkMode,
+        ($menu)(),
+    ));
+    $handlers->register('region', new RegionHandler($pages, $listRegion, $previewRegion, $renderer));
 } else {
     // No database configured: still render the shell and the page header for
     // every real page, so cloning the repository to look at the theme works
@@ -278,6 +291,12 @@ if ($connection !== null) {
         }
     });
     $handlers->register('region', new class () implements Handler {
+        public function handle(Route $route, Request $request): Response
+        {
+            throw new NotFoundException('No database is configured for this demo.');
+        }
+    });
+    $handlers->register('page.detail', new class () implements Handler {
         public function handle(Route $route, Request $request): Response
         {
             throw new NotFoundException('No database is configured for this demo.');

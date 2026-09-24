@@ -36,9 +36,11 @@ final class TemplateStandardsTest extends TestCase
         // A provider that silently found nothing would make every rule below
         // pass. Milestone 4 shipped fourteen templates; milestone 6 task 7
         // added the list region's seventeen (nine region/list/*.php plus
-        // eight region/list/cell/*.php), for thirty-one. This fails loudly if
-        // a future refactor moves the directory.
-        $this->assertGreaterThanOrEqual(31, \count(iterator_to_array(self::templates())));
+        // eight region/list/cell/*.php), for thirty-one; task 9 added the
+        // preview region's three (region.php, field.php, missing.php), for
+        // thirty-four. This fails loudly if a future refactor moves the
+        // directory.
+        $this->assertGreaterThanOrEqual(34, \count(iterator_to_array(self::templates())));
     }
 
     #[DataProvider('templates')]

@@ -370,6 +370,59 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     color: var(--bs-secondary-color, var(--bs-secondary));
 }
 
+/*
+ * The preview region: one row as a field list. A two-column grid of
+ * label-and-value pairs, the same density token the list region's own rows
+ * use, with a wide field (a json cell, a long text cell) spanning both
+ * columns instead of squeezing in beside its neighbour.
+ */
+.ra-region-preview,
+.ra-preview {
+    background-color: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem 1.25rem;
+}
+
+.ra-preview-title {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.ra-preview-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ra-grid-gap) 2rem;
+    margin: 0;
+}
+
+.ra-field {
+    padding-bottom: var(--ra-grid-row-padding);
+    border-bottom: 1px solid var(--bs-border-color-translucent, var(--bs-border-color));
+    min-width: 0;
+}
+
+.ra-field-wide {
+    grid-column: 1 / -1;
+}
+
+.ra-field-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color, var(--bs-secondary));
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.ra-field-value {
+    margin: 0.15rem 0 0;
+    word-break: break-word;
+}
+
+.ra-field-missing {
+    color: var(--bs-secondary-color, var(--bs-secondary));
+}
+
 .ra-grid-pagination {
     padding: 0 1rem 1rem;
 }

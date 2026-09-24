@@ -11,6 +11,7 @@ use RockAdmin\Db\Result;
 use RockAdmin\Db\Sql;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
+use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Grid\QueryFactory;
 use RockAdmin\Http\ArraySessionStore;
 use RockAdmin\Http\NotFoundException;
@@ -88,6 +89,23 @@ final class RegionHandlerTest extends TestCase
             PHP);
     }
 
+    private function writeAdsPageWithPreview(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ra_test_ads'],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'per_page' => 2, 'columns' => [
+                        'id' => ['type' => 'int'],
+                        'title' => [],
+                    ]],
+                    'preview' => ['type' => 'preview'],
+                ],
+            ]
+            PHP);
+    }
+
     private function repository(): PageRepository
     {
         return new PageRepository(
@@ -101,6 +119,12 @@ final class RegionHandlerTest extends TestCase
     private function region(array $results): ListRegion
     {
         return new ListRegion(new FakeRowSource($results), new QueryFactory(), new CellFormatter(), new UrlGenerator('/'));
+    }
+
+    /** @param list<Result> $results */
+    private function previewRegion(array $results): PreviewRegion
+    {
+        return new PreviewRegion(new FakeRowSource($results), new CellFormatter());
     }
 
     private function renderer(): Renderer
@@ -120,7 +144,7 @@ final class RegionHandlerTest extends TestCase
     public function testARegionRequestReturnsTheRegionAndNoDocument(): void
     {
         $this->writeAdsPage();
-        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->renderer());
+        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->previewRegion([]), $this->renderer());
 
         $response = $handler->handle(new Route('region', ['page' => 'ads', 'region' => 'grid']), new Request('GET', 'r/ads/grid'));
 
@@ -133,7 +157,7 @@ final class RegionHandlerTest extends TestCase
     public function testAFragmentCarriesItsRegionKeyOnItsRoot(): void
     {
         $this->writeAdsPage();
-        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->renderer());
+        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->previewRegion([]), $this->renderer());
 
         $response = $handler->handle(new Route('region', ['page' => 'ads', 'region' => 'grid']), new Request('GET', 'r/ads/grid'));
 
@@ -146,7 +170,7 @@ final class RegionHandlerTest extends TestCase
     public function testAnUnknownRegionIsNotFound(): void
     {
         $this->writeAdsPage();
-        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->renderer());
+        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->previewRegion([]), $this->renderer());
 
         $this->expectException(NotFoundException::class);
 
@@ -155,7 +179,7 @@ final class RegionHandlerTest extends TestCase
 
     public function testAnUnknownPageIsNotFound(): void
     {
-        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->renderer());
+        $handler = new RegionHandler($this->repository(), $this->region([$this->fetchResult(1)]), $this->previewRegion([]), $this->renderer());
 
         $this->expectException(NotFoundException::class);
 
@@ -172,6 +196,7 @@ final class RegionHandlerTest extends TestCase
         $handler = new RegionHandler(
             $this->repository(),
             $this->region([$this->fetchResult(2)]),
+            $this->previewRegion([]),
             $this->renderer(),
         );
 
@@ -204,6 +229,7 @@ final class RegionHandlerTest extends TestCase
         $regionHandler = new RegionHandler(
             $this->repository(),
             $this->region([$this->fetchResult(2)]),
+            $this->previewRegion([]),
             $this->renderer(),
         );
 
@@ -222,5 +248,59 @@ final class RegionHandlerTest extends TestCase
         $this->assertStringContainsString('Silniční kolo', $regionResponse->body);
         $this->assertStringNotContainsString('Horské kolo', $pageResponse->body);
         $this->assertStringNotContainsString('Horské kolo', $regionResponse->body);
+    }
+
+    public function testAPreviewRegionServesAsAFragmentTooGivenAnId(): void
+    {
+        $this->writeAdsPageWithPreview();
+        $handler = new RegionHandler(
+            $this->repository(),
+            $this->region([$this->fetchResult(1)]),
+            $this->previewRegion([new Result([['id' => 1, 'title' => 'Horské kolo']], null, [new Sql('SELECT 1')])]),
+            $this->renderer(),
+        );
+
+        $response = $handler->handle(
+            new Route('region', ['page' => 'ads', 'region' => 'preview']),
+            new Request('GET', 'r/ads/preview', ['id' => '1']),
+        );
+
+        $this->assertSame(200, $response->status);
+        $this->assertStringNotContainsString('<!doctype html>', $response->body);
+        $this->assertStringContainsString('data-ra-region="preview"', $response->body);
+        $this->assertStringContainsString('Horské kolo', $response->body);
+    }
+
+    public function testAPreviewRegionFragmentWithNoIdIsNotFound(): void
+    {
+        $this->writeAdsPageWithPreview();
+        $handler = new RegionHandler(
+            $this->repository(),
+            $this->region([$this->fetchResult(1)]),
+            $this->previewRegion([]),
+            $this->renderer(),
+        );
+
+        $this->expectException(NotFoundException::class);
+
+        $handler->handle(new Route('region', ['page' => 'ads', 'region' => 'preview']), new Request('GET', 'r/ads/preview'));
+    }
+
+    public function testAPreviewRegionFragmentForAMissingRowIsNotFound(): void
+    {
+        $this->writeAdsPageWithPreview();
+        $handler = new RegionHandler(
+            $this->repository(),
+            $this->region([$this->fetchResult(1)]),
+            $this->previewRegion([new Result([], null, [new Sql('SELECT 1')])]),
+            $this->renderer(),
+        );
+
+        $this->expectException(NotFoundException::class);
+
+        $handler->handle(
+            new Route('region', ['page' => 'ads', 'region' => 'preview']),
+            new Request('GET', 'r/ads/preview', ['id' => '999999']),
+        );
     }
 }

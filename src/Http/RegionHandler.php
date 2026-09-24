@@ -6,6 +6,7 @@ namespace RockAdmin\Http;
 
 use RockAdmin\Grid\GridState;
 use RockAdmin\Grid\ListRegion;
+use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\Page\RegionType;
 use RockAdmin\View\Renderer;
@@ -20,15 +21,19 @@ use RockAdmin\View\Renderer;
  * carries `data-ra-region` and `data-ra-region-url` on its own root element —
  * so it can be opened directly in a browser for debugging.
  *
- * Reads its `GridState` from the request's query exactly the way
- * `PageHandler` does for the same region, which is what keeps
- * `/p/{page}?grid[page]=2` and `/r/{page}/grid?grid[page]=2` in agreement.
+ * A list region reads its `GridState` from the request's query exactly the
+ * way `PageHandler` does for the same region, which is what keeps
+ * `/p/{page}?grid[page]=2` and `/r/{page}/grid?grid[page]=2` in agreement. A
+ * preview region reads the row it shows from `?id=`, since a preview has no
+ * grid state of its own — this is the address milestone 8's overlay will
+ * fetch without this handler changing at all.
  */
 final class RegionHandler implements Handler
 {
     public function __construct(
         private readonly PageRepository $pages,
-        private readonly ListRegion $region,
+        private readonly ListRegion $list,
+        private readonly PreviewRegion $preview,
         private readonly Renderer $renderer,
     ) {
     }
@@ -50,15 +55,27 @@ final class RegionHandler implements Handler
 
         $regionDefinition = $page->region($regionKey);
 
-        if ($regionDefinition->type !== RegionType::List) {
-            throw new NotFoundException(
-                "Page '{$name}': region '{$regionKey}' is a '{$regionDefinition->type->value}' region, "
-                . 'which this milestone does not render.',
-            );
+        if ($regionDefinition->type === RegionType::Preview) {
+            $id = $request->query('id');
+            $id = \is_scalar($id) ? (string) $id : '';
+
+            if ($id === '') {
+                throw new NotFoundException(
+                    "Page '{$name}': region '{$regionKey}' needs an 'id' query parameter to know which row to show.",
+                );
+            }
+
+            $view = $this->preview->render($page, $regionDefinition, $id);
+
+            if ($view === null) {
+                throw new NotFoundException("Page '{$name}' has no row '{$id}'.");
+            }
+
+            return Response::html($this->renderer->render('region/preview/region', $view));
         }
 
         $state = GridState::fromQuery($request->query, $regionKey, $regionDefinition);
-        $view = $this->region->render($page, $regionDefinition, $state);
+        $view = $this->list->render($page, $regionDefinition, $state);
 
         return Response::html($this->renderer->render('region/list/region', $view));
     }

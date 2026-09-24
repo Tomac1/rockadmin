@@ -115,6 +115,20 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
+    public function testColumnsReturnsTheTablesOwnColumnsInDeclaredOrder(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        $columns = $connection->columns('ra_test_ads');
+
+        $this->assertSame(['id', 'user_id', 'title', 'price', 'state', 'stats'], $columns);
+
+        $this->dropFixtures($connection);
+    }
+
+    #[DataProvider('connections')]
     public function testAFailingStatementRaisesDbExceptionCarryingTheSql(?Connection $connection): void
     {
         $connection = $this->requireConnection($connection);

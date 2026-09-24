@@ -60,6 +60,7 @@ Every entry of `regions`.
 | `type` | string | — | `list` | The region type: list or preview. Refused at load if it names anything else. `form`, `nav` and `stat` arrive in later milestones. **Required.** |
 | `per_page` | int | — | `25` | Rows to show per page. Only for list regions. |
 | `sort` | array | — | `['created_at' => 'desc']` | The default sort order: a map of column key to direction, applied until a user picks their own. |
+| `fields` | mixed | — | `['name', 'email', 'created_at']` | Which fields a preview region shows. Omitted, it inherits the page's list region's columns; a list of column keys shows exactly those, in that order; '@all' shows every column of the entity's table; an empty list shows none, which is legal but almost always a mistake, so the loader warns. Only for preview regions. |
 
 ## `regions.*.search`
 

@@ -16,6 +16,7 @@ use RockAdmin\Config\Schema;
 use RockAdmin\Config\ValidationError;
 use RockAdmin\Config\Validator;
 use RockAdmin\Db\Collection;
+use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\FilterOperator;
@@ -55,13 +56,30 @@ final class PageRepository
     /** @var array<string, PageDefinition> */
     private array $cache = [];
 
-    /** @param Closure(string): ?string $env */
+    /** @var list<string> */
+    private array $warnings = [];
+
+    /**
+     * @param Closure(string): ?string $env
+     * @param ?Connection $connection only consulted when a region declares
+     *                                `'fields' => '@all'` (spec 8.5), which
+     *                                needs the table's real columns and only
+     *                                the database knows them. A page that
+     *                                never uses `@all` loads fine without one.
+     */
     public function __construct(
         private readonly string $directory,
         private readonly Closure $env,
         private readonly Enums $enums,
         private readonly int $defaultPerPage = 25,
+        private readonly ?Connection $connection = null,
     ) {
+    }
+
+    /** @return list<string> */
+    public function warnings(): array
+    {
+        return $this->warnings;
     }
 
     public function has(string $name): bool
@@ -213,7 +231,195 @@ final class PageRepository
             $regions[(string) $regionKey] = $this->buildRegion($name, (string) $regionKey, $regionConfig, $entity);
         }
 
+        // A preview region's fields (spec 8.5) are resolved in a second pass,
+        // once every region -- including every list region a preview might
+        // inherit from -- already exists. A single pass would make the
+        // outcome depend on the order regions happen to be written in.
+        $grid = $this->firstListRegion($regions);
+
+        foreach ($regionsConfig as $regionKey => $regionConfig) {
+            $region = $regions[(string) $regionKey] ?? null;
+
+            if ($region === null || $region->type !== RegionType::Preview || !\is_array($regionConfig)) {
+                continue;
+            }
+
+            /** @var array<string, mixed> $regionConfig */
+            $fields = $this->resolveFields($name, $region->key, $regionConfig, $grid, $entity);
+
+            $regions[$region->key] = new RegionDefinition(
+                $region->key,
+                $region->type,
+                $region->perPage,
+                $region->columns,
+                $region->sort,
+                $region->searchable,
+                $fields,
+            );
+        }
+
         return new PageDefinition($name, $title, $layout, $description, $entity, $scope, $regions);
+    }
+
+    /** @param array<string, RegionDefinition> $regions */
+    private function firstListRegion(array $regions): ?RegionDefinition
+    {
+        foreach ($regions as $region) {
+            if ($region->type === RegionType::List) {
+                return $region;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Which fields a preview shows, from spec 8.5 exactly: omitted inherits
+     * the page's list region's columns, an explicit list names exactly those
+     * in that order, `'@all'` expands to every column of the entity's table,
+     * and `[]` is legal but shows nothing, which is almost always a mistake.
+     *
+     * @param  array<string, mixed> $regionConfig
+     * @return list<ColumnDefinition>
+     */
+    private function resolveFields(
+        string $pageName,
+        string $regionKey,
+        array $regionConfig,
+        ?RegionDefinition $grid,
+        Entity $entity,
+    ): array {
+        $hasFields = \array_key_exists('fields', $regionConfig) && $regionConfig['fields'] !== null;
+        $raw = $hasFields ? $regionConfig['fields'] : null;
+
+        if (!$hasFields) {
+            return $this->fieldsFromGrid($pageName, $regionKey, $grid, static fn (RegionDefinition $g): array => array_values($g->columns));
+        }
+
+        if ($raw === '@all') {
+            return $this->allEntityColumns($pageName, $regionKey, $entity, $grid);
+        }
+
+        if (\is_array($raw)) {
+            if ($raw === []) {
+                $this->warnings[] = "Page '{$pageName}': region '{$regionKey}' has fields => [], which shows "
+                    . 'no fields at all. This is almost always a mistake.';
+
+                return [];
+            }
+
+            return $this->fieldsFromGrid(
+                $pageName,
+                $regionKey,
+                $grid,
+                function (RegionDefinition $g) use ($pageName, $regionKey, $raw): array {
+                    $fields = [];
+
+                    foreach ($raw as $fieldKey) {
+                        if (!\is_string($fieldKey) && !\is_int($fieldKey)) {
+                            throw new PageException(\sprintf(
+                                "Page '%s': region '%s' names a field as a %s. Field keys are strings.",
+                                $pageName,
+                                $regionKey,
+                                get_debug_type($fieldKey),
+                            ));
+                        }
+
+                        $fields[] = $this->fieldFromGrid($pageName, $regionKey, $g, (string) $fieldKey);
+                    }
+
+                    return $fields;
+                },
+            );
+        }
+
+        throw new PageException(\sprintf(
+            "Page '%s': region '%s' has 'fields' set to a %s. Use a list of column keys or '@all'.",
+            $pageName,
+            $regionKey,
+            get_debug_type($raw),
+        ));
+    }
+
+    /**
+     * @param  Closure(RegionDefinition): list<ColumnDefinition> $resolve
+     * @return list<ColumnDefinition>
+     */
+    private function fieldsFromGrid(string $pageName, string $regionKey, ?RegionDefinition $grid, Closure $resolve): array
+    {
+        if ($grid === null) {
+            throw new PageException(\sprintf(
+                "Page '%s': region '%s' needs a list region on the same page to take its fields from, and "
+                    . "the page has none. Give it its own 'fields' => '@all', or a list of column keys with "
+                    . "each column's own definition.",
+                $pageName,
+                $regionKey,
+            ));
+        }
+
+        return $resolve($grid);
+    }
+
+    private function fieldFromGrid(string $pageName, string $regionKey, RegionDefinition $grid, string $fieldKey): ColumnDefinition
+    {
+        if (isset($grid->columns[$fieldKey])) {
+            return $grid->columns[$fieldKey];
+        }
+
+        $nearest = Schema::nearestOf(array_keys($grid->columns), $fieldKey);
+        $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+        throw new PageException(\sprintf(
+            "Page '%s': region '%s' names field '%s', which is not a column of the list region '%s'.%s",
+            $pageName,
+            $regionKey,
+            $fieldKey,
+            $grid->key,
+            $suffix,
+        ));
+    }
+
+    /** @return list<ColumnDefinition> */
+    private function allEntityColumns(string $pageName, string $regionKey, Entity $entity, ?RegionDefinition $grid): array
+    {
+        if ($this->connection === null) {
+            throw new PageException(\sprintf(
+                "Page '%s': region '%s' has fields => '@all', which needs a database connection to list the "
+                    . "columns of '%s'. Pass one to PageRepository.",
+                $pageName,
+                $regionKey,
+                $entity->table,
+            ));
+        }
+
+        $fields = [];
+
+        foreach ($this->connection->columns($entity->table) as $columnName) {
+            $fields[] = $grid !== null && isset($grid->columns[$columnName])
+                ? $grid->columns[$columnName]
+                : $this->defaultColumn($columnName);
+        }
+
+        return $fields;
+    }
+
+    /** A column named by '@all' that no list region already describes: shown plainly, as text. */
+    private function defaultColumn(string $columnName): ColumnDefinition
+    {
+        return new ColumnDefinition(
+            filter: null,
+            collection: null,
+            key: $columnName,
+            label: $this->labelFromKey($columnName),
+            source: $columnName,
+            type: ColumnType::Text,
+            display: Display::Plain,
+            sortable: false,
+            link: false,
+            align: 'start',
+            width: null,
+            class: '',
+        );
     }
 
     /** @param array<string, mixed> $entityConfig */

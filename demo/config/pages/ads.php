@@ -100,5 +100,14 @@ return [
                 ],
             ],
         ],
+        // No 'fields' key: this preview inherits the grid's own columns
+        // (spec 8.5), in the same order — the row a click on 'ID' above
+        // opens at /p/ads/{id}, the same fields the grid already shows, one
+        // per line. 'stats' being JSON is what shows the wide-row rule: it
+        // spans the full width of the preview instead of squeezing into a
+        // label-and-value column.
+        'preview' => [
+            'type' => 'preview',
+        ],
     ],
 ];

@@ -133,6 +133,15 @@ final class PageSchema
                         description: 'The columns shown in this region, each described by the column schema.',
                         each: ColumnSchema::create(),
                     ),
+                    'fields' => new SchemaKey(
+                        ValueType::Mixed,
+                        description: 'Which fields a preview region shows. Omitted, it inherits the page\'s '
+                            . 'list region\'s columns; a list of column keys shows exactly those, in that '
+                            . 'order; \'@all\' shows every column of the entity\'s table; an empty list shows '
+                            . 'none, which is legal but almost always a mistake, so the loader warns. Only '
+                            . 'for preview regions.',
+                        example: ['name', 'email', 'created_at'],
+                    ),
                 ]),
             ),
         ]);

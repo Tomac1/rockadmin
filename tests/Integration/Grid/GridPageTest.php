@@ -11,6 +11,7 @@ use RockAdmin\Db\Connection;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
+use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Grid\QueryFactory;
 use RockAdmin\Http\ArraySessionStore;
 use RockAdmin\Http\PageHandler;
@@ -192,7 +193,13 @@ final class GridPageTest extends DatabaseTestCase
             'RockAdmin',
             'auto',
         );
-        $regionHandler = new RegionHandler($this->repository(), $listRegionForFragment, $this->renderer());
+        $previewRegionForFragment = new PreviewRegion(new SqlRowSource($connection), new CellFormatter());
+        $regionHandler = new RegionHandler(
+            $this->repository(),
+            $listRegionForFragment,
+            $previewRegionForFragment,
+            $this->renderer(),
+        );
 
         $query = ['grid' => ['sort' => '-price']];
 

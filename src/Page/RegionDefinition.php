@@ -14,6 +14,9 @@ final class RegionDefinition
      * @param array<string, ColumnDefinition> $columns keyed by the column's own key
      * @param list<Sort>                      $sort
      * @param list<string>                    $searchable column keys the region's search box looks at
+     * @param list<ColumnDefinition>          $fields   a preview region's resolved field list, in display
+     *                                                   order — see spec 8.5. Empty for a `list` region,
+     *                                                   which reads `$columns` instead.
      */
     public function __construct(
         public readonly string $key,
@@ -22,6 +25,7 @@ final class RegionDefinition
         public readonly array $columns,
         public readonly array $sort,
         public readonly array $searchable,
+        public readonly array $fields = [],
     ) {
     }
 

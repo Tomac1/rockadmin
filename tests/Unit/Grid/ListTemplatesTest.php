@@ -50,6 +50,7 @@ final class ListTemplatesTest extends TestCase
         string $search = '',
         bool $searchable = false,
         string $regionUrl = '/admin/r/ads/grid',
+        string $pageUrl = '/admin/p/ads',
     ): ListView {
         return new ListView(
             key: $key,
@@ -61,6 +62,7 @@ final class ListTemplatesTest extends TestCase
             search: $search,
             searchable: $searchable,
             regionUrl: $regionUrl,
+            pageUrl: $pageUrl,
         );
     }
 
@@ -481,6 +483,7 @@ final class ListTemplatesTest extends TestCase
             filters: [new FilterView('status', 'Status', 'text', null, [], '')],
             pagination: PaginationView::of(1, 1, 2, 1, static fn (int $n): string => "/admin/r/ads/grid?marker=PAGE{$n}"),
             searchable: true,
+            pageUrl: '/admin/p/ads?marker=FORMACTION',
         );
 
         $regionHtml = $this->renderer()->render('region/list/region', $view);
@@ -488,6 +491,7 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringContainsString('marker=REGION', $regionHtml);
         $this->assertStringContainsString('marker=SORT', $regionHtml);
         $this->assertStringContainsString('marker=ROW', $regionHtml);
+        $this->assertStringContainsString('marker=FORMACTION', $regionHtml);
         $this->assertStringContainsString('marker=PAGE', $regionHtml);
     }
 

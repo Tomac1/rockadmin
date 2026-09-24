@@ -899,6 +899,107 @@ final class PageRepositoryTest extends TestCase
         $this->repository()->get('ads');
     }
 
+    public function testAFieldsListInheritsTheGridsColumnsWhenOmitted(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => [], 'price' => ['type' => 'money']]],
+                    'preview' => ['type' => 'preview'],
+                ],
+            ]
+            PHP);
+
+        $fields = $this->repository()->get('ads')->region('preview')->fields;
+
+        $this->assertSame(['title', 'price'], array_map(static fn ($f) => $f->key, $fields));
+    }
+
+    public function testAnExplicitFieldsListIsUsedInItsOwnOrder(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => [], 'price' => ['type' => 'money']]],
+                    'preview' => ['type' => 'preview', 'fields' => ['price', 'title']],
+                ],
+            ]
+            PHP);
+
+        $fields = $this->repository()->get('ads')->region('preview')->fields;
+
+        $this->assertSame(['price', 'title'], array_map(static fn ($f) => $f->key, $fields));
+    }
+
+    public function testAFieldNamingAnUndeclaredColumnIsRefusedAtLoad(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => []]],
+                    'preview' => ['type' => 'preview', 'fields' => ['price']],
+                ],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A field naming an undeclared column should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('ads', $e->getMessage());
+            $this->assertStringContainsString('preview', $e->getMessage());
+            $this->assertStringContainsString('price', $e->getMessage());
+            $this->assertStringContainsString('grid', $e->getMessage());
+        }
+    }
+
+    public function testAPreviewWithNoGridOnThePageAndNoFieldsOfItsOwnIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'preview' => ['type' => 'preview'],
+                ],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A preview with no grid to inherit from and no fields of its own should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('preview', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyFieldListWarnsRatherThanFailing(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => []]],
+                    'preview' => ['type' => 'preview', 'fields' => []],
+                ],
+            ]
+            PHP);
+
+        $repository = $this->repository();
+        $fields = $repository->get('ads')->region('preview')->fields;
+
+        $this->assertSame([], $fields, 'legal, but shows nothing');
+        $this->assertNotSame([], $repository->warnings(), 'an empty fields list is almost always a mistake');
+        $this->assertStringContainsString('preview', $repository->warnings()[0]);
+    }
+
     public function testARegionCarriesItsTypeAsTheClosedEnumNotAString(): void
     {
         // The enum exists to make the set closed; handing consumers back a

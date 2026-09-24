@@ -74,6 +74,31 @@ final class Connection
         return $this->run($sql)->rowCount();
     }
 
+    /**
+     * The table's own columns, in their declared order — what `'fields' =>
+     * '@all'` (spec 8.5) reads from. The statement itself is the one thing
+     * that differs per server, and `Dialect::columns()` already carries that
+     * difference; MySQL's `SHOW COLUMNS` names the column 'Field',
+     * PostgreSQL's `information_schema.columns` names it 'column_name', so
+     * both are read here rather than making a caller guess which ran.
+     *
+     * @return list<string>
+     */
+    public function columns(string $table): array
+    {
+        $names = [];
+
+        foreach ($this->select($this->dialect->columns($table)) as $row) {
+            $name = $row['column_name'] ?? $row['Field'] ?? null;
+
+            if (\is_string($name)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     private function run(Sql $sql): PDOStatement
     {
         try {
