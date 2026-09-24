@@ -1449,3 +1449,111 @@ git commit -m "Open a row: one region, as a page and as a fragment"
   pages where offsets hurt.
 - **The dev console** — milestone 10. `Result::$statements` is already carried
   through for it.
+
+## Amendments made during execution
+
+Written after the fact. The plan above is what was dispatched; this records
+where reality differed, so a reader comparing plan to branch is not left
+guessing.
+
+**Three things the plan depended on and never declared.** The column schema
+listed fourteen keys and no `filter`, while three later tasks read a column's
+filter block and its operator. The same for collections: the demo was to show
+a one-to-many of tags and the query factory to build one, with nothing in
+configuration through which a page could ask for it. And `PageDefinition`
+carried no `scope`, which the query factory needs. All three were the same
+mistake — writing the consumers before the vocabulary, then not re-reading the
+vocabulary — and all three were fixed in the plan before Task 1 was dispatched.
+
+**The column type stayed an enum.** The plan said it should shadow the enum's
+native `from()`, which PHP forbids, so the only way to obey was to stop being
+an enum — at the cost of mutable public statics, lazy initialisation and a
+`default` arm in every match. The parser is called `parse()`.
+
+**`FilterInput` carries no operator.** It originally did, decided from the
+value's shape, while `QueryFactory` was specified to decide the same thing —
+two places deciding one thing, and already wrong, since a one-ended range
+emitted `Between` with a single bound. The shape is what the URL said; the
+mapping to an operator lives once. This was caught before the second half was
+written, which is the first time in this project that happened.
+
+**A range must agree with its column's operator.** The rule table dropped list
+shapes that did not fit the declared operator and *overrode* it for range
+shapes, so `?f[title][from]=A&f[title][to]=Z` on a `contains` column became a
+`BETWEEN` the page never offered. The asymmetry was in the table, not in the
+code that followed it.
+
+**The grid's view objects are views, not definitions.** `ListView` was to carry
+`ColumnDefinition` objects and answer `sortUrl()` on demand, which hands
+templates configuration and forces the view to hold a `UrlGenerator` and the
+grid state so it can compute a link while rendering.
+
+**The cell formatter reads the options the column already carries.** It was to
+take an `Enums` and resolve `@enum:` references itself, which is a second path
+to data the page loader has already resolved.
+
+**A cell knows what it is, not only how it looks.** Dispatching the cell
+partial by display alone cannot distinguish money from a date from JSON from
+text, because all four are `Display::Plain` — so three shipped templates were
+unreachable by any configuration. A cell carries its type as well.
+
+**Linking is not a display.** This was the milestone's worst defect and it
+shipped through eight task reviews: `'link' => true` was read from
+configuration, carried into the cell, and never rendered, because only a
+`Display::Link` cell reached the one partial that emits an anchor. The served
+demo contained zero links to any row, so the entire preview region was
+unreachable by clicking, while one test asserted the URL reaches the cell and
+another rendered a `Link` display and found its anchor. Each half correct,
+neither crossing. A link is now a wrapper around whatever the display drew,
+`Display::Link` is gone, and specification 6.3 says so.
+
+**The entity key is always selected.** A region with a one-to-many but no key
+column raised a 500 as a page and rendered perfectly as a preview, because the
+preview force-selected the key and the query factory did not. Three separate
+things depended on it: the collection's attach, the tiebreaker surviving
+`QueryBuilder`, and every row's detail URL.
+
+**`DbException` carries its SQLSTATE.** `/p/ads/abc` returned an honest 404 on
+MySQL, which coerces the id to zero, and a 500 on PostgreSQL, which refuses it
+— leaking SQL in debug mode. The class could not distinguish "this value does
+not fit that column" from "the database is unreachable", which is why a
+blanket catch would have been the wrong repair.
+
+**Configuration a page can write and nothing reads is refused.** A `filter`,
+`sortable` or `searchable` on a collection column produced a control the user
+typed into to no effect; a default sort naming an undeclared column loaded
+silently and was dropped; `align` accepted any string, including the `right`
+the specification's own example writes; and `search.placeholder` was declared,
+documented and read by nothing.
+
+**Query mode had never been rendered.** `core.js` appended a second `?` to a
+region URL that already carried one, so every interaction failed with a toast
+— and nothing in the repository exercised `url_mode = query` at all, for a
+mode the specification treats as first-class. The demo can now run in it.
+
+**A shareable link has to be a page.** Sort and pager links addressed the
+region fragment, so copying one out of the address bar gave a shell-less
+fragment. The empty state's "clear filters" link was missed in that fix and
+had to be caught again by the final review.
+
+**An empty array is not always an absence.** The fix that made an empty
+collection read as empty fired on any `[]`, so a JSON column genuinely storing
+one read as "not set" — the third time this formatter conflated an absence
+with a value, after a false boolean and an empty string.
+
+## What this milestone leaves for the next one
+
+- **Layout slots.** Every list region goes into the layout's `main` slot;
+  `two-column` and `sidebar-detail` have named slots nothing maps to. The
+  shape when it is needed is a `slot` key on a region, defaulting to `main`.
+- **Shell assembly.** `PageHandler` builds a `ShellView` by hand because
+  nothing assembles one from configuration. A `ShellFactory` is the right home.
+- **`count`.** Specification 7.3 makes it page configuration; the schema has no
+  such key and `QueryFactory` hardcodes an exact count. The real table this
+  will run against has 47,000 rows.
+- **`link` as a boolean.** Specification 8.5 makes opening a row an action;
+  milestone 8 will widen or replace it.
+- **No `_ret`.** `DetailHandler` discards the query string, so there is nowhere
+  for milestone 7's save-and-return to attach.
+- **No JavaScript test harness.** `core.js`'s delegation contract is pinned by
+  nothing; a regression would need a human to open a browser.
