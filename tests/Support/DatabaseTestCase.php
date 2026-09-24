@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Tests\Support;
 
 use PDO;
+use PDOException;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\Sql;
@@ -20,6 +21,9 @@ abstract class DatabaseTestCase extends TestCase
 {
     /** @var array<string, Connection> */
     private static array $connections = [];
+
+    /** @var array<string, string> why a configured server could not be reached */
+    private static array $failures = [];
 
     /**
      * One case per configured server, or a single null case when there are none.
@@ -49,10 +53,21 @@ abstract class DatabaseTestCase extends TestCase
         }
     }
 
-    /** Skips the test when this case is the no-database sentinel. */
+    /**
+     * Skips the test when this case is the no-database sentinel — unless a
+     * server was configured and could not be reached, which fails instead.
+     *
+     * Asking for a database and silently getting none is the failure mode
+     * worth being loud about: a typo in a password reads exactly like having
+     * no database at all, and the suite would go green having tested nothing.
+     */
     protected function requireConnection(?Connection $connection): Connection
     {
         if ($connection === null) {
+            if (self::$failures !== []) {
+                $this->fail(implode("\n", self::$failures));
+            }
+
             $this->markTestSkipped(
                 'No database configured. Set RA_TEST_MYSQL_DSN or RA_TEST_PGSQL_DSN.',
             );
@@ -67,6 +82,10 @@ abstract class DatabaseTestCase extends TestCase
             return self::$connections[$prefix];
         }
 
+        if (isset(self::$failures[$prefix])) {
+            return null;
+        }
+
         $dsn = getenv("RA_TEST_{$prefix}_DSN");
 
         if (!\is_string($dsn) || $dsn === '') {
@@ -76,11 +95,29 @@ abstract class DatabaseTestCase extends TestCase
         $user = getenv("RA_TEST_{$prefix}_USER");
         $password = getenv("RA_TEST_{$prefix}_PASSWORD");
 
-        $pdo = new PDO(
-            $dsn,
-            \is_string($user) ? $user : null,
-            \is_string($password) ? $password : null,
-        );
+        // A PDOException thrown here would escape through the data provider,
+        // where PHPUnit reports it as "No tests found in class" once per
+        // integration test and names no cause. Catching it turns a wall of
+        // meaningless errors into one sentence saying which variable is wrong.
+        try {
+            $pdo = new PDO(
+                $dsn,
+                \is_string($user) ? $user : null,
+                \is_string($password) ? $password : null,
+            );
+        } catch (PDOException $e) {
+            self::$failures[$prefix] = \sprintf(
+                'RA_TEST_%s_DSN is set to "%s" but the server could not be reached: %s. '
+                    . 'Check RA_TEST_%s_USER and RA_TEST_%s_PASSWORD, or unset the DSN to skip this server.',
+                $prefix,
+                $dsn,
+                $e->getMessage(),
+                $prefix,
+                $prefix,
+            );
+
+            return null;
+        }
 
         return self::$connections[$prefix] = Connection::fromPdo($pdo);
     }
