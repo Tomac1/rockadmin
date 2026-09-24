@@ -2,11 +2,13 @@
 
 /**
  * The search box and the filter controls, in one ordinary GET form. This is
- * the no-JavaScript path: submitting it navigates to the region's own
- * fragment address with the new query string, exactly what a sort link or a
- * pager link already does. `core.js` will later intercept the submit and
- * fetch the same URL by AJAX instead — declared here as
- * `data-ra-behavior="grid-toolbar"`, nothing scripted.
+ * the no-JavaScript path: submitting it navigates to the whole page's own
+ * address with the new query string, exactly what a sort link or a pager
+ * link already does -- `$view->pageUrl`, not the region's fragment address,
+ * because a submit with no JavaScript must land on a full page, not a
+ * shell-less fragment. `core.js` intercepts the submit and fetches the
+ * region's own fragment address with the same query instead — declared here
+ * as `data-ra-behavior="grid-toolbar"`, nothing scripted.
  *
  * @var \RockAdmin\Grid\ListView $view
  * @var \Closure(mixed): string $e
@@ -15,7 +17,7 @@
  */
 ?>
 <?php if ($view->searchable || $view->filters !== []) { ?>
-    <form class="ra-grid-toolbar" method="get" action="<?= $href($view->regionUrl) ?>" data-ra-behavior="grid-toolbar">
+    <form class="ra-grid-toolbar" method="get" action="<?= $href($view->pageUrl) ?>" data-ra-behavior="grid-toolbar">
         <?php if ($view->searchable) { ?>
             <div class="ra-grid-search">
                 <label class="ra-grid-search-label visually-hidden" for="ra-grid-search-<?= $e($view->key) ?>">Search</label>

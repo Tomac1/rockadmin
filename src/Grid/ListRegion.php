@@ -60,6 +60,7 @@ final class ListRegion
             search: $state->search,
             searchable: $region->searchable !== [],
             regionUrl: $this->urls->route('region', ['page' => $page->name, 'region' => $region->key]),
+            pageUrl: $this->urls->route('page.index', ['page' => $page->name]),
         );
     }
 
@@ -73,7 +74,7 @@ final class ListRegion
             $isCurrent = $current !== null && $current->column === $column->key;
 
             $sortUrl = $column->sortable
-                ? $this->regionUrl($page, $region, $state->withSort($column->key))
+                ? $this->pageStateUrl($page, $region, $state->withSort($column->key))
                 : null;
 
             $views[] = new ColumnView(
@@ -162,15 +163,25 @@ final class ListRegion
             $limit,
             $result->total,
             \count($result->rows),
-            fn (int $number): string => $this->regionUrl($page, $region, $state->withPage($number)),
+            fn (int $number): string => $this->pageStateUrl($page, $region, $state->withPage($number)),
         );
     }
 
-    private function regionUrl(PageDefinition $page, RegionDefinition $region, GridState $state): string
+    /**
+     * The whole page's own address for a given grid state -- what a sort
+     * header, a pager link and the toolbar's form action all point at.
+     * Never the region's fragment address: spec 8.11 promises that grid
+     * state living in the URL makes a link shareable, and a link that lands
+     * on a shell-less fragment when copied into a fresh tab breaks that
+     * promise. core.js intercepts the click or submit and turns this same
+     * address into a region fetch instead; a no-JavaScript browser, or
+     * anyone who copies the link, simply follows it and gets the whole page.
+     */
+    private function pageStateUrl(PageDefinition $page, RegionDefinition $region, GridState $state): string
     {
         return $this->urls->route(
-            'region',
-            ['page' => $page->name, 'region' => $region->key],
+            'page.index',
+            ['page' => $page->name],
             $this->flatten($state->toQuery($region->key)),
         );
     }

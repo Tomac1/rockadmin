@@ -31,8 +31,24 @@ final class ListView
         public readonly PaginationView $pagination,
         public readonly string $search,
         public readonly bool $searchable,
-        /** '/r/{page}/{region}', for refreshes. */
+        /**
+         * '/r/{page}/{region}', the region's own fragment address. Used to
+         * fetch a refresh and to carry the region's identity on the
+         * fragment's own root (data-ra-region-url) -- never as the href of
+         * a link a person might follow or copy, because a fragment on its
+         * own has no shell.
+         */
         public readonly string $regionUrl,
+        /**
+         * '/p/{page}', the whole page carrying this region -- with the
+         * grid's own query string appended, this is what every sort link,
+         * pager link and the toolbar's form action point at, so following
+         * or copying one always lands on the full page it promises (spec
+         * 8.11: grid state lives in the URL precisely so a link is
+         * shareable). core.js reads the same query back off it to build the
+         * region's own fetch address instead of navigating there.
+         */
+        public readonly string $pageUrl,
     ) {
     }
 

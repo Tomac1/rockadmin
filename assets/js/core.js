@@ -226,22 +226,59 @@
     var currentRegion = null;
 
     /**
-     * Loads `url` into `region` and records the URL in browser history, so
-     * the address bar always holds the link that would reproduce what is on
-     * screen. A failure leaves the region as it was and tells the person
-     * rather than the grid silently going stale.
+     * The query string a value carries, with any leading '?' and everything
+     * before it stripped. Works equally on a full href ('/p/ads?a=b'), a
+     * bare '?'-prefixed search string (location.search) and an already-bare
+     * query string with no '?' at all (URLSearchParams#toString()), so a
+     * caller never has to know which shape it is holding.
      *
-     * @param {string} url
-     * @param {Element} region
-     * @param {boolean} [pushState]
+     * @param {string} value
+     * @return {string}
      */
-    function navigate(url, region, pushState) {
-        load(url, region).then(function (fresh) {
-            currentRegion = fresh;
+    function queryOf(value) {
+        var index = value.indexOf('?');
 
-            if (pushState !== false) {
-                window.history.pushState({ raRegion: true }, '', url);
-            }
+        return index === -1 ? value : value.slice(index + 1);
+    }
+
+    /**
+     * The region's own fragment address (data-ra-region-url) with the given
+     * URL's or bare string's query string appended.
+     *
+     * Every sort link, pager link and toolbar action addresses the *page*
+     * route — spec 8.11: grid state lives in the URL so a copied link is
+     * shareable, and a link that lands on a shell-less fragment when pasted
+     * into a fresh tab is not shareable. So the href (or the form's action)
+     * is always what a no-JavaScript browser should navigate to; this is
+     * the translation that turns that same address into the one JavaScript
+     * actually fetches, by combining its query with the region's own
+     * fragment URL, already sitting on the fragment's root element.
+     *
+     * @param {Element} region
+     * @param {string} hrefOrQuery
+     * @return {string}
+     */
+    function regionRequestUrl(region, hrefOrQuery) {
+        var base = region.getAttribute('data-ra-region-url') || '';
+        var query = queryOf(hrefOrQuery);
+
+        return query === '' ? base : base + '?' + query;
+    }
+
+    /**
+     * Fetches `fetchUrl` into `region` and, once it lands, records
+     * `historyUrl` — the shareable page address — in browser history. A
+     * failure leaves the region as it was and tells the person rather than
+     * the grid silently going stale.
+     *
+     * @param {string} historyUrl
+     * @param {string} fetchUrl
+     * @param {Element} region
+     */
+    function navigate(historyUrl, fetchUrl, region) {
+        load(fetchUrl, region).then(function (fresh) {
+            currentRegion = fresh;
+            window.history.pushState({ raRegion: true }, '', historyUrl);
         }).catch(function () {
             notifyFailure('Could not reach the server. The grid was not updated.');
         });
@@ -249,33 +286,39 @@
 
     /**
      * A sort header or a pager link: both are ordinary
-     * data-ra-action="sort"/"paginate" links inside a region, already
-     * carrying the full next URL in their href.
+     * data-ra-action="sort"/"paginate" links inside a region, carrying the
+     * page's own address in their href — the no-JavaScript destination and
+     * the shareable link alike. JavaScript treats that href as a signal,
+     * not a target: it takes the query string off it and fetches the
+     * region's own fragment address with that query instead, so the page
+     * itself never reloads.
      *
      * @param {Element} trigger
      * @param {Event} event
      */
     function followRegionLink(trigger, event) {
         var region = trigger.closest('[data-ra-region]');
-        var url = trigger.getAttribute('href');
+        var href = trigger.getAttribute('href');
 
-        if (!region || !url) {
+        if (!region || !href) {
             return;
         }
 
         event.preventDefault();
         currentRegion = region;
-        navigate(url, region);
+        navigate(href, regionRequestUrl(region, href), region);
     }
 
     action('sort', followRegionLink);
     action('paginate', followRegionLink);
 
     // The toolbar's search box and filters: an ordinary GET form
-    // (data-ra-behavior="grid-toolbar") whose submit is intercepted so
-    // narrowing a grid does not reload the page. attach()/detach() rebind
-    // this on every fragment swap, so a toolbar returned by a reload keeps
-    // working exactly like the one that was there first.
+    // (data-ra-behavior="grid-toolbar") whose action is the page's own
+    // address, for the same reason a sort or pager link's href is: a
+    // no-JavaScript submit, or a copied link built from it, must land on
+    // the whole page. attach()/detach() rebind this on every fragment swap,
+    // so a toolbar returned by a reload keeps working exactly like the one
+    // that was there first.
     behavior('grid-toolbar', {
         attach: function (form) {
             function onSubmit(event) {
@@ -287,13 +330,12 @@
 
                 event.preventDefault();
 
-                var params = new URLSearchParams(new FormData(form));
-                var query = params.toString();
-                var action = form.getAttribute('action') || window.location.href;
-                var url = query === '' ? action : action + (action.indexOf('?') === -1 ? '?' : '&') + query;
+                var query = new URLSearchParams(new FormData(form)).toString();
+                var pageAction = form.getAttribute('action') || window.location.pathname;
+                var historyUrl = query === '' ? pageAction : pageAction + '?' + query;
 
                 currentRegion = region;
-                navigate(url, region);
+                navigate(historyUrl, regionRequestUrl(region, query), region);
             }
 
             form.addEventListener('submit', onSubmit);
@@ -308,15 +350,19 @@
     });
 
     // The back button walks through the filter, sort and page changes
-    // navigate() pushed, by reloading the same region from the URL history
-    // just restored — never a full page navigation, since the URL pushed for
-    // a region is the region's own fragment address, not the page's.
+    // navigate() pushed, by reloading the same region from the query string
+    // history just restored — never a full page navigation. The address bar
+    // now holds a page URL, not the region's own fragment address, so the
+    // reload asks for the region's fragment URL with that page URL's query
+    // rather than fetching the page URL itself.
     window.addEventListener('popstate', function () {
         if (!currentRegion || !currentRegion.isConnected) {
             return;
         }
 
-        load(window.location.href, currentRegion).then(function (fresh) {
+        var fetchUrl = regionRequestUrl(currentRegion, window.location.search);
+
+        load(fetchUrl, currentRegion).then(function (fresh) {
             currentRegion = fresh;
         }).catch(function () {
             notifyFailure('Could not reach the server. The grid was not updated.');

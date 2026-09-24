@@ -329,6 +329,48 @@ final class ListRegionTest extends TestCase
         $this->assertSame('/admin/r/ads/grid', $view->regionUrl);
     }
 
+    public function testThePageUrlIsTheWholePagesOwnAddress(): void
+    {
+        $region = $this->region();
+        $rows = new FakeRowSource([$this->fetchResult([], 0)]);
+
+        $view = $this->listRegion($rows)->render($this->page(), $region, GridState::fromQuery([], 'grid', $region));
+
+        $this->assertSame('/admin/p/ads', $view->pageUrl);
+    }
+
+    /**
+     * Spec 8.11: grid state lives in the URL precisely so a sort or pager
+     * link is shareable. A link that addresses the region's own fragment
+     * route instead lands on a shell-less fragment when followed with no
+     * JavaScript, or copied out of the address bar into a fresh tab -- not
+     * shareable at all. So every sort and pager URL must be built against
+     * `page.index`, never `region`, however core.js goes on to use it.
+     */
+    public function testASortUrlAndAPagerUrlAddressThePageRouteNotTheRegionRoute(): void
+    {
+        $region = $this->region(
+            [
+                'id' => $this->column('id', sortable: true),
+                'title' => $this->column('title'),
+            ],
+            perPage: 1,
+        );
+        $rows = new FakeRowSource([$this->fetchResult([['id' => 1, 'title' => 'A']], 3)]);
+
+        $view = $this->listRegion($rows)->render($this->page(), $region, GridState::fromQuery([], 'grid', $region));
+
+        $sortUrl = $view->columns[0]->sortUrl;
+        $this->assertNotNull($sortUrl);
+        $this->assertStringStartsWith('/admin/p/ads?', $sortUrl);
+        $this->assertStringNotContainsString('/admin/r/ads/grid', $sortUrl);
+
+        $pagerUrl = $view->pagination->nextUrl;
+        $this->assertNotNull($pagerUrl);
+        $this->assertStringStartsWith('/admin/p/ads?', $pagerUrl);
+        $this->assertStringNotContainsString('/admin/r/ads/grid', $pagerUrl);
+    }
+
     public function testFiltersCarryTheValueTheUrlAlreadyHeld(): void
     {
         $region = $this->region([
