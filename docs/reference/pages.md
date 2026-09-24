@@ -148,7 +148,7 @@ Every entry of `regions.*.form.fields`.
 | --- | --- | --- | --- | --- |
 | `type` | string | `text` | `text` | What the field holds and which control it renders: text, textarea, number, select, multiselect, checkbox, radio, date, datetime, hidden or password. |
 | `label` | string | — | `First Name` | The label shown beside the control. Defaults at load to the key, first letter upper-cased, underscores turned to spaces. |
-| `default` | mixed | — | `draft` | What a new row starts with: a literal, a `{{placeholder}}`, or one of the tokens `@now` and `@uuid`. Applies only when a row is created — an existing row is never touched by it. May be resolved per request rather than at load. |
+| `default` | mixed | — | `draft` | What a new row starts with: a literal, a `{{placeholder}}`, or one of the tokens `@now` and `@uuid`. Applies only when a row is created — an existing row is never touched by it. A `{{placeholder}}` default is bound when the row is saved, not when the form is drawn, so its control shows empty until then. May be resolved per request rather than at load. |
 | `required` | bool | `false` | `true` | Whether an empty value is refused on submission. |
 | `readonly` | bool | `false` | `true` | Renders the control disabled, and the field is never read from a submission — its value on save always comes from its default or from the existing row. |
 | `hidden` | bool | `false` | `true` | Renders no control at all. Its default is still applied on save, so a hidden field is how a form carries a value the user never sees or edits, such as a workspace scope. |

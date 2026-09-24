@@ -24,6 +24,7 @@ use RockAdmin\Page\FieldDefinition;
 use RockAdmin\Page\FieldType;
 use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
+use RockAdmin\Page\PageException;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
 use RockAdmin\Tests\Support\FakeRowSource;
@@ -79,10 +80,10 @@ final class FormRegionTest extends TestCase
      * @param array<string, FieldDefinition> $fields
      * @param list<string>                   $resetOnCopy
      */
-    private function page(array $fields, array $resetOnCopy = []): PageDefinition
+    private function region(array $fields, array $resetOnCopy = [], string $key = 'form'): RegionDefinition
     {
-        $region = new RegionDefinition(
-            key: 'form',
+        return new RegionDefinition(
+            key: $key,
             type: RegionType::Form,
             perPage: 25,
             columns: [],
@@ -90,16 +91,17 @@ final class FormRegionTest extends TestCase
             searchable: [],
             form: new FormDefinition($fields, $resetOnCopy),
         );
+    }
 
-        return new PageDefinition(
-            'ads',
-            'Ads',
-            'default',
-            'Ads',
-            new Entity('ra_test_ads', 'id'),
-            [],
-            ['form' => $region],
-        );
+    private function page(RegionDefinition ...$regions): PageDefinition
+    {
+        $keyed = [];
+
+        foreach ($regions as $region) {
+            $keyed[$region->key] = $region;
+        }
+
+        return new PageDefinition('ads', 'Ads', 'default', 'Ads', new Entity('ra_test_ads', 'id'), [], $keyed);
     }
 
     /** @param list<array<string, mixed>> $rows */
@@ -132,13 +134,14 @@ final class FormRegionTest extends TestCase
 
     public function testACreateFormStartsEveryFieldAtItsDefault(): void
     {
-        $page = $this->page([
+        $region = $this->region([
             'title' => $this->field('title', default: 'Untitled'),
             'price' => $this->field('price', FieldType::Number, default: 0),
             'note' => $this->field('note'),
         ]);
 
-        $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))->create($page);
+        $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))
+            ->create($this->page($region), $region);
 
         $this->assertTrue($view->isCreate);
         $this->assertSame(['title', 'price', 'note'], $this->keysOf($view));
@@ -149,13 +152,13 @@ final class FormRegionTest extends TestCase
 
     public function testAnEditFormStartsEveryFieldAtTheRowsValue(): void
     {
-        $page = $this->page([
+        $region = $this->region([
             'title' => $this->field('title', default: 'Untitled'),
             'price' => $this->field('price', FieldType::Number, default: 0),
         ]);
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike', 'price' => 12000]])]);
 
-        $view = $this->formRegion($rows)->edit($page, '7');
+        $view = $this->formRegion($rows)->edit($this->page($region), $region, '7');
 
         $this->assertNotNull($view);
         $this->assertFalse($view->isCreate);
@@ -166,16 +169,17 @@ final class FormRegionTest extends TestCase
 
     public function testAnEditFormForAMissingRowIsNull(): void
     {
-        $page = $this->page(['title' => $this->field('title')]);
+        $region = $this->region(['title' => $this->field('title')]);
 
-        $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))->edit($page, '999999');
+        $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))
+            ->edit($this->page($region), $region, '999999');
 
         $this->assertNull($view);
     }
 
     public function testACopyFormCarriesTheRowExceptTheFieldsResetNames(): void
     {
-        $page = $this->page(
+        $region = $this->region(
             [
                 'title' => $this->field('title'),
                 'slug' => $this->field('slug', default: 'new-slug'),
@@ -184,7 +188,7 @@ final class FormRegionTest extends TestCase
         );
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike', 'slug' => 'bike']])]);
 
-        $view = $this->formRegion($rows)->copy($page, '7');
+        $view = $this->formRegion($rows)->copy($this->page($region), $region, '7');
 
         $this->assertNotNull($view);
         $this->assertTrue($view->isCreate, 'a copy saves a new row');
@@ -199,14 +203,14 @@ final class FormRegionTest extends TestCase
             'title' => $this->field('title', default: 'Untitled'),
             'price' => $this->field('price', FieldType::Number, default: 0),
         ];
-        $page = $this->page($fields);
+        $region = $this->region($fields);
         $submission = Submission::fromBody(
             ['title' => 'Typed by hand', 'price' => 'not a number'],
             new FormDefinition($fields),
         );
 
         $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))
-            ->reject($page, $submission, [], null);
+            ->reject($this->page($region), $region, $submission, [], null);
 
         $this->assertSame('Typed by hand', $this->fieldView($view, 'title')->value);
         $this->assertSame('not a number', $this->fieldView($view, 'price')->value);
@@ -218,7 +222,7 @@ final class FormRegionTest extends TestCase
             'title' => $this->field('title'),
             'price' => $this->field('price', FieldType::Number),
         ];
-        $page = $this->page($fields);
+        $region = $this->region($fields);
         $submission = Submission::fromBody(['title' => '', 'price' => 'x'], new FormDefinition($fields));
         $errors = [
             new ValidationError('title', 'Title is required.'),
@@ -227,7 +231,7 @@ final class FormRegionTest extends TestCase
         ];
 
         $view = $this->formRegion(new FakeRowSource([$this->fetchResult([])]))
-            ->reject($page, $submission, $errors, null);
+            ->reject($this->page($region), $region, $submission, $errors, null);
 
         $this->assertSame('Title is required.', $this->fieldView($view, 'title')->error());
         $this->assertSame(
@@ -249,15 +253,22 @@ final class FormRegionTest extends TestCase
             'owner' => $this->field('owner', readonly: true, default: 'system'),
             'note' => $this->field('note', FieldType::Textarea),
         ];
-        $page = $this->page($fields);
+        $regionDefinition = $this->region($fields);
+        $page = $this->page($regionDefinition);
         $submission = Submission::fromBody(
             ['title' => 'Typed', 'status' => 'live', 'note' => 'Hello'],
             new FormDefinition($fields),
         );
         $region = $this->formRegion(new FakeRowSource([$this->fetchResult([])]));
 
-        $fresh = $region->create($page);
-        $rejected = $region->reject($page, $submission, [new ValidationError('title', 'Too short.')], null);
+        $fresh = $region->create($page, $regionDefinition);
+        $rejected = $region->reject(
+            $page,
+            $regionDefinition,
+            $submission,
+            [new ValidationError('title', 'Too short.')],
+            null,
+        );
 
         $this->assertSame($this->keysOf($fresh), $this->keysOf($rejected));
 
@@ -279,36 +290,90 @@ final class FormRegionTest extends TestCase
 
     public function testTheFormCarriesACsrfToken(): void
     {
-        $session = new ArraySessionStore();
-        $csrf = new Csrf($session);
+        $csrf = new Csrf(new ArraySessionStore());
         $region = new FormRegion(
             new FakeRowSource([$this->fetchResult([])]),
             new UrlGenerator('/admin'),
             $csrf,
         );
+        $definition = $this->region(['title' => $this->field('title')]);
 
-        $view = $region->create($this->page(['title' => $this->field('title')]));
+        $view = $region->create($this->page($definition), $definition);
 
         $this->assertSame($csrf->token(), $view->token);
     }
 
     public function testTheActionUrlIsThePagesActionRoute(): void
     {
-        $page = $this->page(['title' => $this->field('title')]);
+        $definition = $this->region(['title' => $this->field('title')]);
+        $page = $this->page($definition);
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike']])]);
         $region = $this->formRegion($rows);
 
-        $this->assertSame('/admin/a/ads/create', $region->create($page)->action);
+        $this->assertSame('/admin/a/ads/create', $region->create($page, $definition)->action);
 
-        $edit = $region->edit($page, '7');
+        $edit = $region->edit($page, $definition, '7');
         $this->assertNotNull($edit);
         $this->assertSame('/admin/a/ads/update', $edit->action);
-        $this->assertSame('/admin/p/ads', $edit->returnTo, 'the page index is the fallback return address');
+    }
+
+    public function testTheFormGoesBackWhereTheCallerSaysAndToThePageIndexOtherwise(): void
+    {
+        // Spec 8.11's `_ret`: a person who opened the form from page three of
+        // a filtered grid must land back on page three of that filtered grid.
+        // FormRegion neither validates nor invents the address — Task 8's
+        // ReturnAddress decides what is acceptable — it only carries what it
+        // was handed, and falls back to the page's own index when handed
+        // nothing rather than to whatever was in the request.
+        $definition = $this->region(['title' => $this->field('title')]);
+        $page = $this->page($definition);
+        $region = $this->formRegion(new FakeRowSource([$this->fetchResult([])]));
+
+        $carried = $region->create($page, $definition, '/admin/p/ads?grid%5Bpage%5D=3');
+        $this->assertSame('/admin/p/ads?grid%5Bpage%5D=3', $carried->returnTo);
+
+        $fallback = $region->create($page, $definition);
+        $this->assertSame('/admin/p/ads', $fallback->returnTo, 'the page index is the fallback return address');
+    }
+
+    public function testASecondFormRegionOnThePageIsTheOneRenderedWhenItIsTheOneNamed(): void
+    {
+        // The caller names the region, the way it does for a preview. A class
+        // that called firstFormRegion() itself could only ever draw the first
+        // form on a page, and milestone 8's `@region:` addressing would have
+        // no way to ask for the other one.
+        $first = $this->region(['title' => $this->field('title')], key: 'form');
+        $second = $this->region(['note' => $this->field('note')], key: 'quick-form');
+        $page = $this->page($first, $second);
+        $region = $this->formRegion(new FakeRowSource([$this->fetchResult([])]));
+
+        $this->assertSame(['note'], $this->keysOf($region->create($page, $second)));
+        $this->assertSame(['title'], $this->keysOf($region->create($page, $first)));
+    }
+
+    public function testARegionThatIsNotAFormIsRefusedNamingIt(): void
+    {
+        $page = new PageDefinition(
+            'ads',
+            'Ads',
+            'default',
+            'Ads',
+            new Entity('ra_test_ads', 'id'),
+            [],
+            [],
+        );
+        $grid = new RegionDefinition('grid', RegionType::List, 25, [], [], []);
+        $region = $this->formRegion(new FakeRowSource([$this->fetchResult([])]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage("Region 'grid' of page 'ads' is not a form.");
+
+        $region->create($page, $grid);
     }
 
     public function testAReadonlyFieldIsRenderedDisabled(): void
     {
-        $page = $this->page([
+        $definition = $this->region([
             'title' => $this->field('title'),
             'created_at' => $this->field('created_at', readonly: true),
         ]);
@@ -316,7 +381,7 @@ final class FormRegionTest extends TestCase
             ['id' => 7, 'title' => 'Bike', 'created_at' => '2026-09-24 10:00:00'],
         ])]);
 
-        $view = $this->formRegion($rows)->edit($page, '7');
+        $view = $this->formRegion($rows)->edit($this->page($definition), $definition, '7');
 
         $this->assertNotNull($view);
         $this->assertFalse($this->fieldView($view, 'title')->readonly);
@@ -326,17 +391,18 @@ final class FormRegionTest extends TestCase
 
     public function testAHiddenFieldFromARowTravelsButOneFromADefaultDoesNot(): void
     {
-        $page = $this->page([
+        $definition = $this->region([
             'title' => $this->field('title'),
             'site_id' => $this->field('site_id', hidden: true, default: 3),
         ]);
+        $page = $this->page($definition);
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike', 'site_id' => 9]])]);
         $region = $this->formRegion($rows);
 
-        $created = $region->create($page);
+        $created = $region->create($page, $definition);
         $this->assertSame(['title'], $this->keysOf($created), 'a default is reapplied on save, so it stays off the page');
 
-        $edited = $region->edit($page, '7');
+        $edited = $region->edit($page, $definition, '7');
         $this->assertNotNull($edited);
         $this->assertSame(['title', 'site_id'], $this->keysOf($edited));
 
@@ -347,7 +413,7 @@ final class FormRegionTest extends TestCase
 
     public function testNoViewObjectCarriesAFieldDefinition(): void
     {
-        $page = $this->page([
+        $definition = $this->region([
             'title' => $this->field('title'),
             'status' => $this->field('status', FieldType::Select, options: [
                 'draft' => new EnumOption('draft', 'Draft'),
@@ -355,7 +421,7 @@ final class FormRegionTest extends TestCase
         ]);
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike', 'status' => 'draft']])]);
 
-        $view = $this->formRegion($rows)->edit($page, '7');
+        $view = $this->formRegion($rows)->edit($this->page($definition), $definition, '7');
 
         $this->assertNotNull($view);
         $this->assertNothingForbiddenReachable($view);
@@ -400,13 +466,13 @@ final class FormRegionTest extends TestCase
 
     public function testOneStatementFetchesTheRowForAnEditForm(): void
     {
-        $page = $this->page([
+        $definition = $this->region([
             'title' => $this->field('title'),
             'price' => $this->field('price', FieldType::Number),
         ]);
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'Bike', 'price' => 1]])]);
 
-        $this->formRegion($rows)->edit($page, '7');
+        $this->formRegion($rows)->edit($this->page($definition), $definition, '7');
 
         $this->assertSame(1, $rows->calls, 'one RowSource::fetch() call for one row');
 

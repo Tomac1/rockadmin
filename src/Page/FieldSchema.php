@@ -38,7 +38,8 @@ final class FieldSchema
                 ValueType::Mixed,
                 description: 'What a new row starts with: a literal, a `{{placeholder}}`, or one of the '
                     . 'tokens `@now` and `@uuid`. Applies only when a row is created — an existing row is '
-                    . 'never touched by it.',
+                    . 'never touched by it. A `{{placeholder}}` default is bound when the row is saved, not '
+                    . 'when the form is drawn, so its control shows empty until then.',
                 example: 'draft',
                 deferrable: true,
             ),

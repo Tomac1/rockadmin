@@ -20,6 +20,7 @@ use RockAdmin\Page\FieldType;
 use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
+use RockAdmin\Page\RegionDefinition;
 
 /**
  * Turns a described form, and a stored row when there is one, into the
@@ -48,25 +49,34 @@ final class FormRegion
     ) {
     }
 
-    /** A create form: every field at its default. */
-    public function create(PageDefinition $page): FormView
+    /**
+     * A create form: every field at its default.
+     *
+     * $returnTo is where the write goes back to — the grid page the person
+     * came from, filters and all. Null falls back to the page's own index.
+     */
+    public function create(PageDefinition $page, RegionDefinition $region, ?string $returnTo = null): FormView
     {
-        $form = $this->form($page);
+        $form = $this->form($page, $region);
 
-        return $this->view($page, $form, $this->defaults($form), true, null, []);
+        return $this->view($page, $form, $this->defaults($form), true, null, [], $returnTo);
     }
 
     /** An edit form: null when no row has that key, so the caller 404s. */
-    public function edit(PageDefinition $page, string $id): ?FormView
-    {
-        $form = $this->form($page);
+    public function edit(
+        PageDefinition $page,
+        RegionDefinition $region,
+        string $id,
+        ?string $returnTo = null,
+    ): ?FormView {
+        $form = $this->form($page, $region);
         $row = $this->row($page, $form, $id);
 
         if ($row === null) {
             return null;
         }
 
-        return $this->view($page, $form, $this->stored($form, $row, []), false, $id, []);
+        return $this->view($page, $form, $this->stored($form, $row, []), false, $id, [], $returnTo);
     }
 
     /**
@@ -75,16 +85,20 @@ final class FormRegion
      * a create and carries no id — the row it was copied from is not the row
      * it will save over.
      */
-    public function copy(PageDefinition $page, string $id): ?FormView
-    {
-        $form = $this->form($page);
+    public function copy(
+        PageDefinition $page,
+        RegionDefinition $region,
+        string $id,
+        ?string $returnTo = null,
+    ): ?FormView {
+        $form = $this->form($page, $region);
         $row = $this->row($page, $form, $id);
 
         if ($row === null) {
             return null;
         }
 
-        return $this->view($page, $form, $this->stored($form, $row, $form->resetOnCopy), true, null, []);
+        return $this->view($page, $form, $this->stored($form, $row, $form->resetOnCopy), true, null, [], $returnTo);
     }
 
     /**
@@ -100,9 +114,15 @@ final class FormRegion
      *
      * @param list<ValidationError> $errors
      */
-    public function reject(PageDefinition $page, Submission $submission, array $errors, ?string $id): FormView
-    {
-        $form = $this->form($page);
+    public function reject(
+        PageDefinition $page,
+        RegionDefinition $region,
+        Submission $submission,
+        array $errors,
+        ?string $id,
+        ?string $returnTo = null,
+    ): FormView {
+        $form = $this->form($page, $region);
         $values = $this->defaults($form);
 
         if ($id !== null) {
@@ -117,15 +137,21 @@ final class FormRegion
             $values[$key] = ['value' => $submission->value($key), 'stored' => false];
         }
 
-        return $this->view($page, $form, $values, $id === null, $id, $errors);
+        return $this->view($page, $form, $values, $id === null, $id, $errors, $returnTo);
     }
 
-    private function form(PageDefinition $page): FormDefinition
+    /**
+     * The region is named by the caller, the way `PreviewRegion` is told
+     * which preview to render. A page may declare more than one form, and
+     * milestone 8 will address one by `@region:` like anything else; a region
+     * this class chose for itself would make that impossible to express.
+     */
+    private function form(PageDefinition $page, RegionDefinition $region): FormDefinition
     {
-        $region = $page->firstFormRegion();
-
-        if ($region === null || $region->form === null) {
-            throw new PageException("Page '{$page->name}' has no form region.");
+        if ($region->form === null) {
+            throw new PageException(
+                "Region '{$region->key}' of page '{$page->name}' is not a form.",
+            );
         }
 
         return $region->form;
@@ -240,6 +266,7 @@ final class FormRegion
         bool $isCreate,
         ?string $id,
         array $errors,
+        ?string $returnTo,
     ): FormView {
         $messages = [];
 
@@ -285,7 +312,7 @@ final class FormRegion
                 'action' => $isCreate ? 'create' : 'update',
             ]),
             token: $this->csrf->token(),
-            returnTo: $this->urls->route('page.index', ['page' => $page->name]),
+            returnTo: $returnTo ?? $this->urls->route('page.index', ['page' => $page->name]),
             isCreate: $isCreate,
             fields: $fields,
             errors: $formErrors,
