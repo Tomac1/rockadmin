@@ -26,6 +26,8 @@ use RockAdmin\Db\Sort;
 use RockAdmin\Db\SortDirection;
 use RockAdmin\Db\SourcePath;
 use RockAdmin\Form\DefaultValue;
+use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FormFields;
 
 /**
  * Reads a directory of page files and turns each into a PageDefinition.
@@ -731,6 +733,25 @@ final class PageRepository
     /** @param array<string, mixed> $fieldConfig */
     private function buildField(string $pageName, string $fieldKey, array $fieldConfig): FieldDefinition
     {
+        // A form carries a few body keys that are not columns: the row's own
+        // key and the return address. A field named one of them would render
+        // a control colliding with the hidden input beside it, and whichever
+        // the browser sent last would win — so a person could aim an update
+        // at a different row by typing into a visible text box. The refusal
+        // covers every leading underscore rather than only today's two
+        // names, which is the rule FormFields itself states, so that adding
+        // a third reserved key later cannot collide with a page already in
+        // git.
+        if (str_starts_with($fieldKey, '_')) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' may not begin with an underscore. Those names are reserved for the "
+                    . "keys a form carries beside its fields: '%s'.",
+                $pageName,
+                $fieldKey,
+                implode("', '", FormFields::reserved()),
+            ));
+        }
+
         $typeValue = \is_string($fieldConfig['type'] ?? null) ? $fieldConfig['type'] : 'text';
 
         try {
@@ -838,12 +859,30 @@ final class PageRepository
         $rows = \is_int($fieldConfig['rows'] ?? null) ? $fieldConfig['rows'] : null;
         $pattern = \is_string($fieldConfig['pattern'] ?? null) ? $fieldConfig['pattern'] : null;
 
-        if ($pattern !== null && @preg_match('~' . $pattern . '~', '') === false) {
+        // Compiled through FieldValidator::compile(), not a second
+        // expression of its own: the validator anchors a pattern and sets
+        // the D modifier, and a load-time check run against a different
+        // expression from the one that actually runs is not a check.
+        if ($pattern !== null && @preg_match(FieldValidator::compile($pattern), '') === false) {
             throw new PageException(\sprintf(
                 "Page '%s': field '%s' has an invalid pattern '%s'.",
                 $pageName,
                 $fieldKey,
                 $pattern,
+            ));
+        }
+
+        // A pattern is run against a scalar value. A multiselect's value is
+        // a list and a checkbox's is one bit that is never inspected, so on
+        // either the key would sit in the page file doing nothing — and
+        // silently dead configuration is what this loader exists to catch.
+        if ($pattern !== null && ($type === FieldType::Multiselect || $type === FieldType::Checkbox)) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is a '%s' and declares a 'pattern', which would never be applied. A "
+                    . 'pattern constrains a single typed value, so it belongs on a text-like field.',
+                $pageName,
+                $fieldKey,
+                $type->value,
             ));
         }
 

@@ -299,6 +299,35 @@ final class PageRepositoryFormTest extends TestCase
         $this->repository()->get('ads');
     }
 
+    public function testAPatternOnAMultiselectIsRefused(): void
+    {
+        // A multiselect's value is a list, and a pattern can only be run
+        // against a scalar, so the key would be silently dead. Refusing
+        // configuration that does nothing is what this loader is for.
+        $this->writePage('ads', $this->formPage([
+            'tags' => ['type' => 'multiselect', 'options' => ['a' => 'A'], 'pattern' => '[a-z]+'],
+        ]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage("Page 'ads': field 'tags'");
+
+        $this->repository()->get('ads');
+    }
+
+    public function testAPatternOnACheckboxIsRefused(): void
+    {
+        // Same reason: a checkbox carries one bit, present or absent, and
+        // never reaches a pattern check.
+        $this->writePage('ads', $this->formPage([
+            'active' => ['type' => 'checkbox', 'pattern' => '[a-z]+'],
+        ]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage("Page 'ads': field 'active'");
+
+        $this->repository()->get('ads');
+    }
+
     public function testMinGreaterThanMaxIsRefused(): void
     {
         $this->writePage('ads', $this->formPage([

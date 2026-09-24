@@ -19,6 +19,11 @@ use RockAdmin\Page\FormDefinition;
  * at a time. The second: a message names the field's *label*, because the
  * person reading it has never seen the column name.
  *
+ * There is one entry point, and it hands back a `ValidationResult` rather
+ * than a list plus a second method for the values. That is deliberate: the
+ * two-call shape let a caller read values the validator had just refused,
+ * and the only thing standing between them was a docblock.
+ *
  * Only the fields `FormDefinition::editable()` returns are looked at. A
  * readonly or hidden field's value never comes from the wire, so there is
  * nothing here to check; its default is applied when the row is saved.
@@ -45,49 +50,43 @@ final class FieldValidator
 
     private const string CANONICAL_DATETIME = 'Y-m-d H:i:s';
 
-    /** @return list<ValidationError> empty when everything passed */
-    public function validate(FormDefinition $form, Submission $submission): array
+    /**
+     * What a `number` control can actually post: an optional sign, then
+     * digits with at most one decimal point.
+     *
+     * is_numeric() is not this test. It accepts leading whitespace, which
+     * then coerces to a float and quietly defeats the rule that an integral
+     * literal stays an integer; it accepts hexadecimal; and it accepts
+     * scientific notation, where '1e400' casts to INF and PDO cannot bind
+     * it at all. None of those can be typed into a number control, so a
+     * value carrying one did not come from the form this validates.
+     */
+    private const string NUMBER = '~^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$~D';
+
+    /** An integral literal, for deciding whether a number stays an int. */
+    private const string INTEGER = '~^[+-]?\d+$~D';
+
+    public function validate(FormDefinition $form, Submission $submission): ValidationResult
     {
         $errors = [];
-
-        foreach ($form->editable() as $key => $field) {
-            foreach ($this->check($field, $submission) as $message) {
-                $errors[] = new ValidationError($key, $message);
-            }
-        }
-
-        return $errors;
-    }
-
-    /**
-     * The coerced values, safe to hand a WriteHandler. Call after validate().
-     *
-     * A field the submission did not carry is absent from the result, so that
-     * an update writes only what was sent. The one exception is a checkbox:
-     * an unchecked box sends nothing at all, and "nothing" there means false
-     * rather than "leave it alone".
-     *
-     * @return array<string, mixed>
-     */
-    public function values(FormDefinition $form, Submission $submission): array
-    {
         $values = [];
 
         foreach ($form->editable() as $key => $field) {
+            foreach ($this->check($field, $submission) as $message) {
+                $errors[] = new ValidationError($field->key, $message);
+            }
+
+            // A checkbox is the one field whose absence is a value: an
+            // unticked box sends nothing at all, and "nothing" there means
+            // false rather than "leave this column alone".
             if ($field->type === FieldType::Checkbox) {
-                $values[$key] = $submission->has($key);
-
-                continue;
+                $values[$key] = $submission->has($field->key);
+            } elseif ($submission->has($field->key)) {
+                $values[$key] = $this->coerce($field, $submission->value($field->key));
             }
-
-            if (!$submission->has($key)) {
-                continue;
-            }
-
-            $values[$key] = $this->coerce($field, $submission->value($key));
         }
 
-        return $values;
+        return new ValidationResult($errors, $values);
     }
 
     /** @return list<string> every reason this field was refused */
@@ -144,11 +143,11 @@ final class FieldValidator
     /** @return list<string> */
     private function checkNumber(FieldDefinition $field, mixed $value): array
     {
-        if (!\is_scalar($value) || !is_numeric($value)) {
+        if (!\is_scalar($value) || preg_match(self::NUMBER, $this->stringify($value)) !== 1) {
             return ["{$field->label} must be a number."];
         }
 
-        $number = (float) $value;
+        $number = (float) $this->stringify($value);
         $messages = [];
 
         if ($field->min !== null && $number < (float) $field->min) {
@@ -231,10 +230,7 @@ final class FieldValidator
             return [];
         }
 
-        // The same delimiter PageRepository compiles the pattern with when it
-        // refuses an invalid one at load, so a pattern that passed there is
-        // the pattern that runs here.
-        $matched = preg_match('~' . $field->pattern . '~', $this->stringify($value));
+        $matched = preg_match(self::compile($field->pattern), $this->stringify($value));
 
         // `false` is not `0`. PCRE returns it when it gave up — a backtrack
         // limit reached, or a subject it could not walk — and the load-time
@@ -248,6 +244,32 @@ final class FieldValidator
         }
 
         return [];
+    }
+
+    /**
+     * A field `pattern` as PCRE, anchored the way the HTML attribute it
+     * mirrors is anchored.
+     *
+     * Three details, each of which was wrong once:
+     *
+     * - `^` and `$`, because an unanchored match constrains nothing. A
+     *   pattern of `[A-Z]{2}\d{4}` would otherwise accept
+     *   `"'; DROP TABLE users; -- AB1234"`, which makes the server-side
+     *   check strictly weaker than the browser hint it is meant to enforce.
+     * - `(?:...)` around the author's pattern, because anchoring `a|b` as
+     *   `^a|b$` anchors only the first branch and leaves the second free to
+     *   match anywhere.
+     * - the `D` modifier, because `$` otherwise also matches immediately
+     *   before a final newline, so even an author-anchored `^[A-Z]{2}\d{4}$`
+     *   would admit `"AB1234\n"` and write it verbatim.
+     *
+     * `PageRepository` compiles a pattern exactly this way when it refuses
+     * an invalid one at load. The two must not drift: a load-time check on a
+     * different expression from the one that runs is not a check.
+     */
+    public static function compile(string $pattern): string
+    {
+        return '~^(?:' . $pattern . ')$~D';
     }
 
     /**
@@ -293,6 +315,13 @@ final class FieldValidator
 
     private function coerce(FieldDefinition $field, mixed $value): mixed
     {
+        // A list column's absence is an empty list, not null. The null rule
+        // below is about scalar columns, where '' and NULL are different
+        // things and the empty control means the second.
+        if ($field->type === FieldType::Multiselect) {
+            return $this->coerceList($field, $value);
+        }
+
         if ($this->isEmpty($value)) {
             // An empty control is an absent value, not the empty string: a
             // nullable column should end up NULL, and a NOT NULL one should
@@ -302,7 +331,6 @@ final class FieldValidator
 
         return match ($field->type) {
             FieldType::Number => $this->coerceNumber($value),
-            FieldType::Multiselect => $this->coerceList($value),
             FieldType::Date => $this->coerceDate($value, true),
             FieldType::Datetime => $this->coerceDate($value, false),
             FieldType::Checkbox => true,
@@ -312,20 +340,48 @@ final class FieldValidator
 
     private function coerceNumber(mixed $value): mixed
     {
-        if (!\is_scalar($value) || !is_numeric($value)) {
+        if (!\is_scalar($value)) {
             return $value;
         }
 
         $text = $this->stringify($value);
 
+        // Anything validate() refused travels as it arrived, so a caller
+        // that somehow skipped validation gets a visibly wrong value rather
+        // than a plausible one. The date path has the same instinct.
+        if (preg_match(self::NUMBER, $text) !== 1) {
+            return $value;
+        }
+
+        if (preg_match(self::INTEGER, $text) !== 1) {
+            return (float) $text;
+        }
+
         // An integral literal stays an integer, so an INT column is not
-        // handed a float that the driver then writes as '7.0'.
-        return preg_match('~^[+-]?\d+$~', $text) === 1 ? (int) $text : (float) $text;
+        // handed a float the driver then writes as '7.0'. filter_var is what
+        // decides, because it refuses what (int) would silently mangle: a
+        // literal wider than PHP's int range comes back false, and casting
+        // it — to int or to float — would lose digits a BIGINT column can
+        // hold. Such a literal travels as its own text and the column
+        // decides, which is the honest answer rather than a rounded one.
+        $integer = filter_var($text, FILTER_VALIDATE_INT);
+
+        return $integer === false ? $text : $integer;
     }
 
-    /** @return list<string> */
-    private function coerceList(mixed $value): array
+    /**
+     * @return list<string> only entries the field actually offers
+     */
+    private function coerceList(FieldDefinition $field, mixed $value): array
     {
+        // Defence in depth. `ValidationResult` already makes it impossible
+        // to read the values of a submission this would have had to repair,
+        // so nothing here should ever fire — but an earlier shape of this
+        // method turned an associative array into a list and let an
+        // undeclared entry through, which is the kind of quiet repair that
+        // makes a refusal stop meaning anything. Dropping what was not
+        // offered is cheaper than trusting that the guard upstream is never
+        // removed.
         if (!\is_array($value)) {
             return [];
         }
@@ -333,7 +389,7 @@ final class FieldValidator
         $entries = [];
 
         foreach ($value as $entry) {
-            if (\is_scalar($entry)) {
+            if (\is_scalar($entry) && isset($field->options[$this->stringify($entry)])) {
                 $entries[] = $this->stringify($entry);
             }
         }

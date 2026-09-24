@@ -106,7 +106,10 @@ final class FieldSchema
             ),
             'pattern' => new SchemaKey(
                 ValueType::String,
-                description: 'A regular expression the value must match, written without delimiters.',
+                description: 'A regular expression the whole value must match, written without delimiters. '
+                    . 'It is anchored at both ends, exactly as the HTML `pattern` attribute is, so '
+                    . '`[A-Z]{2}\\d{4}` accepts `AB1234` and nothing that merely contains it. Not accepted on '
+                    . 'a `multiselect` or a `checkbox`, whose values a pattern could never be applied to.',
                 example: '[A-Z]{2}\\d{4}',
             ),
         ]);

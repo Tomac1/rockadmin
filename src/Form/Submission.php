@@ -25,7 +25,12 @@ use RockAdmin\Page\FormDefinition;
  */
 final class Submission
 {
-    /** @param array<string, mixed> $values */
+    /**
+     * @param array<array-key, mixed> $values array-key, not string: PHP
+     *                                        normalises a numeric key such as
+     *                                        '123' to the integer 123 on the
+     *                                        way in, and no cast can undo it
+     */
     private function __construct(private readonly array $values)
     {
     }
@@ -44,7 +49,7 @@ final class Submission
         return new self($values);
     }
 
-    /** @return array<string, mixed> only keys the form declares as editable */
+    /** @return array<array-key, mixed> only keys the form declares as editable */
     public function values(): array
     {
         return $this->values;
