@@ -1,0 +1,253 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RockAdmin\Tests\Integration\Db;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RockAdmin\Db\Connection;
+use RockAdmin\Db\DbException;
+use RockAdmin\Db\Entity;
+use RockAdmin\Db\Sql;
+use RockAdmin\Db\SqlWriteHandler;
+use RockAdmin\Db\WriteHandler;
+use RockAdmin\Tests\Support\DatabaseTestCase;
+use RuntimeException;
+
+/**
+ * This is the first test in the project to mutate the database, so it does
+ * not touch `ra_test_ads` and the rest of `DatabaseTestCase`'s shared
+ * fixtures -- those are read-only everywhere else in the suite. Instead it
+ * creates its own table, `ra_test_write`, before each test and drops it
+ * after, on every configured connection, regardless of which one that test
+ * happens to run against. The next mutating test in this project should do
+ * the same rather than writing to the shared fixtures: a failing assertion
+ * here must never leave `ra_test_ads` or its siblings wrong for a test that
+ * runs after it.
+ */
+#[CoversClass(SqlWriteHandler::class)]
+#[CoversClass(Connection::class)]
+final class WriteTest extends DatabaseTestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        foreach (self::connections() as [$connection]) {
+            if ($connection !== null) {
+                $this->createWriteFixture($connection);
+            }
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (self::connections() as [$connection]) {
+            if ($connection !== null) {
+                $this->dropWriteFixture($connection);
+            }
+        }
+
+        parent::tearDown();
+    }
+
+    private function createWriteFixture(Connection $connection): void
+    {
+        $this->dropWriteFixture($connection);
+
+        $connection->execute(new Sql(
+            'CREATE TABLE ra_test_write (id INTEGER PRIMARY KEY, title VARCHAR(100) NOT NULL UNIQUE, '
+                . 'price INTEGER)',
+        ));
+    }
+
+    private function dropWriteFixture(Connection $connection): void
+    {
+        $connection->execute(new Sql('DROP TABLE IF EXISTS ra_test_write'));
+    }
+
+    private function entity(): Entity
+    {
+        return new Entity('ra_test_write', 'id');
+    }
+
+    private function handler(Connection $connection): WriteHandler
+    {
+        return new SqlWriteHandler($connection);
+    }
+
+    /** Both drivers may hand back an integer column as a numeric string. */
+    private function intValue(mixed $value): int
+    {
+        if (!\is_scalar($value)) {
+            $this->fail('Expected a scalar, got ' . get_debug_type($value));
+        }
+
+        return (int) $value;
+    }
+
+    #[DataProvider('connections')]
+    public function testAnInsertReturnsTheNewRowsKey(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $result = $this->handler($connection)->insert(
+            $this->entity(),
+            ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000],
+        );
+
+        $this->assertSame('1', $result->key);
+    }
+
+    #[DataProvider('connections')]
+    public function testAnInsertedRowIsReadBackWithTheValuesGiven(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $result = $this->handler($connection)->insert(
+            $this->entity(),
+            ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000],
+        );
+
+        $this->assertSame([], $result->before);
+        $this->assertSame('Horské kolo', $result->after['title']);
+        $this->assertSame(12000, $this->intValue($result->after['price']));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnUpdateChangesOnlyTheColumnsGiven(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+
+        $result = $handler->update($entity, '1', ['price' => 15000]);
+
+        $this->assertSame('Horské kolo', $result->after['title'], 'title was not part of the update');
+        $this->assertSame(15000, $this->intValue($result->after['price']));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnUpdateReportsWhatActuallyChanged(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+
+        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 15000]);
+
+        $changed = $result->changed();
+
+        $this->assertArrayNotHasKey('title', $changed, 'title was submitted unchanged');
+        $this->assertArrayHasKey('price', $changed);
+        $this->assertSame(15000, $this->intValue($changed['price'][1]));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnUpdateThatChangesNothingReportsNothing(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+
+        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 12000]);
+
+        $this->assertSame([], $result->changed());
+    }
+
+    #[DataProvider('connections')]
+    public function testADeleteRemovesTheRow(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+        $handler->delete($entity, '1');
+
+        $rows = $connection->select(new Sql('SELECT id FROM ra_test_write WHERE id = ?', [1]));
+
+        $this->assertSame([], $rows);
+    }
+
+    #[DataProvider('connections')]
+    public function testADeleteReturnsTheRowThatWasThere(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+        $result = $handler->delete($entity, '1');
+
+        $this->assertSame([], $result->after);
+        $this->assertSame('Horské kolo', $result->before['title']);
+    }
+
+    #[DataProvider('connections')]
+    public function testATransactionRollsBackEverythingWhenTheWorkThrows(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Something went wrong before the second row.');
+
+        try {
+            $connection->transaction(static function () use ($connection): void {
+                $connection->execute(new Sql(
+                    'INSERT INTO ra_test_write (id, title, price) VALUES (?, ?, ?)',
+                    [1, 'First', 100],
+                ));
+
+                // The second row is never even attempted -- what matters is
+                // that the first one, already sent, does not survive either.
+                throw new RuntimeException('Something went wrong before the second row.');
+            });
+        } finally {
+            $rows = $connection->select(new Sql('SELECT id FROM ra_test_write'));
+
+            $this->assertSame([], $rows, 'neither row survives the rollback');
+        }
+    }
+
+    #[DataProvider('connections')]
+    public function testANestedTransactionIsRefusedRatherThanSilentlyJoined(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->expectException(DbException::class);
+
+        $connection->transaction(static function () use ($connection): void {
+            $connection->transaction(static fn (): null => null);
+        });
+    }
+
+    #[DataProvider('connections')]
+    public function testAUniqueViolationPropagatesWithItsSqlState(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
+
+        try {
+            $handler->insert($entity, ['id' => 2, 'title' => 'Horské kolo', 'price' => 25000]);
+
+            $this->fail('Expected the duplicate title to raise a DbException.');
+        } catch (DbException $e) {
+            $this->assertSame('23', $e->sqlStateClass(), 'class 23 is an integrity constraint violation');
+        }
+
+        $rows = $connection->select(new Sql('SELECT id FROM ra_test_write'));
+
+        $this->assertCount(1, $rows, 'the failed second insert must not have left anything behind');
+    }
+}

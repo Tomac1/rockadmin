@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace RockAdmin\Db;
 
+use Closure;
 use PDO;
 use PDOException;
 use PDOStatement;
+use Throwable;
 
 /**
  * Executes a Sql. It never composes one — that is the builder's job, and
@@ -122,6 +124,44 @@ final class Connection
         }
 
         return $names;
+    }
+
+    /**
+     * Begins, calls, commits, and rolls back before rethrowing.
+     *
+     * It refuses to nest rather than silently joining an outer transaction:
+     * PDO's own nesting is a fiction on both servers — a `COMMIT` inside an
+     * inner call would end the outer transaction early, and a rollback of
+     * the inner one would only unwind half of the outer's work, which is
+     * worse than refusing outright.
+     *
+     * @template T
+     * @param Closure(): T $work
+     * @return T
+     */
+    public function transaction(Closure $work): mixed
+    {
+        if ($this->pdo->inTransaction()) {
+            throw new DbException(
+                'A transaction is already open. RockAdmin refuses to nest transactions: '
+                . "PDO's own nesting is a fiction on both servers, and a rollback of the "
+                . 'inner call would only unwind part of the outer one.',
+            );
+        }
+
+        $this->pdo->beginTransaction();
+
+        try {
+            $result = $work();
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+
+            throw $e;
+        }
+
+        $this->pdo->commit();
+
+        return $result;
     }
 
     private function run(Sql $sql): PDOStatement
