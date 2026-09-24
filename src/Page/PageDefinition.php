@@ -49,4 +49,27 @@ final class PageDefinition
     {
         return isset($this->regions[$key]);
     }
+
+    /** The first preview region on the page, or null if it has none. */
+    public function firstPreviewRegion(): ?RegionDefinition
+    {
+        return $this->firstRegionOfType(RegionType::Preview);
+    }
+
+    /** The first form region on the page, or null if it has none. */
+    public function firstFormRegion(): ?RegionDefinition
+    {
+        return $this->firstRegionOfType(RegionType::Form);
+    }
+
+    private function firstRegionOfType(RegionType $type): ?RegionDefinition
+    {
+        foreach ($this->regions as $region) {
+            if ($region->type === $type) {
+                return $region;
+            }
+        }
+
+        return null;
+    }
 }

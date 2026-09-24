@@ -40,6 +40,7 @@ final class FieldSchema
                     . 'tokens `@now` and `@uuid`. Applies only when a row is created — an existing row is '
                     . 'never touched by it.',
                 example: 'draft',
+                deferrable: true,
             ),
             'required' => new SchemaKey(
                 ValueType::Bool,

@@ -6,8 +6,6 @@ namespace RockAdmin\Http;
 
 use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Page\PageRepository;
-use RockAdmin\Page\RegionDefinition;
-use RockAdmin\Page\RegionType;
 use RockAdmin\View\Assets;
 use RockAdmin\View\FlashBag;
 use RockAdmin\View\MenuItemView;
@@ -58,7 +56,7 @@ final class DetailHandler implements Handler
         $page = $this->pages->get($name);
         $id = $route->param('id');
 
-        $regionDefinition = $this->firstPreviewRegion($page->regions);
+        $regionDefinition = $page->firstPreviewRegion();
 
         if ($regionDefinition === null) {
             throw new NotFoundException("Page '{$name}' has no preview region to show a row with.");
@@ -95,18 +93,6 @@ final class DetailHandler implements Handler
         );
 
         return Response::html($html);
-    }
-
-    /** @param array<string, RegionDefinition> $regions */
-    private function firstPreviewRegion(array $regions): ?RegionDefinition
-    {
-        foreach ($regions as $region) {
-            if ($region->type === RegionType::Preview) {
-                return $region;
-            }
-        }
-
-        return null;
     }
 
     /** @return list<MenuItemView> */

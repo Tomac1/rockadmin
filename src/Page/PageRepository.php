@@ -626,7 +626,192 @@ final class PageRepository
         $searchConfig = \is_array($regionConfig['search'] ?? null) ? $regionConfig['search'] : [];
         $searchPlaceholder = \is_string($searchConfig['placeholder'] ?? null) ? $searchConfig['placeholder'] : null;
 
-        return new RegionDefinition($regionKey, $type, $perPage, $columns, $sort, $searchable, searchPlaceholder: $searchPlaceholder);
+        $form = null;
+
+        if ($type === RegionType::Form) {
+            if (!\is_array($regionConfig['form'] ?? null)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' is a form, but declares no 'form' block.",
+                    $pageName,
+                    $regionKey,
+                ));
+            }
+
+            /** @var array<string, mixed> $formConfig */
+            $formConfig = $regionConfig['form'];
+            $form = $this->buildForm($pageName, $regionKey, $formConfig);
+        }
+
+        return new RegionDefinition(
+            $regionKey,
+            $type,
+            $perPage,
+            $columns,
+            $sort,
+            $searchable,
+            searchPlaceholder: $searchPlaceholder,
+            form: $form,
+        );
+    }
+
+    /** @param array<string, mixed> $formConfig */
+    private function buildForm(string $pageName, string $regionKey, array $formConfig): FormDefinition
+    {
+        /** @var array<string, mixed> $fieldsConfig */
+        $fieldsConfig = \is_array($formConfig['fields'] ?? null) ? $formConfig['fields'] : [];
+        $fields = [];
+
+        foreach ($fieldsConfig as $fieldKey => $fieldConfig) {
+            $fieldKey = (string) $fieldKey;
+
+            if (!\is_array($fieldConfig)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': field '%s' must be an array, got %s.",
+                    $pageName,
+                    $fieldKey,
+                    get_debug_type($fieldConfig),
+                ));
+            }
+
+            /** @var array<string, mixed> $fieldConfig */
+            $fields[$fieldKey] = $this->buildField($pageName, $fieldKey, $fieldConfig);
+        }
+
+        /** @var array<string, mixed> $copyConfig */
+        $copyConfig = \is_array($formConfig['copy'] ?? null) ? $formConfig['copy'] : [];
+        $resetRaw = \is_array($copyConfig['reset'] ?? null) ? $copyConfig['reset'] : [];
+        $resetOnCopy = [];
+
+        foreach ($resetRaw as $resetKey) {
+            if (!\is_string($resetKey) && !\is_int($resetKey)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' names a copy.reset entry as a %s. Field keys are strings.",
+                    $pageName,
+                    $regionKey,
+                    get_debug_type($resetKey),
+                ));
+            }
+
+            $resetKey = (string) $resetKey;
+
+            if (!isset($fields[$resetKey])) {
+                $nearest = Schema::nearestOf(array_keys($fields), $resetKey);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' has copy.reset naming '%s', which is not a field of this form.%s",
+                    $pageName,
+                    $regionKey,
+                    $resetKey,
+                    $suffix,
+                ));
+            }
+
+            $resetOnCopy[] = $resetKey;
+        }
+
+        return new FormDefinition($fields, $resetOnCopy);
+    }
+
+    /** @param array<string, mixed> $fieldConfig */
+    private function buildField(string $pageName, string $fieldKey, array $fieldConfig): FieldDefinition
+    {
+        $typeValue = \is_string($fieldConfig['type'] ?? null) ? $fieldConfig['type'] : 'text';
+
+        try {
+            $type = FieldType::parse($typeValue);
+        } catch (PageException $e) {
+            throw new PageException(
+                "Page '{$pageName}': field '{$fieldKey}': {$e->getMessage()}",
+                previous: $e,
+            );
+        }
+
+        $label = \is_string($fieldConfig['label'] ?? null) && $fieldConfig['label'] !== ''
+            ? $fieldConfig['label']
+            : $this->labelFromKey($fieldKey);
+
+        $hasOptions = \array_key_exists('options', $fieldConfig) && $fieldConfig['options'] !== null;
+
+        if ($hasOptions && !$type->takesOptions()) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has 'options', but type '%s' does not take options.",
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        if (!$hasOptions && $type->takesOptions()) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has type '%s', which needs 'options', but none were given.",
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        $options = $hasOptions ? $this->resolveOptions($fieldConfig['options'], $pageName, $fieldKey) : [];
+
+        $required = ($fieldConfig['required'] ?? false) === true;
+        $readonly = ($fieldConfig['readonly'] ?? false) === true;
+        $hidden = ($fieldConfig['hidden'] ?? false) === true;
+
+        if ($required && $readonly) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is both 'required' and 'readonly', which asks for a value the form "
+                    . 'will never send.',
+                $pageName,
+                $fieldKey,
+            ));
+        }
+
+        $help = \is_string($fieldConfig['help'] ?? null) ? $fieldConfig['help'] : '';
+        $placeholder = \is_string($fieldConfig['placeholder'] ?? null) ? $fieldConfig['placeholder'] : '';
+
+        $min = \is_int($fieldConfig['min'] ?? null) ? $fieldConfig['min'] : null;
+        $max = \is_int($fieldConfig['max'] ?? null) ? $fieldConfig['max'] : null;
+
+        if ($min !== null && $max !== null && $min > $max) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has min %d greater than max %d.",
+                $pageName,
+                $fieldKey,
+                $min,
+                $max,
+            ));
+        }
+
+        $step = \is_string($fieldConfig['step'] ?? null) ? $fieldConfig['step'] : null;
+        $rows = \is_int($fieldConfig['rows'] ?? null) ? $fieldConfig['rows'] : null;
+        $pattern = \is_string($fieldConfig['pattern'] ?? null) ? $fieldConfig['pattern'] : null;
+
+        if ($pattern !== null && @preg_match('~' . $pattern . '~', '') === false) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has an invalid pattern '%s'.",
+                $pageName,
+                $fieldKey,
+                $pattern,
+            ));
+        }
+
+        return new FieldDefinition(
+            key: $fieldKey,
+            label: $label,
+            type: $type,
+            default: $fieldConfig['default'] ?? null,
+            required: $required,
+            readonly: $readonly,
+            hidden: $hidden,
+            help: $help,
+            placeholder: $placeholder,
+            options: $options,
+            min: $min,
+            max: $max,
+            step: $step,
+            rows: $rows,
+            pattern: $pattern,
+        );
     }
 
     /** @param array<string, mixed> $columnConfig */
