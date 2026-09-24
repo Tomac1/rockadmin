@@ -157,7 +157,7 @@ Every entry of `regions.*.form.fields`.
 | `options` | mixed | — | `['active' => 'Active', 'inactive' => 'Inactive']` | The choices offered: an `@enum:` reference to a shared enumeration, or a literal map from stored value to label. For `select`, `multiselect` and `radio` only. |
 | `min` | int | — | `0` | For a `number` field, the smallest accepted value. For a text-like field, the shortest accepted length. |
 | `max` | int | — | `100` | For a `number` field, the largest accepted value. For a text-like field, the longest accepted length. |
-| `step` | string | — | `0.01` | The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. |
+| `step` | string | — | `0.01` | The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. It is passed to the control and is not enforced server-side: a submission of `10.5` against a step of `1` is accepted here, and refused by the column it is written to. |
 | `rows` | int | — | `4` | How many rows tall a `textarea` control is. |
 | `pattern` | string | — | `[A-Z]{2}\d{4}` | A regular expression the value must match, written without delimiters. |
 

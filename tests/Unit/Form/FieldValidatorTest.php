@@ -7,6 +7,7 @@ namespace RockAdmin\Tests\Unit\Form;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\EnumOption;
+use RockAdmin\Form\DefaultValue;
 use RockAdmin\Form\FieldValidator;
 use RockAdmin\Form\Submission;
 use RockAdmin\Form\ValidationError;
@@ -88,9 +89,31 @@ final class FieldValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testARequiredCheckboxIsSatisfiedByBeingAbsentBecauseAbsentMeansFalse(): void
+    public function testARequiredCheckboxMustBeTicked(): void
     {
-        $form = $this->form([$this->field('active', FieldType::Checkbox, required: true)]);
+        // `required` reads differently on a checkbox than on anything else:
+        // not "may not be left blank" but "must be ticked", which is what it
+        // means on every form anybody has ever filled in.
+        $form = $this->form([$this->field('terms', FieldType::Checkbox, label: 'Terms', required: true)]);
+
+        $errors = (new FieldValidator())->validate($form, Submission::fromBody([], $form));
+
+        $this->assertSame(['terms'], $this->fieldsOf($errors));
+        $this->assertSame('Terms must be ticked.', $errors[0]->message);
+    }
+
+    public function testARequiredCheckboxThatIsTickedPasses(): void
+    {
+        $form = $this->form([$this->field('terms', FieldType::Checkbox, required: true)]);
+
+        $errors = (new FieldValidator())->validate($form, Submission::fromBody(['terms' => 'on'], $form));
+
+        $this->assertSame([], $errors);
+    }
+
+    public function testAnOptionalCheckboxLeftUntickedPasses(): void
+    {
+        $form = $this->form([$this->field('active', FieldType::Checkbox)]);
 
         $errors = (new FieldValidator())->validate($form, Submission::fromBody([], $form));
 
@@ -365,6 +388,39 @@ final class FieldValidatorTest extends TestCase
         $this->assertSame('Published at is not a valid date and time.', $errors[0]->message);
     }
 
+    // --- the seam with DefaultValue -----------------------------------------
+
+    public function testWhatDefaultValueProducesForADateFieldValidatesAndCoercesToItself(): void
+    {
+        // The join between Task 3 and Task 4: a create form draws a field at
+        // its default, and the person saves it untouched. What DefaultValue
+        // wrote into the control therefore comes straight back through here,
+        // and must survive both the check and the coercion unchanged — or a
+        // form nobody edited fails to save.
+        $form = $this->form([$this->field('published_on', FieldType::Date, default: '@now')]);
+        $default = DefaultValue::for($form->field('published_on'));
+
+        $this->assertIsString($default);
+
+        $submission = Submission::fromBody(['published_on' => $default], $form);
+
+        $this->assertSame([], (new FieldValidator())->validate($form, $submission));
+        $this->assertSame($default, (new FieldValidator())->values($form, $submission)['published_on']);
+    }
+
+    public function testWhatDefaultValueProducesForADatetimeFieldValidatesAndCoercesToItself(): void
+    {
+        $form = $this->form([$this->field('published_at', FieldType::Datetime, default: '@now')]);
+        $default = DefaultValue::for($form->field('published_at'));
+
+        $this->assertIsString($default);
+
+        $submission = Submission::fromBody(['published_at' => $default], $form);
+
+        $this->assertSame([], (new FieldValidator())->validate($form, $submission));
+        $this->assertSame($default, (new FieldValidator())->values($form, $submission)['published_at']);
+    }
+
     // --- messages -----------------------------------------------------------
 
     public function testAMessageNamesTheLabelRatherThanTheKey(): void
@@ -505,6 +561,7 @@ final class FieldValidatorTest extends TestCase
         bool $required = false,
         bool $readonly = false,
         bool $hidden = false,
+        mixed $default = null,
         array $options = [],
         ?int $min = null,
         ?int $max = null,
@@ -520,7 +577,7 @@ final class FieldValidatorTest extends TestCase
             key: $key,
             label: $label === '' ? ucfirst(str_replace('_', ' ', $key)) : $label,
             type: $type,
-            default: null,
+            default: $default,
             required: $required,
             readonly: $readonly,
             hidden: $hidden,

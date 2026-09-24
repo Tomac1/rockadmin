@@ -94,10 +94,19 @@ final class FieldValidator
     private function check(FieldDefinition $field, Submission $submission): array
     {
         // A checkbox carries exactly one bit and the wire cannot get it
-        // wrong: present is true, absent is false. Absent is therefore a
-        // value, not a gap, which is why `required` has nothing to refuse
-        // here — an unchecked box is a false the person chose.
+        // wrong: present is true, absent is false. There is no such thing as
+        // a malformed checkbox, so the only rule that can apply is
+        // `required` — and it reads differently here than on every other
+        // type. Elsewhere `required` means "this may not be left blank"; on
+        // a checkbox it means "this must be ticked", because that is what it
+        // means on every form anybody has ever filled in, and accepting the
+        // terms is the reason the key gets written. An unchecked required
+        // box is therefore a failure, not a false the person chose.
         if ($field->type === FieldType::Checkbox) {
+            if ($field->required && !$submission->has($field->key)) {
+                return ["{$field->label} must be ticked."];
+            }
+
             return [];
         }
 

@@ -93,7 +93,9 @@ final class FieldSchema
             ),
             'step' => new SchemaKey(
                 ValueType::String,
-                description: 'The HTML step attribute for a `number` field, e.g. `0.01` to allow cents.',
+                description: 'The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. It is '
+                    . 'passed to the control and is not enforced server-side: a submission of `10.5` against '
+                    . 'a step of `1` is accepted here, and refused by the column it is written to.',
                 example: '0.01',
             ),
             'rows' => new SchemaKey(
