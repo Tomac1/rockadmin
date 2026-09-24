@@ -137,8 +137,13 @@ php -S localhost:8080 -t demo demo/index.php
 
 Open <http://localhost:8080/>. See [`demo/README.md`](demo/README.md) for
 what it is and is not: it is the design surface the default theme is tuned
-against, kept honest to the general case; it is not a page listing yet — the
-grid arrives in milestone 6.
+against, kept honest to the general case.
+
+`/p/ads` is a real grid over fixture tables — a filtered text column, a
+joined column, money, an enum badge, JSON, a sortable date and a one-to-many
+of tags, sorted and paginated with JavaScript on or off. It needs a
+database; `demo/seed.php` fills one from the same variables the test suite
+reads. See `demo/README.md` for the exact steps.
 
 ## Documentation
 

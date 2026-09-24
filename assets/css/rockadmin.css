@@ -210,7 +210,11 @@
 }
 
 .ra-page-description {
-    color: var(--bs-secondary);
+    /* --bs-secondary-color, not --bs-secondary: the former is the
+     * theme-aware "muted text" token, redefined for dark mode further down
+     * this file; the latter is the fixed accent colour and stays #6c757d in
+     * both themes, which reads at under 4.5:1 against the dark background. */
+    color: var(--bs-secondary-color, var(--bs-secondary));
     margin-bottom: 0;
 }
 
