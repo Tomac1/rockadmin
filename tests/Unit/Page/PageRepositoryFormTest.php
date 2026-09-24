@@ -348,6 +348,92 @@ final class PageRepositoryFormTest extends TestCase
         $this->repository()->get('ads');
     }
 
+    public function testAMalformedOptionOnAFieldNamesTheFieldNotAColumn(): void
+    {
+        $this->writePage('ads', $this->formPage([
+            'state' => ['type' => 'select', 'options' => ['bad' => ['nope' => 'x']]],
+        ]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage(
+            "Page 'ads': field 'state': the option 'bad' is neither a label nor ['label' => ..., 'color' => ...].",
+        );
+
+        $this->repository()->get('ads');
+    }
+
+    public function testAnEmptyOptionsListOnATypeThatTakesThemIsRefused(): void
+    {
+        $this->writePage('ads', $this->formPage([
+            'state' => ['type' => 'select', 'options' => []],
+        ]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage(
+            "Page 'ads': field 'state' has type 'select', which needs 'options', but none were given.",
+        );
+
+        $this->repository()->get('ads');
+    }
+
+    public function testRequiredAndHiddenWithADefaultLoads(): void
+    {
+        $this->writePage('ads', $this->formPage([
+            'site_id' => [
+                'type' => 'hidden',
+                'hidden' => true,
+                'required' => true,
+                'default' => '{{workspace.site_id}}',
+            ],
+        ]));
+
+        $field = $this->form()->field('site_id');
+
+        $this->assertTrue($field->required);
+        $this->assertTrue($field->hidden);
+        $this->assertInstanceOf(Placeholder::class, $field->default);
+    }
+
+    public function testRequiredAndHiddenWithoutADefaultIsRefused(): void
+    {
+        $this->writePage('ads', $this->formPage([
+            'site_id' => ['type' => 'hidden', 'hidden' => true, 'required' => true],
+        ]));
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage(
+            "Page 'ads': field 'site_id' is both 'required' and 'hidden' but declares no 'default'. A hidden "
+                . 'field takes its value from its default when the row is saved, so nothing could ever satisfy '
+                . "'required'.",
+        );
+
+        $this->repository()->get('ads');
+    }
+
+    public function testAFormBlockOnANonFormRegionIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => [
+                    'grid' => [
+                        'type' => 'list',
+                        'columns' => ['title' => []],
+                        'form' => ['fields' => ['title' => ['type' => 'text']]],
+                    ],
+                ],
+            ]
+            PHP);
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage(
+            "Page 'ads': region 'grid' has a 'form' block, but its type is 'list', not 'form'.",
+        );
+
+        $this->repository()->get('ads');
+    }
+
     /** @param array<string, array<string, mixed>> $fields */
     private function formPage(array $fields): string
     {

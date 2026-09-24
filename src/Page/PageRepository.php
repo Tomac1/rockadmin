@@ -627,6 +627,7 @@ final class PageRepository
         $searchPlaceholder = \is_string($searchConfig['placeholder'] ?? null) ? $searchConfig['placeholder'] : null;
 
         $form = null;
+        $hasFormBlock = \array_key_exists('form', $regionConfig) && $regionConfig['form'] !== null;
 
         if ($type === RegionType::Form) {
             if (!\is_array($regionConfig['form'] ?? null)) {
@@ -640,6 +641,19 @@ final class PageRepository
             /** @var array<string, mixed> $formConfig */
             $formConfig = $regionConfig['form'];
             $form = $this->buildForm($pageName, $regionKey, $formConfig);
+        } elseif ($hasFormBlock) {
+            // Everything else in this loader refuses configuration that
+            // does nothing: a source paired with a collection, a filter on
+            // a collection column, an undeclared sort target. A 'form'
+            // block on a region whose type is not 'form' is read only
+            // inside the branch above and would otherwise be dropped
+            // exactly as silently.
+            throw new PageException(\sprintf(
+                "Page '%s': region '%s' has a 'form' block, but its type is '%s', not 'form'.",
+                $pageName,
+                $regionKey,
+                $type->value,
+            ));
         }
 
         return new RegionDefinition(
@@ -731,7 +745,11 @@ final class PageRepository
             ? $fieldConfig['label']
             : $this->labelFromKey($fieldKey);
 
-        $hasOptions = \array_key_exists('options', $fieldConfig) && $fieldConfig['options'] !== null;
+        // An explicit 'options' => [] is the same broken state as declaring
+        // none at all: a control with nothing to choose from. Both are
+        // refused the same way, by the same check below.
+        $optionsRaw = \array_key_exists('options', $fieldConfig) ? $fieldConfig['options'] : null;
+        $hasOptions = $optionsRaw !== null && $optionsRaw !== [];
 
         if ($hasOptions && !$type->takesOptions()) {
             throw new PageException(\sprintf(
@@ -751,16 +769,32 @@ final class PageRepository
             ));
         }
 
-        $options = $hasOptions ? $this->resolveOptions($fieldConfig['options'], $pageName, $fieldKey) : [];
+        $options = $hasOptions ? $this->resolveOptions($optionsRaw, $pageName, $fieldKey, 'field') : [];
 
         $required = ($fieldConfig['required'] ?? false) === true;
         $readonly = ($fieldConfig['readonly'] ?? false) === true;
         $hidden = ($fieldConfig['hidden'] ?? false) === true;
+        $default = \array_key_exists('default', $fieldConfig) ? $fieldConfig['default'] : null;
 
         if ($required && $readonly) {
             throw new PageException(\sprintf(
                 "Page '%s': field '%s' is both 'required' and 'readonly', which asks for a value the form "
                     . 'will never send.',
+                $pageName,
+                $fieldKey,
+            ));
+        }
+
+        // Unlike readonly, hidden is not always the same dead end: a hidden
+        // field's value comes from its default when the row is saved (rule
+        // 7.6), so 'required' + 'hidden' with a default is how a workspace
+        // scope is both always present and never editable. Without a
+        // default there is nothing that could ever satisfy 'required'.
+        if ($required && $hidden && $default === null) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is both 'required' and 'hidden' but declares no 'default'. A hidden "
+                    . 'field takes its value from its default when the row is saved, so nothing could ever '
+                    . "satisfy 'required'.",
                 $pageName,
                 $fieldKey,
             ));
@@ -799,7 +833,7 @@ final class PageRepository
             key: $fieldKey,
             label: $label,
             type: $type,
-            default: $fieldConfig['default'] ?? null,
+            default: $default,
             required: $required,
             readonly: $readonly,
             hidden: $hidden,
@@ -895,7 +929,7 @@ final class PageRepository
         $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
 
         $enumOptions = \array_key_exists('options', $columnConfig)
-            ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey)
+            ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey, 'column')
             : [];
 
         $options = [];
@@ -1082,7 +1116,7 @@ final class PageRepository
         $options = $columnOptions;
 
         if (\array_key_exists('options', $filterConfig) && $filterConfig['options'] !== null) {
-            $options = $this->resolveOptions($filterConfig['options'], $pageName, $columnKey);
+            $options = $this->resolveOptions($filterConfig['options'], $pageName, $columnKey, 'column');
         }
 
         return new FilterDefinition($type, $operator, $label, $options, $placeholder);
@@ -1094,16 +1128,21 @@ final class PageRepository
      * refused by name: an entry that is neither of those is almost always a
      * typo, and dropping it would produce a filter quietly missing a choice.
      *
+     * Shared by a column, its filter, and a form field — the shape is
+     * identical for all three, so `$noun` is what makes each refusal name
+     * the thing that actually carries the malformed `options`, rather than
+     * every caller reading as if it were a column.
+     *
      * @return array<string, EnumOption>
      */
-    private function resolveOptions(mixed $raw, string $pageName, string $columnKey): array
+    private function resolveOptions(mixed $raw, string $pageName, string $key, string $noun): array
     {
         if ($raw instanceof EnumReference) {
             try {
                 return $this->enums->options($raw);
             } catch (ConfigException $e) {
                 throw new PageException(
-                    "Page '{$pageName}': column '{$columnKey}': {$e->getMessage()}",
+                    "Page '{$pageName}': {$noun} '{$key}': {$e->getMessage()}",
                     previous: $e,
                 );
             }
@@ -1111,7 +1150,7 @@ final class PageRepository
 
         if (!\is_array($raw)) {
             throw new PageException(
-                "Page '{$pageName}': column '{$columnKey}': options must be an @enum: reference or a map "
+                "Page '{$pageName}': {$noun} '{$key}': options must be an @enum: reference or a map "
                 . 'of value to label, not a ' . get_debug_type($raw) . '.',
             );
         }
@@ -1139,7 +1178,7 @@ final class PageRepository
             // saying why. Every other malformed thing in a page file is
             // refused by name; so is this.
             throw new PageException(
-                "Page '{$pageName}': column '{$columnKey}': the option '{$value}' is neither a label nor "
+                "Page '{$pageName}': {$noun} '{$key}': the option '{$value}' is neither a label nor "
                 . "['label' => ..., 'color' => ...].",
             );
         }
