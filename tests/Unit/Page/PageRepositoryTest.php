@@ -1084,6 +1084,37 @@ final class PageRepositoryTest extends TestCase
         }
     }
 
+    public function testADefaultSortNamingACollectionColumnIsRefused(): void
+    {
+        // The sibling of the three above, and the one that reaches the region
+        // rather than the column: a collection is fetched separately from the
+        // rows, so the database cannot order by it and QueryBuilder drops the
+        // sort. The grid would quietly order by the tiebreaker alone.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'sort' => ['tags' => 'desc'],
+                    'columns' => [
+                        'tags' => [
+                            'collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag'],
+                        ],
+                    ],
+                ]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A default sort naming a collection column should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tags', $e->getMessage());
+            $this->assertStringContainsString('collection', $e->getMessage());
+        }
+    }
+
     public function testASearchableCollectionColumnIsRefused(): void
     {
         $this->writePage('ads', <<<'PHP'

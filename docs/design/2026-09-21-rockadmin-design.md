@@ -1502,8 +1502,9 @@ must not hand the database schema to the first person who gets in.
   relations with path sources and JSON traversal, offset and keyset pagination
 - regions: `list`, `form`, `preview`, `nav`, `stat`; pages hidden from the menu
 - layouts: `single`, `two-column`, `sidebar-detail`
-- column types: text, int, money, datetime, bool, enum, image, link, relation
-- displays: plain, badge, check, yesno, progress, percent, image, link
+- column types: text, int, money, datetime, bool, enum, json, image, relation
+- displays: plain, badge, check, yesno, progress, percent, image; and `link`,
+  which is not a display but a wrapper any column may carry — see 6.3
 - form field types: text, textarea, number, select, multiselect, checkbox, radio, date, datetime, file, hidden, password
 - filters: text, select, multiselect, range, date, boolean, plus multi-column search
 - actions: `link`, `open` (modal, offcanvas, page), `post`; built-in create,
