@@ -389,4 +389,36 @@ final class ListRegionTest extends TestCase
         $this->assertSame(2, $view->pagination->currentPage);
         $this->assertCount(1, $view->rows);
     }
+
+    public function testEveryViewObjectsClassesActuallyCarryTheRaPrefix(): void
+    {
+        // The template standard lets a template print a view's own classes
+        // into its class attribute instead of writing a literal ra- token,
+        // on the understanding that the view assembled them through
+        // RockAdmin\View\Classes. Nothing verified that, and the
+        // check that permits it cannot: it reads template source, and the
+        // guarantee lives here. A `classes` property that never carried an
+        // ra- token would satisfy the standard while rendering an element
+        // with no class this project can style or target.
+        $region = $this->region();
+        $rows = new FakeRowSource([$this->fetchResult([
+            ['id' => 1, 'title' => 'A'],
+        ], 1)]);
+
+        $view = $this->listRegion($rows)->render($this->page(), $region, GridState::fromQuery([], 'grid', $region));
+
+        foreach ($view->columns as $column) {
+            $this->assertMatchesRegularExpression('/(^| )ra-[a-z0-9-]+/', $column->classes, "column {$column->key}");
+        }
+
+        foreach ($view->rows as $row) {
+            $this->assertMatchesRegularExpression('/(^| )ra-[a-z0-9-]+/', $row->classes, 'row');
+
+            foreach ($row->cells as $cell) {
+                $this->assertMatchesRegularExpression('/(^| )ra-[a-z0-9-]+/', $cell->classes, "cell {$cell->key}");
+            }
+        }
+
+        $this->assertMatchesRegularExpression('/(^| )ra-[a-z0-9-]+/', $view->classes());
+    }
 }

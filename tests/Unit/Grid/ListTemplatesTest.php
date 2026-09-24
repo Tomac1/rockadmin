@@ -311,18 +311,42 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringContainsString('✓', $html);
     }
 
-    public function testTheMoneyAndDatetimePartialsEscapeTheirText(): void
+    /** @return array<string, array{string, Display, ColumnType}> */
+    public static function everyCellPartial(): array
     {
-        $money = $this->cell(key: 'price', display: Display::Plain, text: '<b>1,00</b>');
-        $datetime = $this->cell(key: 'created_at', display: Display::Plain, text: '<b>2024</b>');
+        return [
+            'text' => ['text', Display::Plain, ColumnType::Text],
+            'money' => ['money', Display::Plain, ColumnType::Money],
+            'datetime' => ['datetime', Display::Plain, ColumnType::Datetime],
+            'json' => ['json', Display::Plain, ColumnType::Json],
+            'int' => ['int', Display::Plain, ColumnType::Int],
+            'bool' => ['bool', Display::Check, ColumnType::Bool],
+            'enum' => ['enum', Display::Badge, ColumnType::Enum],
+            'link' => ['link', Display::Link, ColumnType::Text],
+        ];
+    }
 
-        $moneyHtml = $this->renderer()->render('region/list/cell/money', $money);
-        $datetimeHtml = $this->renderer()->render('region/list/cell/datetime', $datetime);
+    #[DataProvider('everyCellPartial')]
+    public function testEveryCellPartialEscapesWhatItPrints(
+        string $partial,
+        Display $display,
+        ColumnType $type,
+    ): void {
+        // Rule 6 of this project is that everything is escaped with $e() and
+        // $raw() is the explicit exception. The template standard cannot tell
+        // the two apart — both are on its allowed list — so swapping one for
+        // the other in a cell partial would pass every static check. Only
+        // rendering hostile content through each of them catches that, and
+        // only two of the eight were covered.
+        $hostile = '<script>alert("x")</script> & "quoted"';
 
-        $this->assertStringNotContainsString('<b>', $moneyHtml);
-        $this->assertStringNotContainsString('<b>', $datetimeHtml);
-        $this->assertStringContainsString('&lt;b&gt;', $moneyHtml);
-        $this->assertStringContainsString('&lt;b&gt;', $datetimeHtml);
+        $html = $this->renderer()->render(
+            "region/list/cell/{$partial}",
+            $this->cell(key: 'field', value: $hostile, text: $hostile, display: $display, type: $type, url: '/admin/p/ads/1', variant: 'success'),
+        );
+
+        $this->assertStringNotContainsString('<script>', $html, "{$partial} printed a script tag.");
+        $this->assertStringNotContainsString('alert("x")', $html, "{$partial} printed an unescaped quote.");
     }
 
     // --- empty.php ---
