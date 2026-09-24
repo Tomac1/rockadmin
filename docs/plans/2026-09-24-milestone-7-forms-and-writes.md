@@ -249,7 +249,14 @@ git commit -m "Declare what a form field may say" -- src/Page tests/Unit/Page do
       public readonly array $resetOnCopy;
       public function field(string $key): FieldDefinition;
       public function hasField(string $key): bool;
-      /** @return array<string, FieldDefinition> the ones a submission may set */
+      /**
+       * The fields a submission may set: neither readonly nor hidden. A
+       * hidden field's value comes from its default when the row is saved,
+       * never from the wire, which is what stops a tampered form dropping a
+       * workspace scope.
+       *
+       * @return array<string, FieldDefinition>
+       */
       public function editable(): array;
   }
 
@@ -291,8 +298,8 @@ naming the page and the field:
 - [ ] **Step 1: Write the failing test**
 
 Cover at least: a form loads with its fields keyed by name; a field's label
-defaults from its key; `editable()` excludes readonly fields and includes
-hidden ones; an `@enum:` reference resolves; a placeholder default survives as
+defaults from its key; `editable()` excludes both readonly and hidden
+fields; an `@enum:` reference resolves; a placeholder default survives as
 a `Placeholder` object rather than a string; `copy.reset` is read; a page with
 no `form` block has a null form; and one test per refusal above.
 
@@ -318,8 +325,8 @@ no `form` block has a null form; and one test per refusal above.
        * Resolves a field's declared default into the value a new row starts
        * with. A Placeholder is returned untouched, for the data layer to bind.
        *
-       * @param array<string, mixed> $tokens what @now and @uuid resolve to;
-       *                                     injected so a test can fix them
+       * $now is injected rather than read from the clock so a test can pin
+       * what `@now` produces; null means the current time.
        */
       public static function for(FieldDefinition $field, ?\DateTimeImmutable $now = null): mixed;
       public static function isToken(mixed $value): bool;
@@ -543,7 +550,7 @@ two rows and throw between them, then assert neither is there.
 - Test: `tests/Unit/Form/FormRegionTest.php`
 
 **Interfaces:**
-- Consumes: `FormDefinition`, `FieldDefinition`, `DefaultValue`, `RowSource`, `QueryFactory`, `UrlGenerator`, `Csrf`, `RockAdmin\View\Classes`. **Read `src/Grid/PreviewRegion.php`** — fetching one row is a solved problem here and must not be solved a second way.
+- Consumes: `FormDefinition`, `FieldDefinition`, `DefaultValue`, `RowSource`, `UrlGenerator`, `Csrf`, `RockAdmin\View\Classes`. **Read `src/Grid/PreviewRegion.php`** — fetching one row is a solved problem here and must not be solved a second way. Note it takes no `QueryFactory`: that class builds a query from a `GridState`, and a form has no state. Milestone 6 shipped that dependency, found it dead, and removed it; do not reintroduce it.
 - Produces:
   ```php
   namespace RockAdmin\Form;
@@ -552,7 +559,6 @@ two rows and throw between them, then assert neither is there.
   {
       public function __construct(
           private readonly RowSource $rows,
-          private readonly QueryFactory $queries,
           private readonly UrlGenerator $urls,
           private readonly Csrf $csrf,
       );
@@ -563,7 +569,12 @@ two rows and throw between them, then assert neither is there.
       public function edit(PageDefinition $page, string $id): ?FormView;
       /** A copy form: the row's values, except the fields copy.reset names. */
       public function copy(PageDefinition $page, string $id): ?FormView;
-      /** Redrawing a rejected submission, with what was typed and why it failed. */
+      /**
+       * Redrawing a rejected submission, with what was typed and why it
+       * failed. $id is null for a create, the row's key for an edit.
+       *
+       * @param list<ValidationError> $errors
+       */
       public function reject(PageDefinition $page, Submission $submission, array $errors, ?string $id): FormView;
   }
   ```
