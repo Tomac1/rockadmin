@@ -329,11 +329,15 @@ final class PageRepositoryFormTest extends TestCase
             ]
             PHP);
 
-        $this->expectException(PageException::class);
-        $this->expectExceptionMessage("Page 'ads'");
-        $this->expectExceptionMessage('nope');
-
-        $this->repository()->get('ads');
+        // Two expectExceptionMessage() calls assign the same property, so the
+        // second silently replaced the first and only 'nope' was ever checked.
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A copy.reset entry naming an undeclared field should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString("Page 'ads'", $e->getMessage());
+            $this->assertStringContainsString('nope', $e->getMessage());
+        }
     }
 
     public function testRequiredTogetherWithReadonlyIsRefused(): void
