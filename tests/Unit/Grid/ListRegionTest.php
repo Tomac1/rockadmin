@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use RockAdmin\Db\Collection;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\FilterOperator;
+use RockAdmin\Db\Query;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\Sql;
@@ -35,6 +36,17 @@ use RockAdmin\Tests\Support\FakeRowSource;
 #[CoversClass(ListRegion::class)]
 final class ListRegionTest extends TestCase
 {
+    /** @var list<class-string> everything a view object may never carry */
+    private const FORBIDDEN_IN_A_VIEW = [
+        ColumnDefinition::class,
+        FilterDefinition::class,
+        RegionDefinition::class,
+        PageDefinition::class,
+        Query::class,
+        Result::class,
+        RowSource::class,
+    ];
+
     private function page(Entity $entity = new Entity('ra_test_ads', 'id')): PageDefinition
     {
         return new PageDefinition('ads', 'Ads', 'default', 'Ads', $entity, [], []);
@@ -259,7 +271,16 @@ final class ListRegionTest extends TestCase
         $this->assertNoColumnDefinitionReachable($view);
     }
 
-    /** @param array<int, true> $seen object ids already visited, guarding against cycles */
+    /**
+     * Rule 4 of this project: a template receives a prepared view object and
+     * never the configuration or the database. Checking only for a
+     * ColumnDefinition would pass a view that handed templates the region's
+     * own definition, the query, or the row source — each of which is a route
+     * to exactly what the rule forbids, and each of which a future field
+     * could introduce without anyone noticing.
+     *
+     * @param array<int, true> $seen object ids already visited, guarding against cycles
+     */
     private function assertNoColumnDefinitionReachable(object $object, array $seen = []): void
     {
         $id = spl_object_id($object);
@@ -270,7 +291,9 @@ final class ListRegionTest extends TestCase
 
         $seen[$id] = true;
 
-        $this->assertNotInstanceOf(ColumnDefinition::class, $object);
+        foreach (self::FORBIDDEN_IN_A_VIEW as $forbidden) {
+            $this->assertNotInstanceOf($forbidden, $object);
+        }
 
         foreach (get_object_vars($object) as $value) {
             if (\is_object($value)) {
