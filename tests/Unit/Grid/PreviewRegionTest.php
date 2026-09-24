@@ -6,8 +6,10 @@ namespace RockAdmin\Tests\Unit\Grid;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\Result;
+use RockAdmin\Db\RowSource;
 use RockAdmin\Db\Sql;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
@@ -21,6 +23,7 @@ use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
 use RockAdmin\Tests\Support\FakeRowSource;
+use RockAdmin\Tests\Support\ThrowingRowSource;
 
 /**
  * Everything above `PreviewRegion` describes a preview or executes one; this
@@ -70,7 +73,7 @@ final class PreviewRegionTest extends TestCase
         return new Result($rows, null, [new Sql('SELECT 1')]);
     }
 
-    private function previewRegion(FakeRowSource $rows): PreviewRegion
+    private function previewRegion(RowSource $rows): PreviewRegion
     {
         return new PreviewRegion($rows, new CellFormatter());
     }
@@ -200,5 +203,56 @@ final class PreviewRegionTest extends TestCase
         $previewCell = $previewView->fields[0]->cell;
 
         $this->assertEquals($gridCell, $previewCell);
+    }
+
+    public function testADataExceptionFromTheSingleRowFetchIsNoSuchRow(): void
+    {
+        // '22P02' -- SQLSTATE class '22', "data exception" -- is exactly
+        // what PostgreSQL raises for /p/ads/abc: an integer key filtered
+        // with a value that is not one. Rule 3 says the same configuration
+        // must not answer that URL differently across drivers, and MySQL
+        // answers it with an ordinary empty result, which render() already
+        // turns into null -- so PostgreSQL's own failure has to reach the
+        // same answer too.
+        $region = $this->region([$this->column('title')]);
+        $rows = new ThrowingRowSource(new DbException(
+            'invalid input syntax for type integer: "abc"',
+            0,
+            null,
+            '22P02',
+        ));
+
+        $view = $this->previewRegion($rows)->render($this->page(), $region, 'abc');
+
+        $this->assertNull($view);
+    }
+
+    public function testADbExceptionThatIsNotADataExceptionStillPropagates(): void
+    {
+        // A connection gone, a table gone, a permission refused -- none of
+        // that is "no such row", and none of it may read as a 404. Class
+        // '08' ('08006': connection failure) stands in for the whole
+        // "something is actually broken" family here.
+        $region = $this->region([$this->column('title')]);
+        $exception = new DbException('server closed the connection unexpectedly', 0, null, '08006');
+        $rows = new ThrowingRowSource($exception);
+
+        $this->expectExceptionObject($exception);
+
+        $this->previewRegion($rows)->render($this->page(), $region, '1');
+    }
+
+    public function testADbExceptionWithNoSqlStateAtAllStillPropagates(): void
+    {
+        // Not every DbException comes from a failed statement -- QueryBuilder
+        // and friends raise plenty with no SQLSTATE at all. A preview must
+        // not read the absence of one as "class 22" and swallow it.
+        $region = $this->region([$this->column('title')]);
+        $exception = new DbException('A query needs at least one column.');
+        $rows = new ThrowingRowSource($exception);
+
+        $this->expectExceptionObject($exception);
+
+        $this->previewRegion($rows)->render($this->page(), $region, '1');
     }
 }

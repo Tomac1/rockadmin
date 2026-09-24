@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace RockAdmin\Grid;
 
 use RockAdmin\Db\CountStrategy;
+use RockAdmin\Db\DbException;
 use RockAdmin\Db\Filter;
 use RockAdmin\Db\FilterOperator;
 use RockAdmin\Db\Page as DbPage;
 use RockAdmin\Db\Query;
+use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
@@ -89,7 +91,12 @@ final class PreviewRegion
             collections: $collections,
         );
 
-        $result = $this->rows->fetch($query);
+        $result = $this->fetch($query);
+
+        if ($result === null) {
+            return null;
+        }
+
         $row = $result->rows[0] ?? null;
 
         if ($row === null) {
@@ -104,6 +111,35 @@ final class PreviewRegion
             id: $id,
             fields: $fields,
         );
+    }
+
+    /**
+     * Runs the single-row query, reading a failed statement's own SQLSTATE
+     * to tell "the id does not name a row" from "something is actually
+     * broken".
+     *
+     * `/p/ads/abc` filters an integer key with a value that is not one.
+     * MySQL coerces it and simply matches nothing -- the ordinary empty
+     * result `render()` already turns into null below. PostgreSQL refuses
+     * the statement outright, with SQLSTATE '22P02' -- class '22', "data
+     * exception": a value that does not fit where it was put. Read that
+     * way, both drivers are saying the same thing about the same URL, so
+     * both are answered the same way: no such row, a 404. Anything else --
+     * a connection gone, a table gone, a permission refused -- keeps
+     * propagating; a database that is actually failing must not read as a
+     * row that simply does not exist.
+     */
+    private function fetch(Query $query): ?Result
+    {
+        try {
+            return $this->rows->fetch($query);
+        } catch (DbException $e) {
+            if ($e->sqlStateClass() === '22') {
+                return null;
+            }
+
+            throw $e;
+        }
     }
 
     /**

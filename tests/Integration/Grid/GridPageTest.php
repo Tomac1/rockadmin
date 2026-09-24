@@ -14,6 +14,8 @@ use RockAdmin\Grid\ListRegion;
 use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Grid\QueryFactory;
 use RockAdmin\Http\ArraySessionStore;
+use RockAdmin\Http\DetailHandler;
+use RockAdmin\Http\NotFoundException;
 use RockAdmin\Http\PageHandler;
 use RockAdmin\Http\RegionHandler;
 use RockAdmin\Http\Request;
@@ -77,6 +79,10 @@ final class GridPageTest extends DatabaseTestCase
                                 'collection' => ['table' => 'ra_test_tags', 'foreign_key' => 'ad_id', 'column' => 'label'],
                             ],
                         ],
+                    ],
+                    'preview' => [
+                        'type' => 'preview',
+                        'fields' => ['title', 'price'],
                     ],
                 ],
             ];
@@ -226,6 +232,68 @@ final class GridPageTest extends DatabaseTestCase
         $this->assertNotFalse($bikeInRegion);
         $this->assertLessThan($bikeInPage, $skutrInPage);
         $this->assertLessThan($bikeInRegion, $skutrInRegion);
+
+        $this->dropFixtures($connection);
+    }
+
+    /**
+     * The fix for the review finding: `/p/ads/abc` used to 500 on
+     * PostgreSQL (an unhandled `DbException` wrapping SQLSTATE '22P02',
+     * "invalid input syntax for type integer") and 404 on MySQL (which
+     * coerces 'abc' to 0 and simply matches nothing) -- the same
+     * configuration answering the same URL two different ways, which rule 3
+     * forbids. Every shape a bad or missing id can take now gives the same
+     * answer -- 404 -- on both drivers, through both DetailHandler and
+     * RegionHandler.
+     */
+    #[DataProvider('connections')]
+    public function testABadOrMissingIdIs404OnEveryDriverTheSameWay(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $this->createFixtures($connection);
+
+        $previewRegion = new PreviewRegion(new SqlRowSource($connection), new CellFormatter());
+        $detailHandler = new DetailHandler(
+            $this->repository(),
+            $previewRegion,
+            $this->renderer(),
+            new Assets(new UrlGenerator('/admin')),
+            new FlashBag(new ArraySessionStore()),
+            'RockAdmin',
+            'auto',
+        );
+        $regionHandler = new RegionHandler(
+            $this->repository(),
+            new ListRegion(new SqlRowSource($connection), new QueryFactory(), new CellFormatter(), new UrlGenerator('/admin')),
+            $previewRegion,
+            $this->renderer(),
+        );
+
+        // A real row: proves the fixture and the handlers are wired
+        // correctly before trusting the 404s below.
+        $ok = $detailHandler->handle(new Route('page.detail', ['page' => 'ads', 'id' => '1']), new Request('GET', 'p/ads/1'));
+        $this->assertSame(200, $ok->status);
+
+        foreach (['abc', '999999'] as $id) {
+            try {
+                $detailHandler->handle(new Route('page.detail', ['page' => 'ads', 'id' => $id]), new Request('GET', "p/ads/{$id}"));
+                $this->fail("/p/ads/{$id} should be a 404.");
+            } catch (NotFoundException $e) {
+                $this->assertSame(404, $e->status);
+            }
+        }
+
+        foreach (['abc', '', '999999'] as $id) {
+            try {
+                $regionHandler->handle(
+                    new Route('region', ['page' => 'ads', 'region' => 'preview']),
+                    new Request('GET', 'r/ads/preview', ['id' => $id]),
+                );
+                $this->fail("/r/ads/preview?id={$id} should be a 404.");
+            } catch (NotFoundException $e) {
+                $this->assertSame(404, $e->status);
+            }
+        }
 
         $this->dropFixtures($connection);
     }

@@ -82,6 +82,14 @@ final class Connection
      * PostgreSQL's `information_schema.columns` names it 'column_name', so
      * both are read here rather than making a caller guess which ran.
      *
+     * A table that does not exist is refused here rather than left to
+     * answer for itself: MySQL's `SHOW COLUMNS` already throws for one, but
+     * PostgreSQL's `information_schema.columns` simply matches no rows, so
+     * without this check the same typo in `entity.table` fails loudly on
+     * one driver and silently produces a preview with no fields at all on
+     * the other -- the two-behaviours-from-one-configuration rule 3
+     * forbids.
+     *
      * @return list<string>
      */
     public function columns(string $table): array
@@ -96,6 +104,14 @@ final class Connection
             }
         }
 
+        if ($names === []) {
+            // Every table that exists has at least one column, so an empty
+            // result names a table that does not -- the same fact MySQL's
+            // own SHOW COLUMNS already raised as an exception before this
+            // method got a chance to run.
+            throw new DbException("Table '{$table}' does not exist.");
+        }
+
         return $names;
     }
 
@@ -107,10 +123,18 @@ final class Connection
 
             return $statement;
         } catch (PDOException $e) {
+            // PDOException::getCode() is the driver's own SQLSTATE once
+            // ATTR_ERRMODE is EXCEPTION -- a five-character string such as
+            // '22P02' or '42S02' -- but PHP types Throwable::getCode() as
+            // int|string, so a caller that constructed one directly with an
+            // integer code is still honoured: no SQLSTATE is claimed for it.
+            $sqlState = \is_string($e->getCode()) ? $e->getCode() : null;
+
             throw new DbException(
                 "Query failed: {$e->getMessage()}" . PHP_EOL . $sql->text,
                 0,
                 $e,
+                $sqlState,
             );
         }
     }
