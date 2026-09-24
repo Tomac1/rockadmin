@@ -431,7 +431,14 @@ This is the same discard rule as the grid's, and for the same reason.
   is not empty; for everything else, an empty string is empty and `'0'` is not
 - `number`: numeric, and within `min`/`max` when declared
 - `text`, `textarea`, `password`: length within `min`/`max` when declared
-- `pattern`: matches
+- `pattern`: matches. A pattern that is syntactically valid can still be
+  catastrophic — `(a+)+$` against a long non-matching string backtracks for
+  ever — and the load-time check cannot see that, because it runs the pattern
+  against an empty string and returns instantly whatever the behaviour. So
+  treat `preg_match()` returning `false` as a validation failure naming the
+  field, rather than letting it propagate: PCRE has already given up at its
+  backtrack limit, and the honest answer to the person filling in the form is
+  that the value could not be checked.
 - `select`, `radio`: the value is one of the declared options
 - `multiselect`: a list, every entry one of the declared options
 - `date`, `datetime`: parses as the format the field renders, refusing a value
