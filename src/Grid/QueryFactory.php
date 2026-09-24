@@ -52,7 +52,7 @@ final class QueryFactory
 
     public function build(PageDefinition $page, RegionDefinition $region, GridState $state): Query
     {
-        [$columns, $collections] = $this->splitColumns($region);
+        [$columns, $collections] = $this->splitColumns($region, $page->entity->key);
 
         // PageRepository already refuses a per_page below 1 when a page
         // loads, loudly, naming the page and region where a person can fix
@@ -80,11 +80,27 @@ final class QueryFactory
     }
 
     /**
+     * The entity's key is always selected, whether or not the region's own
+     * columns name it — mirroring what `PreviewRegion::render()` already
+     * does, and for a compounding set of reasons, not just one:
+     *
+     * 1. `SqlRowSource::attach()` matches a collection's values back onto
+     *    rows by a column literally aliased to the entity's key. A region
+     *    with a `collection` but no key column 500s from there, while the
+     *    same configuration renders fine as a preview.
+     * 2. `sortWithTiebreaker()` below appends the key as a final sort so no
+     *    two rows sharing every other sorted value can swap places between
+     *    pages — but `QueryBuilder::order()` silently drops any sort naming
+     *    an alias the query never selected, so an unselected key defeats
+     *    the tiebreaker at the exact moment it matters.
+     * 3. A row's detail URL is built from the key's value in the fetched
+     *    row; unselected, that value is missing and the link is empty.
+     *
      * @return array{0: array<string, string>, 1: list<\RockAdmin\Db\Collection>}
      */
-    private function splitColumns(RegionDefinition $region): array
+    private function splitColumns(RegionDefinition $region, string $key): array
     {
-        $columns = [];
+        $columns = [$key => $key];
         $collections = [];
 
         foreach ($region->columns as $column) {

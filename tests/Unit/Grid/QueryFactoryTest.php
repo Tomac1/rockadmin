@@ -825,6 +825,48 @@ final class QueryFactoryTest extends TestCase
         $this->assertSame([$collection], $query->collections);
     }
 
+    public function testTheEntityKeyIsAlwaysSelectedEvenWhenTheRegionDoesNotDeclareIt(): void
+    {
+        // PreviewRegion::render() force-selects the entity key for the same
+        // reason (see its docblock): SqlRowSource::attach() needs a column
+        // literally aliased to the key to attach a collection's values to
+        // their row, the tiebreaker sort appended below needs it selected or
+        // QueryBuilder::order() silently drops the sort naming it, and a
+        // row's detail URL is built from it. A region whose grid declares
+        // only 'title' and a collection, with no 'id' column at all, must
+        // still select the key.
+        $region = $this->region([
+            'title' => $this->column('title'),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $this->assertArrayHasKey('id', $query->columns, 'the entity key must always be selected');
+        $this->assertSame('id', $query->columns['id']);
+    }
+
+    public function testTheTiebreakerSortSurvivesEvenWhenTheRegionDoesNotDeclareTheKeyAsAColumn(): void
+    {
+        $region = $this->region(
+            ['title' => $this->column('title')],
+            sort: ['title' => 'asc'],
+        );
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $columns = array_map(static fn (Sort $sort): string => $sort->column, $query->sort);
+
+        $this->assertSame(['title', 'id'], $columns, 'the tiebreaker is worthless if the key is not selected');
+    }
+
     public function testTheCountStrategyIsAlwaysExact(): void
     {
         $region = $this->region();

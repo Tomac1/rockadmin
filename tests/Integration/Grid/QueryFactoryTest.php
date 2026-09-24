@@ -250,6 +250,129 @@ final class QueryFactoryTest extends DatabaseTestCase
         $this->dropFixtures($connection);
     }
 
+    /**
+     * The bug this class exists to close: a grid over ra_test_ads whose
+     * region declares a one-to-many ('tags') and a plain column ('title')
+     * but no 'id' column at all used to 500 from SqlRowSource::attach() —
+     * "No row carries the key 'id'" — while the same configuration rendered
+     * fine as a preview, because PreviewRegion::render() already force-
+     * selects the key and QueryFactory did not. Now it must select the key
+     * unconditionally and attach without throwing.
+     */
+    #[DataProvider('connections')]
+    public function testACollectionAttachesEvenWhenTheRegionDoesNotDeclareTheKeyColumn(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $this->createFixtures($connection);
+
+        $collection = new Collection('tags', 'ra_test_tags', 'ad_id', 'label');
+        $region = $this->region([
+            'title' => $this->column('title'),
+            'tags' => $this->column('tags', collection: $collection),
+        ]);
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $result = (new SqlRowSource($connection))->fetch($query);
+
+        $withTags = array_filter($result->rows, static fn (array $row): bool => $row['tags'] !== []);
+        $this->assertNotSame([], $withTags, 'the collection must attach, not throw');
+
+        $this->dropFixtures($connection);
+    }
+
+    /**
+     * A quieter consequence of the same missing key: the tiebreaker sort
+     * QueryFactory always appends is silently dropped by
+     * QueryBuilder::order(), which discards a sort naming an alias the
+     * query never selected. Two ads share no other sortable value here, so
+     * without the key both selected and used as the final sort column, the
+     * second page could repeat or skip a row.
+     */
+    #[DataProvider('connections')]
+    public function testTheTiebreakerActuallyOrdersRowsWhenTheRegionDoesNotDeclareTheKeyColumn(
+        ?Connection $connection,
+    ): void {
+        $connection = $this->requireConnection($connection);
+        $this->createFixtures($connection);
+
+        $region = new RegionDefinition(
+            'grid',
+            RegionType::List,
+            2,
+            ['title' => $this->column('title')],
+            [],
+            [],
+        );
+
+        $firstPage = (new SqlRowSource($connection))->fetch((new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        ));
+        $secondPage = (new SqlRowSource($connection))->fetch((new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['page' => '2']], 'grid', $region),
+        ));
+
+        $firstTitles = $this->titlesOf($firstPage->rows);
+        $secondTitles = $this->titlesOf($secondPage->rows);
+
+        $this->assertCount(2, $firstTitles);
+        $this->assertCount(1, $secondTitles);
+        $this->assertSame([], array_intersect($firstTitles, $secondTitles), 'no row repeats across pages');
+
+        $this->dropFixtures($connection);
+    }
+
+    /**
+     * The third consequence: a row's detail URL is built from the entity's
+     * key. A region that never selects it hands the template an empty value
+     * for every row, whether or not it declares a collection at all.
+     */
+    #[DataProvider('connections')]
+    public function testTheKeyIsPresentInEveryRowEvenWhenTheRegionDoesNotDeclareIt(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $this->createFixtures($connection);
+
+        $region = $this->region(['title' => $this->column('title')]);
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery([], 'grid', $region),
+        );
+
+        $result = (new SqlRowSource($connection))->fetch($query);
+
+        foreach ($result->rows as $row) {
+            $this->assertArrayHasKey('id', $row);
+            $this->assertNotNull($row['id'], 'a null or missing key produces an empty detail url');
+        }
+
+        $this->dropFixtures($connection);
+    }
+
+    /**
+     * @param  list<array<string, mixed>> $rows
+     * @return list<string>
+     */
+    private function titlesOf(array $rows): array
+    {
+        $titles = [];
+
+        foreach ($rows as $row) {
+            $rawTitle = $row['title'] ?? null;
+            $titles[] = \is_scalar($rawTitle) ? (string) $rawTitle : '';
+        }
+
+        return $titles;
+    }
+
     #[DataProvider('connections')]
     public function testAGridWithThreeJoinedColumnsIssuesTwoStatements(?Connection $connection): void
     {
