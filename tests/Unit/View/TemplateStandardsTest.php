@@ -433,6 +433,15 @@ final class TemplateStandardsTest extends TestCase
             return true;
         }
 
+        // A class attribute that is nothing but a prepared view's own classes
+        // has delegated the job to the object which assembled them, and that
+        // is the arrangement this project prefers. Demanding a literal token
+        // here forced one template to repeat the very class the view already
+        // carried, purely to satisfy this check.
+        if (preg_match('/\bclass\s*=\s*(["\'])\s*<\?=\s*\$\w+\(\$\w+->classes\b/', $contents) === 1) {
+            return true;
+        }
+
         return preg_match('/\bclass\s*=\s*(["\'])[^"\']*\bra-[a-z0-9-]+\b[^"\']*\1/', $contents) === 1;
     }
 

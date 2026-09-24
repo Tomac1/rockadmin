@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Tests\Unit\Grid;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Grid\CellView;
 use RockAdmin\Grid\ColumnView;
@@ -13,6 +14,7 @@ use RockAdmin\Grid\ListView;
 use RockAdmin\Grid\PaginationView;
 use RockAdmin\Grid\RowView;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
 use RockAdmin\View\Escaper;
 use RockAdmin\View\Renderer;
@@ -92,6 +94,7 @@ final class ListTemplatesTest extends TestCase
         mixed $value = 'Hello',
         string $text = 'Hello',
         Display $display = Display::Plain,
+        ColumnType $type = ColumnType::Text,
         ?string $url = null,
         array $attributes = [],
         ?int $percent = null,
@@ -101,6 +104,7 @@ final class ListTemplatesTest extends TestCase
             key: $key,
             value: $value,
             text: $text,
+            type: $type,
             display: $display,
             classes: "ra-grid-cell ra-grid-cell-{$key}",
             url: $url,
@@ -461,5 +465,46 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringContainsString('marker=SORT', $regionHtml);
         $this->assertStringContainsString('marker=ROW', $regionHtml);
         $this->assertStringContainsString('marker=PAGE', $regionHtml);
+    }
+
+    /** @return array<string, array{ColumnType, string}> */
+    public static function plainCellTypes(): array
+    {
+        return [
+            'money' => [ColumnType::Money, 'ra-grid-cell-money'],
+            'datetime' => [ColumnType::Datetime, 'ra-grid-cell-datetime'],
+            'json' => [ColumnType::Json, 'ra-grid-cell-json'],
+            'int' => [ColumnType::Int, 'ra-grid-cell-int'],
+            'text' => [ColumnType::Text, 'ra-grid-cell-text'],
+        ];
+    }
+
+    #[DataProvider('plainCellTypes')]
+    public function testAPlainCellIsRenderedByItsTypeSinceItsDisplayCannotTellThemApart(
+        ColumnType $type,
+        string $expected,
+    ): void {
+        // Four of the seven types share Display::Plain, so dispatching on
+        // display alone sent money, dates and JSON all to the text partial
+        // and left three shipped templates unreachable by any configuration.
+        $html = $this->renderer()->render(
+            'region/list/row',
+            $this->row(cells: [$this->cell(display: Display::Plain, type: $type)]),
+        );
+
+        $this->assertStringContainsString($expected, $html);
+    }
+
+    public function testADistinctiveDisplayStillWinsOverTheType(): void
+    {
+        // A text column shown as a badge is drawn as a badge. The type only
+        // decides when the display has nothing to say.
+        $html = $this->renderer()->render(
+            'region/list/row',
+            $this->row(cells: [$this->cell(display: Display::Badge, type: ColumnType::Text, variant: 'success')]),
+        );
+
+        $this->assertStringContainsString('ra-grid-cell-badge', $html);
+        $this->assertStringNotContainsString('ra-grid-cell-text', $html);
     }
 }
