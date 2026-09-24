@@ -53,6 +53,19 @@ final class PageRepository
         'boolean' => 'equals',
     ];
 
+    /**
+     * The only alignments a page file may write. `left`/`right` are accepted
+     * as aliases of `start`/`end` because specification 6.2's own example
+     * writes `'align' => 'right'` — refusing it outright would leave the
+     * specification's own example unloadable.
+     */
+    private const ALIGNMENTS = [
+        'start' => 'start',
+        'end' => 'end',
+        'left' => 'start',
+        'right' => 'end',
+    ];
+
     /** @var array<string, PageDefinition> */
     private array $cache = [];
 
@@ -255,6 +268,7 @@ final class PageRepository
                 $region->sort,
                 $region->searchable,
                 $fields,
+                $region->searchPlaceholder,
             );
         }
 
@@ -558,6 +572,26 @@ final class PageRepository
 
         foreach ($sortConfig as $sortColumn => $direction) {
             $sortColumn = (string) $sortColumn;
+
+            // A URL's sort naming an unselected column is silently dropped by
+            // QueryBuilder — it arrived from a link nobody wrote by hand. A
+            // region's own default sort is different: a person wrote this,
+            // in the page file, so an undeclared column here is refused
+            // outright, the same way a field naming one already is.
+            if (!isset($columns[$sortColumn])) {
+                $nearest = Schema::nearestOf(array_keys($columns), $sortColumn);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' has a default sort naming '%s', which is not a column of this "
+                        . 'region.%s',
+                    $pageName,
+                    $regionKey,
+                    $sortColumn,
+                    $suffix,
+                ));
+            }
+
             $directionValue = \is_string($direction) ? $direction : '';
             $sortDirection = SortDirection::tryFrom($directionValue);
 
@@ -573,7 +607,11 @@ final class PageRepository
             $sort[] = new Sort($sortColumn, $sortDirection);
         }
 
-        return new RegionDefinition($regionKey, $type, $perPage, $columns, $sort, $searchable);
+        /** @var array<string, mixed> $searchConfig */
+        $searchConfig = \is_array($regionConfig['search'] ?? null) ? $regionConfig['search'] : [];
+        $searchPlaceholder = \is_string($searchConfig['placeholder'] ?? null) ? $searchConfig['placeholder'] : null;
+
+        return new RegionDefinition($regionKey, $type, $perPage, $columns, $sort, $searchable, searchPlaceholder: $searchPlaceholder);
     }
 
     /** @param array<string, mixed> $columnConfig */
@@ -627,6 +665,10 @@ final class PageRepository
             ));
         }
 
+        if ($hasCollection) {
+            $this->assertNotDeadOnACollection($pageName, $columnKey, $columnConfig);
+        }
+
         $source = $hasSource && \is_string($columnConfig['source']) ? $columnConfig['source'] : $columnKey;
 
         $collection = null;
@@ -647,7 +689,7 @@ final class PageRepository
         $sortable = ($columnConfig['sortable'] ?? false) === true;
         $link = ($columnConfig['link'] ?? false) === true;
         $align = \is_string($columnConfig['align'] ?? null) && $columnConfig['align'] !== ''
-            ? $columnConfig['align']
+            ? $this->resolveAlign($pageName, $columnKey, $columnConfig['align'])
             : $type->defaultAlignment();
         $width = \is_string($columnConfig['width'] ?? null) ? $columnConfig['width'] : null;
         $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
@@ -697,6 +739,66 @@ final class PageRepository
             class: $class,
             options: $options,
         );
+    }
+
+    /**
+     * A collection column's values come from a supplementary query (rule 8),
+     * never from the row's own select list — so its alias is never among
+     * the expressions `QueryBuilder` filters, sorts or searches against.
+     * `filter`, `sortable` and `searchable` on such a column are all
+     * accepted and all silently dead: a labelled filter box nobody can ever
+     * narrow by, a sort link that never reorders anything, a search box
+     * that never matches it. Refused at load, by name, the same way
+     * `source` + `collection` together already are.
+     *
+     * @param array<string, mixed> $columnConfig
+     */
+    private function assertNotDeadOnACollection(string $pageName, string $columnKey, array $columnConfig): void
+    {
+        if (\is_array($columnConfig['filter'] ?? null)) {
+            throw new PageException(\sprintf(
+                "Page '%s': column '%s' carries both 'filter' and 'collection'. A collection's values are "
+                    . "never in the query's select list, so a filter naming it can never match anything.",
+                $pageName,
+                $columnKey,
+            ));
+        }
+
+        if (($columnConfig['sortable'] ?? false) === true) {
+            throw new PageException(\sprintf(
+                "Page '%s': column '%s' is 'sortable' and carries 'collection'. A collection's values are "
+                    . 'never in the query\'s select list, so a sort naming it is silently dropped.',
+                $pageName,
+                $columnKey,
+            ));
+        }
+
+        if (($columnConfig['searchable'] ?? false) === true) {
+            throw new PageException(\sprintf(
+                "Page '%s': column '%s' is 'searchable' and carries 'collection'. A collection's values are "
+                    . 'never in the query\'s select list, so the search box can never match it.',
+                $pageName,
+                $columnKey,
+            ));
+        }
+    }
+
+    private function resolveAlign(string $pageName, string $columnKey, string $align): string
+    {
+        if (!isset(self::ALIGNMENTS[$align])) {
+            $nearest = Schema::nearestOf(array_keys(self::ALIGNMENTS), $align);
+            $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+            throw new PageException(\sprintf(
+                "Page '%s': column '%s' has an unknown align '%s'. Use 'start', 'end', 'left' or 'right'.%s",
+                $pageName,
+                $columnKey,
+                $align,
+                $suffix,
+            ));
+        }
+
+        return self::ALIGNMENTS[$align];
     }
 
     private function assertSourceReachable(string $pageName, string $columnKey, string $source, Entity $entity): void

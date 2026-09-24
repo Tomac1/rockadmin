@@ -405,16 +405,28 @@ final class PageRepositoryTest extends TestCase
             ]
             PHP);
 
-        // This only proves a *valid* search block loads without error — it
-        // cannot assert the value arrives anywhere, because RegionDefinition
-        // exposes no field for it (out of this task's given interface; see
-        // the task report). Paired with the two tests below, which assert
-        // something a valid block cannot: that search's declared shape is
-        // actually enforced, not merely tolerated — a wrong-typed
-        // `placeholder` and an unknown key are both refused.
+        // Paired with the two tests below, which assert something a valid
+        // block cannot: that search's declared shape is actually enforced,
+        // not merely tolerated — a wrong-typed `placeholder` and an unknown
+        // key are both refused.
         $page = $this->repository()->get('ads');
 
-        $this->assertSame('ads', $page->name);
+        $this->assertSame('Search ads...', $page->region('grid')->searchPlaceholder);
+    }
+
+    public function testARegionWithNoSearchBlockHasNoPlaceholder(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => ['title' => []]]],
+            ]
+            PHP);
+
+        $region = $this->repository()->get('ads')->region('grid');
+
+        $this->assertNull($region->searchPlaceholder);
     }
 
     public function testASearchPlaceholderMustBeAString(): void
@@ -655,7 +667,7 @@ final class PageRepositoryTest extends TestCase
                 'regions' => ['grid' => [
                     'type' => 'list',
                     'sort' => ['created_at' => 'desc', 'id' => 'asc'],
-                    'columns' => ['title' => []],
+                    'columns' => ['title' => [], 'created_at' => [], 'id' => []],
                 ]],
             ]
             PHP);
@@ -1014,5 +1026,189 @@ final class PageRepositoryTest extends TestCase
             PHP);
 
         $this->assertSame(RegionType::List, $this->repository()->get('ads')->region('grid')->type);
+    }
+
+    // --- A collection column carries no source: filter, sortable and
+    // searchable on it are all silently dead, because its values never
+    // reach the select list QueryBuilder filters, sorts and searches
+    // against. Refused at load, by name, the same way `source` +
+    // `collection` together already are.
+
+    public function testAFilterOnACollectionColumnIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'tags' => [
+                        'collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag'],
+                        'filter' => ['type' => 'text'],
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A filter on a collection column should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tags', $e->getMessage());
+            $this->assertStringContainsString('filter', $e->getMessage());
+            $this->assertStringContainsString('collection', $e->getMessage());
+        }
+    }
+
+    public function testASortableCollectionColumnIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'tags' => [
+                        'collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag'],
+                        'sortable' => true,
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A sortable collection column should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tags', $e->getMessage());
+            $this->assertStringContainsString('sortable', $e->getMessage());
+            $this->assertStringContainsString('collection', $e->getMessage());
+        }
+    }
+
+    public function testASearchableCollectionColumnIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'tags' => [
+                        'collection' => ['table' => 'ad_tags', 'foreign_key' => 'ad_id', 'column' => 'tag'],
+                        'searchable' => true,
+                    ],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A searchable collection column should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('tags', $e->getMessage());
+            $this->assertStringContainsString('searchable', $e->getMessage());
+            $this->assertStringContainsString('collection', $e->getMessage());
+        }
+    }
+
+    // --- align: a closed set, like every other one in a page file.
+
+    public function testAlignAcceptsStartAndEnd(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['align' => 'end'],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('title');
+
+        $this->assertSame('end', $column->align);
+    }
+
+    public function testAlignAcceptsRightAsAnAliasForEnd(): void
+    {
+        // Specification 6.2's own example writes 'align' => 'right'. Bootstrap
+        // 5 has no 'text-right' class — only 'right' as an alias for 'end'
+        // keeps that example from loading clean and rendering unaligned.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['align' => 'right'],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('title');
+
+        $this->assertSame('end', $column->align);
+    }
+
+    public function testAlignAcceptsLeftAsAnAliasForStart(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['align' => 'left'],
+                ]]],
+            ]
+            PHP);
+
+        $column = $this->repository()->get('ads')->region('grid')->column('title');
+
+        $this->assertSame('start', $column->align);
+    }
+
+    public function testAnUnknownAlignIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => ['type' => 'list', 'columns' => [
+                    'title' => ['align' => 'center'],
+                ]]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown align should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('title', $e->getMessage());
+            $this->assertStringContainsString('center', $e->getMessage());
+        }
+    }
+
+    // --- A region's default sort against its own declared columns.
+
+    public function testARegionSortNamingAnUndeclaredColumnIsRefused(): void
+    {
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'regions' => ['grid' => [
+                    'type' => 'list',
+                    'sort' => ['creatd_at' => 'desc'],
+                    'columns' => ['created_at' => []],
+                ]],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A sort naming a column the region does not declare should be refused.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString('creatd_at', $e->getMessage());
+            $this->assertStringContainsString('grid', $e->getMessage());
+            $this->assertStringContainsString("Did you mean 'created_at'", $e->getMessage());
+        }
     }
 }
