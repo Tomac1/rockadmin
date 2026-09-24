@@ -106,10 +106,19 @@ final class Connection
 
         if ($names === []) {
             // Every table that exists has at least one column, so an empty
-            // result names a table that does not -- the same fact MySQL's
-            // own SHOW COLUMNS already raised as an exception before this
-            // method got a chance to run.
-            throw new DbException("Table '{$table}' does not exist.");
+            // result means this connection cannot see one -- the same fact
+            // MySQL's own SHOW COLUMNS already raised as an exception before
+            // this method got a chance to run.
+            //
+            // The message hedges deliberately. PostgreSQL's
+            // information_schema.columns hides rows the connecting role has
+            // no privilege on, so an existing table the role cannot read is
+            // indistinguishable here from one that was never created. Saying
+            // flatly that it does not exist would send whoever reads this
+            // hunting for a typo when what they need is a GRANT.
+            throw new DbException(
+                "Table '{$table}' does not exist, or is not visible to this connection.",
+            );
         }
 
         return $names;
