@@ -119,6 +119,24 @@ abstract class DatabaseTestCase extends TestCase
             return null;
         }
 
+        if ($prefix === 'MYSQL') {
+            // This machine's own MySQL runs with whatever sql_mode its install
+            // happens to default to -- on the machine this suite was written
+            // against, that is 'ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION',
+            // without STRICT_TRANS_TABLES, which MySQL 8 itself enables by
+            // default. Under that laxer mode a value strict mode would refuse
+            // (an empty string forced into an integer column, say) is silently
+            // coerced and stored instead, so a regression test for a strict-mode
+            // failure would pass here while the failure still shipped. Setting
+            // it explicitly, every session, makes this suite test the mode a
+            // real MySQL 8 install actually runs with rather than whatever this
+            // one laptop happens to have been left in.
+            $pdo->exec(
+                "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,"
+                    . "ERROR_FOR_DIVISION_BY_ZERO'",
+            );
+        }
+
         return self::$connections[$prefix] = Connection::fromPdo($pdo);
     }
 

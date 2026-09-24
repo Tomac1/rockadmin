@@ -15,20 +15,44 @@ use PDOStatement;
  * statement text is kept as `$text` rather than the real `queryString` --
  * `PDOStatement` already declares that one `readonly`, and a subclass that
  * never calls the parent constructor cannot initialise it.
+ *
+ * `bindValue()` records each value under its 1-based position rather than
+ * executing anything, which is what lets `Connection::run()`'s own
+ * bind-then-execute sequence (`Connection::paramType()`, one `bindValue()`
+ * call per value, then a parameterless `execute()`) run against this fake
+ * exactly as it runs against a real statement.
  */
 final class FakeStatement extends PDOStatement
 {
     /** @var list<array<string, mixed>> */
     private array $rows = [];
 
+    private int $affected = 0;
+
+    /** @var array<int|string, mixed> */
+    private array $bindings = [];
+
+    /** @var array<int|string, int> the PDO::PARAM_* type each value was bound with, for a test to inspect */
+    public array $boundTypes = [];
+
     public function __construct(private readonly FakePdo $pdo, public readonly string $text)
     {
+    }
+
+    public function bindValue(int|string $param, mixed $value, int $type = PDO::PARAM_STR): bool
+    {
+        $this->bindings[$param] = $value;
+        $this->boundTypes[$param] = $type;
+
+        return true;
     }
 
     /** @param ?array<int|string, mixed> $params */
     public function execute(?array $params = null): bool
     {
-        $this->rows = $this->pdo->record($this->text, $params ?? []);
+        $bindings = $params ?? $this->orderedBindings();
+
+        [$this->rows, $this->affected] = $this->pdo->record($this->text, $bindings);
 
         return true;
     }
@@ -54,6 +78,21 @@ final class FakeStatement extends PDOStatement
 
     public function rowCount(): int
     {
-        return \count($this->rows);
+        return $this->affected;
+    }
+
+    /**
+     * `bindValue()` is called once per value, in position order, so the
+     * keys of `$bindings` are already `1, 2, 3, ...` in the order they were
+     * bound -- `ksort()` only guards against a caller that bound them out
+     * of order.
+     *
+     * @return list<mixed>
+     */
+    private function orderedBindings(): array
+    {
+        ksort($this->bindings);
+
+        return array_values($this->bindings);
     }
 }

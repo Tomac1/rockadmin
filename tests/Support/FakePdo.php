@@ -15,13 +15,22 @@ use RockAdmin\Db\Sql;
  * final -- deliberately, so nothing stands between it and the database it
  * wraps -- so a unit test cannot fake the connection itself. What it fakes
  * is the PDO underneath a real `Connection`: `prepare()` hands back a
- * `FakeStatement` that records what it was asked to run, and a `SELECT` is
- * answered from a queue of rows supplied up front, consumed in call order.
+ * `FakeStatement` that records what it was asked to run, and every
+ * statement executed consumes the next entry off a queue of result rows
+ * supplied up front, in call order -- one entry per statement, `[]` for one
+ * that returns none. There is no sniffing of the SQL text to guess which
+ * statements return rows and which do not: a test that does not care what a
+ * given statement answers with still has to say so, explicitly, rather than
+ * have this class infer it -- a guess here is exactly the kind of thing
+ * that would quietly stop matching `Connection::run()` the day it changes.
  */
 final class FakePdo extends PDO
 {
     /** @var list<Sql> every statement executed, in the order it ran */
     public array $executed = [];
+
+    /** @var list<FakeStatement> every statement prepared, in order -- for inspecting how it was bound */
+    public array $statements = [];
 
     public int $begins = 0;
     public int $commits = 0;
@@ -32,15 +41,27 @@ final class FakePdo extends PDO
 
     private bool $inTransaction = false;
 
-    /** @param list<list<array<string, mixed>>> $rows one result set per SELECT, consumed in order */
-    public function __construct(private array $rows = [])
-    {
+    /**
+     * @param list<list<array<string, mixed>>> $rows     one result set per statement, consumed in order
+     * @param list<int>                        $affected one affected-row count per statement, consumed in
+     *                                                    order; a statement run past the end of this list
+     *                                                    gets 1, the ordinary case for every write this
+     *                                                    project issues, which always targets one row by
+     *                                                    its key
+     */
+    public function __construct(
+        private array $rows = [],
+        private array $affected = [],
+    ) {
     }
 
     /** @param array<string, mixed> $options */
     public function prepare(string $query, array $options = []): PDOStatement
     {
-        return new FakeStatement($this, $query);
+        $statement = new FakeStatement($this, $query);
+        $this->statements[] = $statement;
+
+        return $statement;
     }
 
     public function beginTransaction(): bool
@@ -78,27 +99,19 @@ final class FakePdo extends PDO
     }
 
     /**
-     * Records a statement and, for one that returns rows, hands back the
-     * next queued result set.
+     * Records a statement and hands back its queued result rows and
+     * affected-row count.
      *
-     * A plain INSERT, UPDATE or DELETE answers with a row count, not rows,
-     * so it does not consume the queue -- queuing a placeholder entry for
-     * each of those would make a test read as if it mattered what they
-     * returned. A SELECT does, and so does an INSERT carrying a RETURNING
-     * clause (PostgreSQL's way of handing back a generated key), since
-     * `Connection::select()` calls `fetchAll()` on either of them alike.
-     *
-     * @param  array<int|string, mixed>   $bindings
-     * @return list<array<string, mixed>>
+     * @param  array<int|string, mixed>              $bindings
+     * @return array{0: list<array<string, mixed>>, 1: int}
      */
     public function record(string $text, array $bindings): array
     {
         $this->executed[] = new Sql($text, array_values($bindings));
 
-        if (!str_starts_with(ltrim($text), 'SELECT') && !str_contains($text, 'RETURNING')) {
-            return [];
-        }
+        $rows = array_shift($this->rows) ?? [];
+        $affected = $this->affected === [] ? 1 : (int) array_shift($this->affected);
 
-        return array_shift($this->rows) ?? [];
+        return [$rows, $affected];
     }
 }
