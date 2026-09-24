@@ -25,6 +25,7 @@ use RockAdmin\Db\Relation;
 use RockAdmin\Db\Sort;
 use RockAdmin\Db\SortDirection;
 use RockAdmin\Db\SourcePath;
+use RockAdmin\Form\DefaultValue;
 
 /**
  * Reads a directory of page files and turns each into a PageDefinition.
@@ -775,6 +776,23 @@ final class PageRepository
         $readonly = ($fieldConfig['readonly'] ?? false) === true;
         $hidden = ($fieldConfig['hidden'] ?? false) === true;
         $default = \array_key_exists('default', $fieldConfig) ? $fieldConfig['default'] : null;
+
+        // A default is a literal, a {{placeholder}}, or one of the tokens
+        // DefaultValue knows how to expand -- @now and @uuid. Anything else
+        // starting with '@' is refused here, at load, rather than left to
+        // fail silently the first time a row is created: DefaultValue::for()
+        // refuses it too, but only once a page is already being served.
+        // isToken() is reused rather than a second literal list of tokens,
+        // so the two cannot drift apart.
+        if (\is_string($default) && str_starts_with($default, '@') && !DefaultValue::isToken($default)) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has default '%s', which is not a known token. The tokens are '@now' "
+                    . "and '@uuid'.",
+                $pageName,
+                $fieldKey,
+                $default,
+            ));
+        }
 
         if ($required && $readonly) {
             throw new PageException(\sprintf(

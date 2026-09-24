@@ -410,6 +410,22 @@ final class PageRepositoryFormTest extends TestCase
         $this->repository()->get('ads');
     }
 
+    public function testAnUnknownDefaultTokenIsRefusedNamingBothValidTokens(): void
+    {
+        $this->writePage('ads', $this->formPage([
+            'code' => ['type' => 'text', 'default' => '@nwo'],
+        ]));
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('An unknown default token should be refused at load.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString("Page 'ads': field 'code'", $e->getMessage());
+            $this->assertStringContainsString('@now', $e->getMessage());
+            $this->assertStringContainsString('@uuid', $e->getMessage());
+        }
+    }
+
     public function testAFormBlockOnANonFormRegionIsRefused(): void
     {
         $this->writePage('ads', <<<'PHP'
