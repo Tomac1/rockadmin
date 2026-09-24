@@ -27,6 +27,9 @@ final class FakePdo extends PDO
     public int $commits = 0;
     public int $rollbacks = 0;
 
+    /** What `lastInsertId()` answers -- MySQL's own way of reporting a generated key. */
+    public string $nextInsertId = '';
+
     private bool $inTransaction = false;
 
     /** @param list<list<array<string, mixed>>> $rows one result set per SELECT, consumed in order */
@@ -69,13 +72,21 @@ final class FakePdo extends PDO
         return $this->inTransaction;
     }
 
+    public function lastInsertId(?string $name = null): string
+    {
+        return $this->nextInsertId;
+    }
+
     /**
-     * Records a statement and, for a SELECT, hands back the next queued
-     * result set.
+     * Records a statement and, for one that returns rows, hands back the
+     * next queued result set.
      *
-     * Only a SELECT consumes the queue: an INSERT, UPDATE or DELETE answers
-     * with a row count, not rows, so queuing a placeholder entry for each of
-     * those would make the test read as if it mattered what they returned.
+     * A plain INSERT, UPDATE or DELETE answers with a row count, not rows,
+     * so it does not consume the queue -- queuing a placeholder entry for
+     * each of those would make a test read as if it mattered what they
+     * returned. A SELECT does, and so does an INSERT carrying a RETURNING
+     * clause (PostgreSQL's way of handing back a generated key), since
+     * `Connection::select()` calls `fetchAll()` on either of them alike.
      *
      * @param  array<int|string, mixed>   $bindings
      * @return list<array<string, mixed>>
@@ -84,7 +95,7 @@ final class FakePdo extends PDO
     {
         $this->executed[] = new Sql($text, array_values($bindings));
 
-        if (!str_starts_with(ltrim($text), 'SELECT')) {
+        if (!str_starts_with(ltrim($text), 'SELECT') && !str_contains($text, 'RETURNING')) {
             return [];
         }
 

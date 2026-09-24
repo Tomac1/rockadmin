@@ -85,7 +85,17 @@ abstract class DatabaseTestCase extends TestCase
         return self::$connections[$prefix] = Connection::fromPdo($pdo);
     }
 
-    /** Creates the fixture tables and fills them. Drops them first if present. */
+    /**
+     * Creates the fixture tables and fills them. Drops them first if present.
+     *
+     * Every one of these tables declares its key as a plain, non-generated
+     * `INTEGER PRIMARY KEY`, and every insert below supplies it explicitly.
+     * That is a property of these particular fixtures, not a constraint
+     * `SqlWriteHandler` imposes elsewhere -- `WriteHandler::insert()` also
+     * supports a generated key (`AUTO_INCREMENT` / `GENERATED ... AS
+     * IDENTITY`), which is the far more common case for a real project's own
+     * tables. See `tests/Integration/Db/WriteTest.php`, which exercises both.
+     */
     protected function createFixtures(Connection $connection): void
     {
         $this->dropFixtures($connection);

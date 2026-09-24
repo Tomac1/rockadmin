@@ -50,4 +50,9 @@ final class PgDialect implements Dialect
             [$table],
         );
     }
+
+    public function returningClause(string $key): string
+    {
+        return ' RETURNING ' . $this->quoteIdentifier($key);
+    }
 }

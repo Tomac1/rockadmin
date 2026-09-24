@@ -45,4 +45,18 @@ interface Dialect
      * which `Connection::columns()` reads regardless of which arrives.
      */
     public function columns(string $table): Sql;
+
+    /**
+     * The clause an INSERT appends to have the database hand back the key
+     * it assigned to a new row, or null when this server has none.
+     *
+     * PostgreSQL answers with `RETURNING "id"`, read off the statement like
+     * any other query. MySQL has no equivalent clause — null tells the
+     * caller to ask `Connection::lastInsertId()` once the statement has run
+     * instead, which is also why this is a `Dialect` method rather than a
+     * single flag: the two servers do not just spell the same thing
+     * differently, they hand the value back through different parts of the
+     * API.
+     */
+    public function returningClause(string $key): ?string;
 }

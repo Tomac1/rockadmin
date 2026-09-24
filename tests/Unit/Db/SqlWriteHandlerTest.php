@@ -11,6 +11,7 @@ use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\MySqlDialect;
+use RockAdmin\Db\PgDialect;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Db\WriteResult;
 use RockAdmin\Tests\Support\FakePdo;
@@ -33,6 +34,11 @@ final class SqlWriteHandlerTest extends TestCase
     private function handler(FakePdo $pdo): SqlWriteHandler
     {
         return new SqlWriteHandler(new Connection($pdo, new MySqlDialect()));
+    }
+
+    private function pgHandler(FakePdo $pdo): SqlWriteHandler
+    {
+        return new SqlWriteHandler(new Connection($pdo, new PgDialect()));
     }
 
     public function testAnInsertNamesOnlyTheColumnsGiven(): void
@@ -62,13 +68,53 @@ final class SqlWriteHandlerTest extends TestCase
         $this->assertSame(['1'], $read->bindings);
     }
 
-    public function testAnInsertWithoutItsKeyAmongTheValuesIsRefused(): void
+    public function testAnInsertWithNoValuesIsRefused(): void
     {
         $pdo = new FakePdo();
 
         $this->expectException(DbException::class);
 
-        $this->handler($pdo)->insert($this->entity(), ['title' => 'Horské kolo']);
+        $this->handler($pdo)->insert($this->entity(), []);
+    }
+
+    public function testAnInsertWithoutItsKeyAsksMysqlForTheGeneratedOne(): void
+    {
+        $pdo = new FakePdo([[['id' => 7, 'title' => 'Horské kolo']]]);
+        $pdo->nextInsertId = '7';
+
+        $result = $this->handler($pdo)->insert($this->entity(), ['title' => 'Horské kolo']);
+
+        $insert = $pdo->executed[0];
+
+        $this->assertSame('INSERT INTO `ads` (`title`) VALUES (?)', $insert->text);
+        $this->assertSame(['Horské kolo'], $insert->bindings);
+        $this->assertSame('7', $result->key);
+    }
+
+    public function testAnInsertWithoutItsKeyUsesReturningOnPostgres(): void
+    {
+        $pdo = new FakePdo([
+            [['id' => 7]],
+            [['id' => 7, 'title' => 'Horské kolo']],
+        ]);
+
+        $result = $this->pgHandler($pdo)->insert($this->entity(), ['title' => 'Horské kolo']);
+
+        $insert = $pdo->executed[0];
+
+        $this->assertSame('INSERT INTO "ads" ("title") VALUES (?) RETURNING "id"', $insert->text);
+        $this->assertSame(['Horské kolo'], $insert->bindings);
+        $this->assertSame('7', $result->key);
+    }
+
+    public function testAnInsertWithAnExplicitKeyNeverAsksForAGeneratedOne(): void
+    {
+        $pdo = new FakePdo([[['id' => 1, 'title' => 'Horské kolo']]]);
+        $pdo->nextInsertId = '999';
+
+        $result = $this->handler($pdo)->insert($this->entity(), ['id' => 1, 'title' => 'Horské kolo']);
+
+        $this->assertSame('1', $result->key, 'the given key wins, not whatever lastInsertId() answers');
     }
 
     public function testAnUpdateSetsOnlyTheColumnsGivenAndFiltersByTheKey(): void

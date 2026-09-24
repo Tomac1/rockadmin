@@ -53,4 +53,11 @@ final class MySqlDialect implements Dialect
         // way quoteIdentifier() already is everywhere else in this class.
         return new Sql('SHOW COLUMNS FROM ' . $this->quoteIdentifier($table));
     }
+
+    public function returningClause(string $key): ?string
+    {
+        // MySQL has no RETURNING clause; the generated key is read from
+        // Connection::lastInsertId() once the INSERT has run instead.
+        return null;
+    }
 }

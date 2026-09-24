@@ -77,6 +77,20 @@ final class Connection
     }
 
     /**
+     * The key the database assigned to the row inserted last on this
+     * connection -- MySQL's own way of answering "what key did that INSERT
+     * get". PostgreSQL is asked through a `RETURNING` clause instead
+     * (`Dialect::returningClause()`), because its `lastInsertId()` needs a
+     * sequence name to be reliable and is fragile without one.
+     */
+    public function lastInsertId(): string
+    {
+        $id = $this->pdo->lastInsertId();
+
+        return $id === false ? '' : $id;
+    }
+
+    /**
      * The table's own columns, in their declared order — what `'fields' =>
      * '@all'` (spec 8.5) reads from. The statement itself is the one thing
      * that differs per server, and `Dialect::columns()` already carries that

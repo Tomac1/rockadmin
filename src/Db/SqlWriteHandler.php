@@ -20,22 +20,26 @@ final class SqlWriteHandler implements WriteHandler
     {
     }
 
-    /** @param array<string, mixed> $values */
+    /**
+     * When `$values` carries the entity's key, that value is used as-is -- a
+     * `@uuid` default, a natural key, a copy that preserves an id. When it
+     * does not, the far more common case, the database assigns one: on
+     * PostgreSQL through the INSERT's own `RETURNING` clause, on MySQL
+     * through `Connection::lastInsertId()` once the statement has run.
+     * `Dialect::returningClause()` is what tells the two apart.
+     *
+     * @param array<string, mixed> $values
+     */
     public function insert(Entity $entity, array $values): WriteResult
     {
-        if (!\array_key_exists($entity->key, $values)) {
-            throw new DbException(
-                "An insert into '{$entity->table}' needs its key '{$entity->key}' among the "
-                . 'values given. RockAdmin never reads a key back from the database -- a row\'s '
-                . 'key is decided before the write, by a form default or a bulk action, so it is '
-                . 'the same key whichever database is behind it.',
-            );
+        if ($values === []) {
+            throw new DbException("An insert into '{$entity->table}' needs at least one value.");
         }
 
-        $key = $this->stringKey($entity, $values[$entity->key]);
-
-        return $this->connection->transaction(function () use ($entity, $values, $key): WriteResult {
-            $this->connection->execute($this->insertSql($entity, $values));
+        return $this->connection->transaction(function () use ($entity, $values): WriteResult {
+            $key = \array_key_exists($entity->key, $values)
+                ? $this->insertWithGivenKey($entity, $values)
+                : $this->insertWithGeneratedKey($entity, $values);
 
             $after = $this->find($entity, $key);
 
@@ -49,6 +53,47 @@ final class SqlWriteHandler implements WriteHandler
 
             return new WriteResult($key, [], $after);
         });
+    }
+
+    /** @param array<string, mixed> $values */
+    private function insertWithGivenKey(Entity $entity, array $values): string
+    {
+        $key = $this->stringKey($entity, $values[$entity->key]);
+
+        $this->connection->execute($this->insertSql($entity, $values, null));
+
+        return $key;
+    }
+
+    /**
+     * Inserts without the entity's key among the values, and asks the
+     * database for the one it assigned.
+     *
+     * @param array<string, mixed> $values
+     */
+    private function insertWithGeneratedKey(Entity $entity, array $values): string
+    {
+        $returning = $this->connection->dialect()->returningClause($entity->key);
+
+        if ($returning !== null) {
+            // PostgreSQL: the INSERT itself hands the key back as a row.
+            $rows = $this->connection->select($this->insertSql($entity, $values, $returning));
+            $generated = $rows[0][$entity->key] ?? null;
+        } else {
+            // MySQL: no RETURNING clause -- ask the connection what it just did.
+            $this->connection->execute($this->insertSql($entity, $values, null));
+            $generated = $this->connection->lastInsertId();
+        }
+
+        if ($generated === null || $generated === '' || $generated === '0') {
+            throw new DbException(
+                "Insert into '{$entity->table}' produced no key for '{$entity->key}'. Either give "
+                . "'{$entity->key}' among the values, or declare it as a generated column in the "
+                . 'database.',
+            );
+        }
+
+        return $this->stringKey($entity, $generated);
     }
 
     /** @param array<string, mixed> $values */
@@ -87,7 +132,7 @@ final class SqlWriteHandler implements WriteHandler
     }
 
     /** @param array<string, mixed> $values */
-    private function insertSql(Entity $entity, array $values): Sql
+    private function insertSql(Entity $entity, array $values, ?string $returning): Sql
     {
         $dialect = $this->connection->dialect();
         $columns = array_keys($values);
@@ -100,7 +145,7 @@ final class SqlWriteHandler implements WriteHandler
 
         return new Sql(
             'INSERT INTO ' . $dialect->quoteIdentifier($entity->table)
-            . " ({$names}) VALUES ({$placeholders})",
+            . " ({$names}) VALUES ({$placeholders})" . ($returning ?? ''),
             array_values($values),
         );
     }
