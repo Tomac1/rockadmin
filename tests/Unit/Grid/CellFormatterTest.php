@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\EnumOption;
+use RockAdmin\Db\Collection;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
@@ -30,10 +31,11 @@ final class CellFormatterTest extends TestCase
         Display $display = Display::Plain,
         array $options = [],
         string $class = '',
+        ?Collection $collection = null,
     ): ColumnDefinition {
         return new ColumnDefinition(
             filter: null,
-            collection: null,
+            collection: $collection,
             key: $key,
             label: ucfirst($key),
             source: $key,
@@ -85,7 +87,16 @@ final class CellFormatterTest extends TestCase
         // empty array is the literal text '[]' -- correct for a value that
         // holds an item, misleading for a value that holds none: a shipped
         // grid showed it verbatim in every cell for an ad with no tags.
-        $column = $this->column(type: ColumnType::Json, display: Display::Plain);
+        //
+        // It has to be a collection column. The sibling test below covers the
+        // other half: an empty array in an ordinary json column is a value
+        // the row holds, and hiding it would repeat the mistake this class
+        // has already been corrected for twice.
+        $column = $this->column(
+            type: ColumnType::Json,
+            display: Display::Plain,
+            collection: new Collection('tags', 'ra_test_tags', 'ad_id', 'label'),
+        );
 
         $cell = $this->formatter->format($column, []);
 
@@ -454,5 +465,28 @@ final class CellFormatterTest extends TestCase
 
         $this->assertStringContainsString('ra-grid-cell', $cell->classes);
         $this->assertStringContainsString('ra-grid-cell-unit-price', $cell->classes);
+    }
+
+    public function testAnEmptyCollectionReadsAsEmptyButAnEmptyJsonValueDoesNot(): void
+    {
+        // This class has been corrected twice for conflating an absence with
+        // a value -- once for a false boolean, once for an empty string. An
+        // empty array is the third case, and the distinction is the column:
+        // a collection with no related rows genuinely has nothing, while a
+        // json column holding [] holds something, as distinct from NULL as an
+        // empty string is from a missing one.
+        $collection = $this->column('tags', ColumnType::Json, collection: new Collection('tags', 'ra_test_tags', 'ad_id', 'label'));
+        $json = $this->column('stats', ColumnType::Json);
+
+        $empty = $this->formatter->format($collection, []);
+        $held = $this->formatter->format($json, []);
+
+        $this->assertNull($empty->value);
+        $this->assertSame('', $empty->text);
+        $this->assertStringContainsString('ra-grid-cell-empty', $empty->classes);
+
+        $this->assertSame([], $held->value);
+        $this->assertSame('[]', $held->text);
+        $this->assertStringNotContainsString('ra-grid-cell-empty', $held->classes);
     }
 }

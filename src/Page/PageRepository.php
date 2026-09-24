@@ -592,6 +592,21 @@ final class PageRepository
                 ));
             }
 
+            // A collection's values come from a supplementary query, so its
+            // alias never reaches the select list and QueryBuilder drops any
+            // sort naming it — the same dead configuration a filter or a
+            // searchable on one would be. The grid would simply order by the
+            // tiebreaker and nobody would be told why.
+            if ($columns[$sortColumn]->collection !== null) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' sorts by '%s', which is a collection. A collection is fetched "
+                        . 'separately from the rows, so the database cannot order by it.',
+                    $pageName,
+                    $regionKey,
+                    $sortColumn,
+                ));
+            }
+
             $directionValue = \is_string($direction) ? $direction : '';
             $sortDirection = SortDirection::tryFrom($directionValue);
 

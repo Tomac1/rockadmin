@@ -59,8 +59,9 @@ final class ColumnSchema
             ),
             'align' => new SchemaKey(
                 ValueType::String,
-                description: 'Horizontal alignment: start or end. Defaults to the type\'s own. '
-                    . 'Numbers align to the end so they are readable when skimmed.',
+                description: 'Horizontal alignment: start or end, with left and right accepted as '
+                    . 'aliases for them. Defaults to the type\'s own — numbers align to the end so '
+                    . 'they are readable when skimmed down a column.',
                 example: 'end',
             ),
             'width' => new SchemaKey(

@@ -85,12 +85,18 @@ final class CellFormatter
 
     public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView
     {
-        // An empty collection -- a one-to-many column with nothing to show --
+        // An empty collection -- a one-to-many column with no related rows --
         // reads as deliberately empty for the same reason null does, rather
-        // than as the literal text '[]': that is CellFormatter::formatJson()'s
-        // honest encoding of an empty array, correct for a value that holds
-        // one item, and misleading for a value that holds none.
-        if ($value === null || $value === []) {
+        // than as the literal text '[]'.
+        //
+        // The collection check is what makes that honest. An empty array in a
+        // *json column* is a value the row really holds, as distinct from NULL
+        // as an empty string is from a missing one, and this class has just
+        // been corrected twice for conflating the two -- once for a false
+        // boolean, once for an empty string. A collection is the one case
+        // where an empty array means there is nothing rather than that
+        // nothing is there.
+        if ($value === null || ($value === [] && $column->collection !== null)) {
             return new CellView(
                 key: $column->key,
                 value: null,

@@ -104,7 +104,7 @@ Every entry of `regions.*.columns`.
 | `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress or percent. Defaults to the type's own. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
 | `sortable` | bool | `false` | `true` | Whether the column header is a sort link. |
 | `searchable` | bool | `false` | `true` | Whether the region's search box looks here. |
-| `align` | string | — | `end` | Horizontal alignment: start or end. Defaults to the type's own. Numbers align to the end so they are readable when skimmed. |
+| `align` | string | — | `end` | Horizontal alignment: start or end, with left and right accepted as aliases for them. Defaults to the type's own — numbers align to the end so they are readable when skimmed down a column. |
 | `width` | string | — | `8rem` | A CSS width for the column, e.g. `8rem`. Without it, the column shares space equally. |
 | `class` | string | — | `font-mono` | Extra CSS classes added to every cell in this column. |
 | `link` | bool | `false` | `true` | Makes the cell an anchor to the row's detail page. |
