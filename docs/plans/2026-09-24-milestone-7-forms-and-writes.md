@@ -142,8 +142,9 @@ templates/region/form/field/     text.php textarea.php number.php select.php
 **Modified:**
 
 - `src/Db/Connection.php` — `transaction(Closure)`
+- `src/Page/RegionDefinition.php` — the form it carries when it is one
 - `src/Db/DbException.php` — nothing; milestone 6 already added the SQLSTATE
-- `src/Page/PageSchema.php`, `PageRepository.php`, `PageDefinition.php` — the `form` block
+- `src/Page/PageSchema.php`, `PageRepository.php`, `PageDefinition.php` — the `form` block and the region lookups
 - `src/Page/RegionType.php` — the `form` case
 - `templates/region/list/` — a row's edit link, and the page header's create button
 - `assets/js/core.js` — submitting a form through the action route
@@ -234,7 +235,7 @@ git commit -m "Declare what a form field may say" -- src/Page tests/Unit/Page do
 
 **Files:**
 - Create: `src/Page/FormDefinition.php`, `src/Page/FieldDefinition.php`
-- Modify: `src/Page/PageRepository.php`, `src/Page/PageDefinition.php`
+- Modify: `src/Page/PageRepository.php`, `src/Page/RegionDefinition.php`, `src/Page/PageDefinition.php`, `src/Http/DetailHandler.php`
 - Test: `tests/Unit/Page/PageRepositoryFormTest.php`
 
 **Interfaces:**
@@ -280,8 +281,22 @@ git commit -m "Declare what a form field may say" -- src/Page tests/Unit/Page do
       public readonly ?string $pattern;
   }
   ```
-  `PageDefinition` gains `public readonly ?FormDefinition $form` — null when
-  the page declares no form, which is legal: a read-only page is a page.
+  `RegionDefinition` gains `public readonly ?FormDefinition $form` — non-null
+  only for a region whose type is `form`.
+
+  **A form is a region, not a page-level block.** Specification 6.2 writes
+  `'form' => [...]` beside `regions`, but 8.5 then says a preview is "only
+  shorthand" for a region plus an action and that "nothing in the core treats
+  preview specially" — and milestone 6 built exactly that: a preview is a
+  region and the page-level shorthand was never implemented. A form is the
+  same shape for the same reason, and milestone 8 will want to open one by
+  `@region:` like anything else. The shorthand that expands `'form' => [...]`
+  into a region named `form` can be added later, for both, in one place.
+
+  `PageDefinition` gains `firstFormRegion(): ?RegionDefinition`, matching the
+  `firstPreviewRegion()` that `DetailHandler` already carries privately — and
+  moving that one onto `PageDefinition` too, so there is one lookup rather
+  than a growing set of private copies in handlers.
 
 **What is refused at load**, in the style of the refusals already there, each
 naming the page and the field:
@@ -300,8 +315,10 @@ naming the page and the field:
 Cover at least: a form loads with its fields keyed by name; a field's label
 defaults from its key; `editable()` excludes both readonly and hidden
 fields; an `@enum:` reference resolves; a placeholder default survives as
-a `Placeholder` object rather than a string; `copy.reset` is read; a page with
-no `form` block has a null form; and one test per refusal above.
+a `Placeholder` object rather than a string; `copy.reset` is read; a region that is not a
+form has a null form; a page with no form region answers null from
+`firstFormRegion()`; and `DetailHandler` still finds its preview after the
+lookup moved; and one test per refusal above.
 
 - [ ] **Step 2-6: Fail, implement, regenerate the reference, gate, commit**
 
