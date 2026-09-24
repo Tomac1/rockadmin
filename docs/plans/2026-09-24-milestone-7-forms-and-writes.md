@@ -806,3 +806,80 @@ links, both because nobody opened the page. This is where that is caught.
   buttons. Milestone 8.
 - **Inline cell editing**, reserved for v1.1 by spec 8.12, which this
   milestone's single write path is what makes possible.
+
+## Amendments made during execution
+
+Recorded as they were decided, so the plan and the code do not disagree.
+
+**A field's `pattern` is anchored, and this changes behaviour for anyone
+upgrading.** It was compiled unanchored, which made it a substring match: the
+schema's own example `[A-Z]{2}\d{4}` accepted
+`'; DROP TABLE users; -- AB1234`. It now compiles as `~^(?:…)$~D`. The
+`(?:…)` matters because a top-level alternation would otherwise anchor only
+its first branch, and the `D` matters because `$` admits a trailing newline
+without it. **Release note:** a project whose pattern relied on substring
+matching — `[A-Z]{2}` meaning "contains two capitals" — starts refusing
+submissions on upgrade. This is the right direction, but it must be announced
+rather than discovered. The HTML `pattern` attribute this mirrors is
+implicitly anchored by every browser, so the old behaviour made the
+server-side check strictly weaker than the client-side hint.
+
+**Validation has one entry point.** `validate()` returns a `ValidationResult`
+carrying both the errors and the coerced values, and asking it for values
+while any error stands raises. The previous shape was two calls with a
+docblock saying "call after validate()", which returned a value the
+configuration never offered when a caller got the order wrong. There were no
+callers outside `src/Form/` at the time, so this was the cheapest it would
+ever be to change.
+
+**`required` on a checkbox means "must be ticked".** The plan originally said
+an unchecked one passes, which makes the flag do nothing on the one type where
+"you must accept the terms" is the commonest reason to set it.
+
+**An insert may let the database assign the key.** The plan assumed a key is
+always known before the write, which `@uuid` supports but autoincrement and
+identity columns do not — and every table in the first real project this runs
+against uses a generated key. The server difference lives in `Dialect`:
+`lastInsertId()` on MySQL, `INSERT … RETURNING` on PostgreSQL, whose
+`lastInsertId()` needs a sequence name and is fragile.
+
+**`transaction()` joins a transaction it opened itself.** Nesting was refused
+outright, which is right for a transaction RockAdmin knows nothing about but
+forbids the atomic bulk action rule 7 requires. It is now depth-counted with
+no savepoints: the outermost call commits, inner calls neither commit nor roll
+back, and a foreign transaction is still refused.
+
+**Values are bound by inferred type.** `PDOStatement::execute(array)` binds
+everything as a string and PHP stringifies `false` to `''`, so the one write
+path could not store a `false` — which is what every unchecked checkbox
+produces. This was invisible locally because the development MySQL runs
+without `STRICT_TRANS_TABLES`, silently coercing `''` to `0`; the test suite
+now sets a strict `sql_mode` per session so it tests the world it deploys
+into.
+
+**A field key may not begin with an underscore.** Those names are reserved for
+the body keys a form carries but an entity does not — `_csrf`, `_id`, `_ret`,
+named in `RockAdmin\Form\FormFields`. Without the refusal, a field named `_id`
+would render a control colliding with the hidden input that says which row to
+write, so whichever the browser sent last would win.
+
+**The form block lives inside a region, not beside `regions`.** Specification
+6.2 writes it at page level, but 8.5 calls a preview "only shorthand" for a
+region, and milestone 6 built exactly that. A form is the same shape for the
+same reason, and milestone 8 will want to open one by `@region:`.
+
+**A return address is a parameter of every `FormRegion` method.** It was left
+to Task 8, which would have made the milestone's own acceptance criterion —
+saving returns to the grid page you came from, filters intact — unreachable,
+because `_ret` is lost the moment somebody enters the form.
+
+### Carried forward, deliberately not done here
+
+**`Page` must not depend on `Form`.** The two now import each other:
+`PageRepository` reaches for `DefaultValue::isToken()` and
+`FormFields::reserved()`, while `Form` reads `FieldDefinition` and `FieldType`.
+A configuration loader has no business reaching into the runtime that consumes
+its output, and a cycle is what makes a layer diagram stop explaining
+anything. Both things `Page` needs are static leaf vocabulary and move
+cheaply. Left until the milestone's agents are out of those files; do it
+before milestone 8 adds callers.
