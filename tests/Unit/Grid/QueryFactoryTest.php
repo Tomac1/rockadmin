@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Tests\Unit\Grid;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\Collection;
@@ -249,6 +250,80 @@ final class QueryFactoryTest extends TestCase
         );
     }
 
+    public function testARangeOnAColumnThatDoesNotCompareByMagnitudeIsDropped(): void
+    {
+        // ?grid[f][title][from]=A&grid[f][title][to]=Z on a column declaring
+        // 'contains'. A range is only reconcilable with an operator that
+        // compares by magnitude -- between, gt, gte, lt, lte -- because a
+        // URL may narrow what the page offered, never change its meaning
+        // into something the page never declared. 'contains' has no notion
+        // of "between", so the range must be dropped, not silently promoted
+        // to one.
+        $region = $this->region([
+            'id' => $this->column('id'),
+            'title' => $this->column('title', filter: $this->filter(FilterOperator::Contains, 'text')),
+        ]);
+
+        $query = (new QueryFactory())->build(
+            $this->page(),
+            $region,
+            GridState::fromQuery(['grid' => ['f' => ['title' => ['from' => 'A', 'to' => 'Z']]]], 'grid', $region),
+        );
+
+        $this->assertSame([], $query->filters);
+    }
+
+    public function testARangeIsAcceptedForEveryMagnitudeComparingOperatorRegardlessOfWhichOneDeclaredIt(): void
+    {
+        // The ends are the more specific statement: whichever of the five
+        // magnitude operators the column declared, a range with both ends
+        // is 'between', one end is 'gte' or 'lte'.
+        foreach ([
+            FilterOperator::Between,
+            FilterOperator::GreaterThan,
+            FilterOperator::GreaterOrEqual,
+            FilterOperator::LessThan,
+            FilterOperator::LessOrEqual,
+        ] as $operator) {
+            $region = $this->region([
+                'id' => $this->column('id'),
+                'price' => $this->column('price', filter: $this->filter($operator, 'range')),
+            ]);
+
+            $both = (new QueryFactory())->build(
+                $this->page(),
+                $region,
+                GridState::fromQuery(['grid' => ['f' => ['price' => ['from' => '10', 'to' => '20']]]], 'grid', $region),
+            );
+            $fromOnly = (new QueryFactory())->build(
+                $this->page(),
+                $region,
+                GridState::fromQuery(['grid' => ['f' => ['price' => ['from' => '10']]]], 'grid', $region),
+            );
+            $toOnly = (new QueryFactory())->build(
+                $this->page(),
+                $region,
+                GridState::fromQuery(['grid' => ['f' => ['price' => ['to' => '20']]]], 'grid', $region),
+            );
+
+            $this->assertEquals(
+                [new Filter('price', FilterOperator::Between, ['10', '20'])],
+                $both->filters,
+                "declared as {$operator->value}",
+            );
+            $this->assertEquals(
+                [new Filter('price', FilterOperator::GreaterOrEqual, '10')],
+                $fromOnly->filters,
+                "declared as {$operator->value}",
+            );
+            $this->assertEquals(
+                [new Filter('price', FilterOperator::LessOrEqual, '20')],
+                $toOnly->filters,
+                "declared as {$operator->value}",
+            );
+        }
+    }
+
     public function testAListValueBecomesAnInFilterWithTheColumnsDeclaredOperator(): void
     {
         $region = $this->region([
@@ -406,30 +481,145 @@ final class QueryFactoryTest extends TestCase
     }
 
     /**
-     * Every FilterOperator against every value shape a URL can produce: a
-     * future operator cannot be added without deciding what each shape means
-     * for it, because this test will fail until it does.
+     * Every operator against every value shape a URL can produce, with the
+     * exact Filter (or null, meaning "drop it") this class must produce.
+     * Written out literally, one row per combination, rather than computed
+     * from the same branching `toFilter()` uses — a computed expectation
+     * shares whatever the implementation got wrong, which is exactly how an
+     * earlier version of this test passed 78 green cases while missing that
+     * a range reached `Between` regardless of the column's declared
+     * operator. Repetitive on purpose: a table that is boring to read is one
+     * nobody can reason wrongly about.
+     *
+     * @return iterable<string, array{0: FilterOperator, 1: string|list<string>|array{from?: string, to?: string}, 2: ?Filter}>
      */
-    public function testEveryOperatorReconcilesEveryValueShapeOrDropsTheFilter(): void
+    public static function filterMatrix(): iterable
     {
-        $shapes = [
-            'a scalar' => 'active',
-            'a list of one' => ['active'],
-            'a list of several' => ['active', 'draft'],
-            'a range with both ends' => ['from' => '10', 'to' => '20'],
-            'a range with only a from' => ['from' => '10'],
-            'a range with only a to' => ['to' => '20'],
-        ];
+        $scalar = 'active';
+        $listOfOne = ['active'];
+        $listOfSeveral = ['active', 'draft'];
+        $rangeBoth = ['from' => '10', 'to' => '20'];
+        $rangeFromOnly = ['from' => '10'];
+        $rangeToOnly = ['to' => '20'];
 
-        foreach (FilterOperator::cases() as $operator) {
-            foreach ($shapes as $label => $value) {
-                $this->assertEquals(
-                    $this->expectedFilterFor($operator, $value),
-                    $this->filterFor($operator, $value),
-                    "operator '{$operator->value}' against {$label}",
-                );
-            }
-        }
+        // equals — a scalar or one-element list keeps 'equals'; several
+        // values become 'in'; a range has no meaning for it.
+        yield 'equals / scalar' => [FilterOperator::Equals, $scalar, new Filter('col', FilterOperator::Equals, 'active')];
+        yield 'equals / list of one' => [FilterOperator::Equals, $listOfOne, new Filter('col', FilterOperator::Equals, 'active')];
+        yield 'equals / list of several' => [FilterOperator::Equals, $listOfSeveral, new Filter('col', FilterOperator::In, ['active', 'draft'])];
+        yield 'equals / range with both ends' => [FilterOperator::Equals, $rangeBoth, null];
+        yield 'equals / range with only a from' => [FilterOperator::Equals, $rangeFromOnly, null];
+        yield 'equals / range with only a to' => [FilterOperator::Equals, $rangeToOnly, null];
+
+        // not_equals — like equals for one value, but a negation has no
+        // "any of these" reading for several.
+        yield 'not_equals / scalar' => [FilterOperator::NotEquals, $scalar, new Filter('col', FilterOperator::NotEquals, 'active')];
+        yield 'not_equals / list of one' => [FilterOperator::NotEquals, $listOfOne, new Filter('col', FilterOperator::NotEquals, 'active')];
+        yield 'not_equals / list of several' => [FilterOperator::NotEquals, $listOfSeveral, null];
+        yield 'not_equals / range with both ends' => [FilterOperator::NotEquals, $rangeBoth, null];
+        yield 'not_equals / range with only a from' => [FilterOperator::NotEquals, $rangeFromOnly, null];
+        yield 'not_equals / range with only a to' => [FilterOperator::NotEquals, $rangeToOnly, null];
+
+        // contains — a text match, same shape rules as not_equals.
+        yield 'contains / scalar' => [FilterOperator::Contains, $scalar, new Filter('col', FilterOperator::Contains, 'active')];
+        yield 'contains / list of one' => [FilterOperator::Contains, $listOfOne, new Filter('col', FilterOperator::Contains, 'active')];
+        yield 'contains / list of several' => [FilterOperator::Contains, $listOfSeveral, null];
+        yield 'contains / range with both ends' => [FilterOperator::Contains, $rangeBoth, null];
+        yield 'contains / range with only a from' => [FilterOperator::Contains, $rangeFromOnly, null];
+        yield 'contains / range with only a to' => [FilterOperator::Contains, $rangeToOnly, null];
+
+        // starts_with — same shape rules as contains.
+        yield 'starts_with / scalar' => [FilterOperator::StartsWith, $scalar, new Filter('col', FilterOperator::StartsWith, 'active')];
+        yield 'starts_with / list of one' => [FilterOperator::StartsWith, $listOfOne, new Filter('col', FilterOperator::StartsWith, 'active')];
+        yield 'starts_with / list of several' => [FilterOperator::StartsWith, $listOfSeveral, null];
+        yield 'starts_with / range with both ends' => [FilterOperator::StartsWith, $rangeBoth, null];
+        yield 'starts_with / range with only a from' => [FilterOperator::StartsWith, $rangeFromOnly, null];
+        yield 'starts_with / range with only a to' => [FilterOperator::StartsWith, $rangeToOnly, null];
+
+        // ends_with — same shape rules as contains.
+        yield 'ends_with / scalar' => [FilterOperator::EndsWith, $scalar, new Filter('col', FilterOperator::EndsWith, 'active')];
+        yield 'ends_with / list of one' => [FilterOperator::EndsWith, $listOfOne, new Filter('col', FilterOperator::EndsWith, 'active')];
+        yield 'ends_with / list of several' => [FilterOperator::EndsWith, $listOfSeveral, null];
+        yield 'ends_with / range with both ends' => [FilterOperator::EndsWith, $rangeBoth, null];
+        yield 'ends_with / range with only a from' => [FilterOperator::EndsWith, $rangeFromOnly, null];
+        yield 'ends_with / range with only a to' => [FilterOperator::EndsWith, $rangeToOnly, null];
+
+        // gt — a magnitude comparison. A scalar or one-element list keeps
+        // 'gt'; several values have no meaning and are dropped. A range is
+        // always accepted, and the ends decide regardless of which of the
+        // five magnitude operators declared it.
+        yield 'gt / scalar' => [FilterOperator::GreaterThan, $scalar, new Filter('col', FilterOperator::GreaterThan, 'active')];
+        yield 'gt / list of one' => [FilterOperator::GreaterThan, $listOfOne, new Filter('col', FilterOperator::GreaterThan, 'active')];
+        yield 'gt / list of several' => [FilterOperator::GreaterThan, $listOfSeveral, null];
+        yield 'gt / range with both ends' => [FilterOperator::GreaterThan, $rangeBoth, new Filter('col', FilterOperator::Between, ['10', '20'])];
+        yield 'gt / range with only a from' => [FilterOperator::GreaterThan, $rangeFromOnly, new Filter('col', FilterOperator::GreaterOrEqual, '10')];
+        yield 'gt / range with only a to' => [FilterOperator::GreaterThan, $rangeToOnly, new Filter('col', FilterOperator::LessOrEqual, '20')];
+
+        // gte — same shape rules as gt.
+        yield 'gte / scalar' => [FilterOperator::GreaterOrEqual, $scalar, new Filter('col', FilterOperator::GreaterOrEqual, 'active')];
+        yield 'gte / list of one' => [FilterOperator::GreaterOrEqual, $listOfOne, new Filter('col', FilterOperator::GreaterOrEqual, 'active')];
+        yield 'gte / list of several' => [FilterOperator::GreaterOrEqual, $listOfSeveral, null];
+        yield 'gte / range with both ends' => [FilterOperator::GreaterOrEqual, $rangeBoth, new Filter('col', FilterOperator::Between, ['10', '20'])];
+        yield 'gte / range with only a from' => [FilterOperator::GreaterOrEqual, $rangeFromOnly, new Filter('col', FilterOperator::GreaterOrEqual, '10')];
+        yield 'gte / range with only a to' => [FilterOperator::GreaterOrEqual, $rangeToOnly, new Filter('col', FilterOperator::LessOrEqual, '20')];
+
+        // lt — same shape rules as gt.
+        yield 'lt / scalar' => [FilterOperator::LessThan, $scalar, new Filter('col', FilterOperator::LessThan, 'active')];
+        yield 'lt / list of one' => [FilterOperator::LessThan, $listOfOne, new Filter('col', FilterOperator::LessThan, 'active')];
+        yield 'lt / list of several' => [FilterOperator::LessThan, $listOfSeveral, null];
+        yield 'lt / range with both ends' => [FilterOperator::LessThan, $rangeBoth, new Filter('col', FilterOperator::Between, ['10', '20'])];
+        yield 'lt / range with only a from' => [FilterOperator::LessThan, $rangeFromOnly, new Filter('col', FilterOperator::GreaterOrEqual, '10')];
+        yield 'lt / range with only a to' => [FilterOperator::LessThan, $rangeToOnly, new Filter('col', FilterOperator::LessOrEqual, '20')];
+
+        // lte — same shape rules as gt.
+        yield 'lte / scalar' => [FilterOperator::LessOrEqual, $scalar, new Filter('col', FilterOperator::LessOrEqual, 'active')];
+        yield 'lte / list of one' => [FilterOperator::LessOrEqual, $listOfOne, new Filter('col', FilterOperator::LessOrEqual, 'active')];
+        yield 'lte / list of several' => [FilterOperator::LessOrEqual, $listOfSeveral, null];
+        yield 'lte / range with both ends' => [FilterOperator::LessOrEqual, $rangeBoth, new Filter('col', FilterOperator::Between, ['10', '20'])];
+        yield 'lte / range with only a from' => [FilterOperator::LessOrEqual, $rangeFromOnly, new Filter('col', FilterOperator::GreaterOrEqual, '10')];
+        yield 'lte / range with only a to' => [FilterOperator::LessOrEqual, $rangeToOnly, new Filter('col', FilterOperator::LessOrEqual, '20')];
+
+        // between — a scalar or one-element list is dropped: one value is
+        // not a range. Several values are dropped too. A range is accepted,
+        // exactly as for the other four magnitude operators above.
+        yield 'between / scalar' => [FilterOperator::Between, $scalar, null];
+        yield 'between / list of one' => [FilterOperator::Between, $listOfOne, null];
+        yield 'between / list of several' => [FilterOperator::Between, $listOfSeveral, null];
+        yield 'between / range with both ends' => [FilterOperator::Between, $rangeBoth, new Filter('col', FilterOperator::Between, ['10', '20'])];
+        yield 'between / range with only a from' => [FilterOperator::Between, $rangeFromOnly, new Filter('col', FilterOperator::GreaterOrEqual, '10')];
+        yield 'between / range with only a to' => [FilterOperator::Between, $rangeToOnly, new Filter('col', FilterOperator::LessOrEqual, '20')];
+
+        // in — any single value or list becomes 'in'; a range has no
+        // meaning for it.
+        yield 'in / scalar' => [FilterOperator::In, $scalar, new Filter('col', FilterOperator::In, ['active'])];
+        yield 'in / list of one' => [FilterOperator::In, $listOfOne, new Filter('col', FilterOperator::In, ['active'])];
+        yield 'in / list of several' => [FilterOperator::In, $listOfSeveral, new Filter('col', FilterOperator::In, ['active', 'draft'])];
+        yield 'in / range with both ends' => [FilterOperator::In, $rangeBoth, null];
+        yield 'in / range with only a from' => [FilterOperator::In, $rangeFromOnly, null];
+        yield 'in / range with only a to' => [FilterOperator::In, $rangeToOnly, null];
+
+        // is_null — the value is ignored entirely, whatever shape it takes.
+        yield 'is_null / scalar' => [FilterOperator::IsNull, $scalar, new Filter('col', FilterOperator::IsNull)];
+        yield 'is_null / list of one' => [FilterOperator::IsNull, $listOfOne, new Filter('col', FilterOperator::IsNull)];
+        yield 'is_null / list of several' => [FilterOperator::IsNull, $listOfSeveral, new Filter('col', FilterOperator::IsNull)];
+        yield 'is_null / range with both ends' => [FilterOperator::IsNull, $rangeBoth, new Filter('col', FilterOperator::IsNull)];
+        yield 'is_null / range with only a from' => [FilterOperator::IsNull, $rangeFromOnly, new Filter('col', FilterOperator::IsNull)];
+        yield 'is_null / range with only a to' => [FilterOperator::IsNull, $rangeToOnly, new Filter('col', FilterOperator::IsNull)];
+
+        // is_not_null — same as is_null.
+        yield 'is_not_null / scalar' => [FilterOperator::IsNotNull, $scalar, new Filter('col', FilterOperator::IsNotNull)];
+        yield 'is_not_null / list of one' => [FilterOperator::IsNotNull, $listOfOne, new Filter('col', FilterOperator::IsNotNull)];
+        yield 'is_not_null / list of several' => [FilterOperator::IsNotNull, $listOfSeveral, new Filter('col', FilterOperator::IsNotNull)];
+        yield 'is_not_null / range with both ends' => [FilterOperator::IsNotNull, $rangeBoth, new Filter('col', FilterOperator::IsNotNull)];
+        yield 'is_not_null / range with only a from' => [FilterOperator::IsNotNull, $rangeFromOnly, new Filter('col', FilterOperator::IsNotNull)];
+        yield 'is_not_null / range with only a to' => [FilterOperator::IsNotNull, $rangeToOnly, new Filter('col', FilterOperator::IsNotNull)];
+    }
+
+    /** @param string|list<string>|array{from?: string, to?: string} $value */
+    #[DataProvider('filterMatrix')]
+    public function testEveryOperatorAgainstEveryValueShape(FilterOperator $operator, string|array $value, ?Filter $expected): void
+    {
+        $this->assertEquals($expected, $this->filterFor($operator, $value));
     }
 
     /** @param string|list<string>|array{from?: string, to?: string} $value */
@@ -447,41 +637,6 @@ final class QueryFactoryTest extends TestCase
         );
 
         return $query->filters[0] ?? null;
-    }
-
-    /** @param string|list<string>|array{from?: string, to?: string} $value */
-    private function expectedFilterFor(FilterOperator $operator, string|array $value): ?Filter
-    {
-        if ($operator === FilterOperator::IsNull || $operator === FilterOperator::IsNotNull) {
-            return new Filter('col', $operator);
-        }
-
-        if (\is_array($value) && !array_is_list($value)) {
-            $from = $value['from'] ?? null;
-            $to = $value['to'] ?? null;
-
-            return match (true) {
-                $from !== null && $to !== null => new Filter('col', FilterOperator::Between, [$from, $to]),
-                $from !== null => new Filter('col', FilterOperator::GreaterOrEqual, $from),
-                $to !== null => new Filter('col', FilterOperator::LessOrEqual, $to),
-                default => null,
-            };
-        }
-
-        $values = \is_array($value) ? $value : [$value];
-
-        if (\count($values) === 1) {
-            return match ($operator) {
-                FilterOperator::Between => null,
-                FilterOperator::In => new Filter('col', FilterOperator::In, [$values[0]]),
-                default => new Filter('col', $operator, $values[0]),
-            };
-        }
-
-        return match ($operator) {
-            FilterOperator::In, FilterOperator::Equals => new Filter('col', FilterOperator::In, $values),
-            default => null,
-        };
     }
 
     public function testSearchCoversExactlyTheSearchableColumnsSourcePaths(): void

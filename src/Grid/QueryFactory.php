@@ -25,6 +25,22 @@ use RockAdmin\Page\RegionDefinition;
  */
 final class QueryFactory
 {
+    /**
+     * The only operators a range shape can honestly become. A URL may narrow
+     * what the page offered, never change its meaning into something the
+     * page never declared -- 'contains' has no notion of "between", so a
+     * range reaching a column that declared it is dropped, not promoted.
+     *
+     * @var list<FilterOperator>
+     */
+    private const MAGNITUDE_OPERATORS = [
+        FilterOperator::Between,
+        FilterOperator::GreaterThan,
+        FilterOperator::GreaterOrEqual,
+        FilterOperator::LessThan,
+        FilterOperator::LessOrEqual,
+    ];
+
     public function __construct(
         // Capped so a region misconfigured with an enormous per_page, or a URL
         // that tried to smuggle one in, cannot turn one request into a full
@@ -136,6 +152,10 @@ final class QueryFactory
         }
 
         if (\is_array($input->value) && !array_is_list($input->value)) {
+            if (!\in_array($operator, self::MAGNITUDE_OPERATORS, true)) {
+                return null;
+            }
+
             return $this->rangeFilter($input->column, $input->value);
         }
 
