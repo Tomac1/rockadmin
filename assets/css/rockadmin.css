@@ -364,6 +364,22 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     font-size: 0.8rem;
 }
 
+/*
+ * A null cell, or a JSON cell whose value is an empty array or object, is
+ * deliberately empty rather than broken (CellFormatter's own contract) --
+ * this is what makes that visible: a faint horizontal rule standing in for
+ * the value that is not there, rather than a table cell that just looks
+ * like something failed to render.
+ */
+.ra-grid-cell-empty::before {
+    content: "";
+    display: inline-block;
+    width: 1.25em;
+    height: 1px;
+    background-color: var(--bs-border-color);
+    vertical-align: middle;
+}
+
 .ra-grid-empty {
     text-align: center;
     padding: 3rem 1rem;

@@ -80,10 +80,10 @@ enum ColumnType: string
     public function allows(Display $display): bool
     {
         return match ($this) {
-            self::Text => \in_array($display, [Display::Plain, Display::Badge, Display::Link], true),
+            self::Text => \in_array($display, [Display::Plain, Display::Badge], true),
             self::Int => \in_array(
                 $display,
-                [Display::Plain, Display::Progress, Display::Percent, Display::Badge, Display::Link],
+                [Display::Plain, Display::Progress, Display::Percent, Display::Badge],
                 true,
             ),
             self::Bool => \in_array($display, [Display::Check, Display::YesNo, Display::Badge], true),

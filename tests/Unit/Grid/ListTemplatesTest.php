@@ -251,20 +251,41 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringContainsString('Hello', $html);
     }
 
-    public function testALinkingCellWrapsItsContentInAnAnchor(): void
+    public function testACellCarryingAUrlWrapsItsContentInAnAnchor(): void
     {
+        // A link is a wrapper around whatever the display drew, applied
+        // whenever $cell->url is set -- never a display of its own. Plain
+        // text is used here deliberately: the point is that wrapping does
+        // not depend on the display at all.
         $row = $this->row(cells: [
-            $this->cell(key: 'title', display: Display::Link, text: 'Hello', url: '/admin/p/ads/42'),
+            $this->cell(key: 'title', display: Display::Plain, text: 'Hello', url: '/admin/p/ads/42'),
         ]);
 
         $html = $this->renderer()->render('region/list/row', $row);
 
-        $this->assertMatchesRegularExpression('/<a\b[^>]*href="\/admin\/p\/ads\/42"[^>]*>Hello<\/a>/', $html);
+        // The anchor wraps whatever cell/plain.php drew -- a <span>, not bare
+        // text -- so the assertion is that the anchor opens with the right
+        // href and its content, somewhere inside, still says "Hello".
+        $this->assertMatchesRegularExpression('/<a\b[^>]*href="\/admin\/p\/ads\/42"[^>]*>/', $html);
+        $this->assertMatchesRegularExpression('/<a\b[^>]*>.*Hello.*<\/a>/s', $html);
     }
 
-    public function testALinkingDisplayWithNoUrlDoesNotRenderAnAnchor(): void
+    public function testADistinctiveDisplayStillLinksWhenItsCellCarriesAUrl(): void
     {
-        $row = $this->row(cells: [$this->cell(key: 'title', display: Display::Link, text: 'Hello', url: null)]);
+        // A badge, a progress bar or a checkbox all have to be able to open
+        // a row: the wrapper is independent of what it wraps.
+        $row = $this->row(cells: [
+            $this->cell(key: 'status', display: Display::Badge, text: 'Active', variant: 'success', url: '/admin/p/ads/42'),
+        ]);
+
+        $html = $this->renderer()->render('region/list/row', $row);
+
+        $this->assertMatchesRegularExpression('/<a\b[^>]*href="\/admin\/p\/ads\/42"[^>]*>.*badge.*Active.*<\/a>/s', $html);
+    }
+
+    public function testACellWithNoUrlDoesNotRenderAnAnchor(): void
+    {
+        $row = $this->row(cells: [$this->cell(key: 'title', display: Display::Plain, text: 'Hello', url: null)]);
 
         $html = $this->renderer()->render('region/list/row', $row);
 
@@ -275,7 +296,7 @@ final class ListTemplatesTest extends TestCase
     {
         $cell = $this->cell(key: 'progress', display: Display::Progress, text: '42', percent: 42);
 
-        $html = $this->renderer()->render('region/list/cell/int', $cell);
+        $html = $this->renderer()->render('region/list/cell/progress', $cell);
 
         $this->assertStringContainsString('width: 42%', $html);
     }
@@ -284,7 +305,7 @@ final class ListTemplatesTest extends TestCase
     {
         $cell = $this->cell(key: 'ratio', display: Display::Percent, text: '42 %', percent: 42);
 
-        $html = $this->renderer()->render('region/list/cell/int', $cell);
+        $html = $this->renderer()->render('region/list/cell/percent', $cell);
 
         $this->assertStringContainsString('42 %', $html);
         $this->assertStringNotContainsString('progress-bar', $html);
@@ -308,7 +329,7 @@ final class ListTemplatesTest extends TestCase
     {
         $cell = $this->cell(key: 'active', display: Display::Check, text: '✓');
 
-        $html = $this->renderer()->render('region/list/cell/bool', $cell);
+        $html = $this->renderer()->render('region/list/cell/check', $cell);
 
         $this->assertStringContainsString('✓', $html);
     }
@@ -317,14 +338,19 @@ final class ListTemplatesTest extends TestCase
     public static function everyCellPartial(): array
     {
         return [
-            'text' => ['text', Display::Plain, ColumnType::Text],
+            'plain' => ['plain', Display::Plain, ColumnType::Text],
             'money' => ['money', Display::Plain, ColumnType::Money],
             'datetime' => ['datetime', Display::Plain, ColumnType::Datetime],
             'json' => ['json', Display::Plain, ColumnType::Json],
-            'int' => ['int', Display::Plain, ColumnType::Int],
-            'bool' => ['bool', Display::Check, ColumnType::Bool],
-            'enum' => ['enum', Display::Badge, ColumnType::Enum],
-            'link' => ['link', Display::Link, ColumnType::Text],
+            'badge' => ['badge', Display::Badge, ColumnType::Text],
+            'check' => ['check', Display::Check, ColumnType::Bool],
+            'yesno' => ['yesno', Display::YesNo, ColumnType::Bool],
+            'progress' => ['progress', Display::Progress, ColumnType::Int],
+            'percent' => ['percent', Display::Percent, ColumnType::Int],
+            // link.php is a wrapper, not a display; it is exercised with the
+            // same display/type pair 'plain' uses, and its own url is always
+            // set by row.php/field.php before this template is ever reached.
+            'link' => ['link', Display::Plain, ColumnType::Text],
         ];
     }
 
@@ -370,11 +396,17 @@ final class ListTemplatesTest extends TestCase
 
     public function testTheFilteredEmptyStateOffersALinkThatClearsIt(): void
     {
-        $view = $this->listView(search: 'bike', regionUrl: '/admin/r/ads/grid');
+        // The clear link addresses the whole page's own address, never the
+        // region's fragment route: a fragment has no shell, so a plain
+        // no-JavaScript follow -- or a copied link -- must not land on 13 KB
+        // of HTML with no <html> around it. Compare the sort and pager links,
+        // fixed the same way for the same reason.
+        $view = $this->listView(search: 'bike', regionUrl: '/admin/r/ads/grid', pageUrl: '/admin/p/ads');
 
         $html = $this->renderer()->render('region/list/empty', $view);
 
-        $this->assertMatchesRegularExpression('/<a\b[^>]*href="\/admin\/r\/ads\/grid"[^>]*>/', $html);
+        $this->assertMatchesRegularExpression('/<a\b[^>]*href="\/admin\/p\/ads"[^>]*data-ra-action="paginate"[^>]*>/', $html);
+        $this->assertStringNotContainsString('href="/admin/r/ads/grid"', $html);
     }
 
     // --- toolbar.php / filters.php ---
@@ -388,6 +420,37 @@ final class ListTemplatesTest extends TestCase
         $html = $this->renderer()->render('region/list/toolbar', $view);
 
         $this->assertMatchesRegularExpression('/<form\b[^>]*method="get"/', $html);
+    }
+
+    public function testTheToolbarCarriesTheCurrentSortAsAHiddenField(): void
+    {
+        // Without this, submitting the toolbar (filter or search) carries
+        // only 'q' and the filters -- GridState::fromQuery() then finds no
+        // 'sort' in the request, falls back to the region's own default, and
+        // a sort applied earlier is silently lost the moment a filter or a
+        // search is submitted.
+        $view = $this->listView(key: 'grid', searchable: true, columns: [
+            $this->column(key: 'id'),
+            $this->column(key: 'price', sortDirection: 'descending'),
+        ]);
+
+        $html = $this->renderer()->render('region/list/toolbar', $view);
+
+        $this->assertMatchesRegularExpression(
+            '/<input\b[^>]*type="hidden"[^>]*name="grid\[sort\]"[^>]*value="-price"/',
+            $html,
+        );
+    }
+
+    public function testTheToolbarCarriesNoSortFieldWhenNothingIsSorted(): void
+    {
+        $view = $this->listView(key: 'grid', searchable: true, columns: [
+            $this->column(key: 'id'),
+        ]);
+
+        $html = $this->renderer()->render('region/list/toolbar', $view);
+
+        $this->assertStringNotContainsString('[sort]', $html);
     }
 
     public function testTheSearchFieldCarriesTheRegionNamespacedName(): void
@@ -424,6 +487,25 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringContainsString('name="grid[f][price][to]"', $html);
         $this->assertStringContainsString('value="10"', $html);
         $this->assertStringContainsString('value="20"', $html);
+    }
+
+    public function testARangeFiltersLabelPointsAtARealInput(): void
+    {
+        // The range branch used to put no id on either input, so the label's
+        // for="..." pointed at nothing: clicking it did nothing, and a
+        // screen reader announced two unlabelled inputs.
+        $view = $this->listView(key: 'grid', filters: [
+            new FilterView('price', 'Price', 'range', null, [], ['from' => '10', 'to' => '20']),
+        ]);
+
+        $html = $this->renderer()->render('region/list/filters', $view);
+
+        // The id filters.php builds is 'ra-grid-filter-<region>-<column>' --
+        // asserted directly, rather than by extracting whatever the label's
+        // own for="..." happens to hold, so this fails if the label points
+        // at the right-shaped id that no input actually carries.
+        $this->assertStringContainsString('for="ra-grid-filter-grid-price"', $html);
+        $this->assertStringContainsString('id="ra-grid-filter-grid-price"', $html);
     }
 
     public function testAMultiselectFilterMarksEachMatchingOptionSelected(): void
@@ -478,7 +560,7 @@ final class ListTemplatesTest extends TestCase
             regionUrl: '/admin/r/ads/grid?marker=REGION',
             columns: [$this->column(key: 'title', sortUrl: '/admin/r/ads/grid?marker=SORT', sortDirection: 'ascending')],
             rows: [$this->row(cells: [
-                $this->cell(key: 'title', display: Display::Link, text: 'Row', url: '/admin/p/ads/42?marker=ROW'),
+                $this->cell(key: 'title', display: Display::Plain, text: 'Row', url: '/admin/p/ads/42?marker=ROW'),
             ])],
             filters: [new FilterView('status', 'Status', 'text', null, [], '')],
             pagination: PaginationView::of(1, 1, 2, 1, static fn (int $n): string => "/admin/r/ads/grid?marker=PAGE{$n}"),

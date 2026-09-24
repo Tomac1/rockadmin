@@ -8,11 +8,20 @@
  * ordinary GET form and a sort or pager link produce query strings the same
  * parser understands.
  *
+ * `data-ra-filter` carries the filter's own key on each control's wrapper —
+ * identity metadata a project's own CSS or script can hook a specific
+ * filter by, the same role `data-ra-region` plays on the fragment root,
+ * never a `RockAdmin.behavior()` name. `grid-filters` itself carried no
+ * `data-ra-behavior` here: nothing in `core.js` ever attached to one, and a
+ * "behaviour" attribute nothing binds is worse than none at all, since a
+ * project has no way to tell "unbound in this build" from "the binding
+ * failed".
+ *
  * @var \RockAdmin\Grid\ListView $view
  * @var \Closure(mixed): string $e
  */
 ?>
-<div class="ra-grid-filters" data-ra-behavior="grid-filters">
+<div class="ra-grid-filters">
     <?php foreach ($view->filters as $filter) { ?>
         <?php
             $name = $view->key . '[f][' . $filter->key . ']';
@@ -50,6 +59,7 @@
                     <input
                         class="ra-grid-filter-input ra-grid-filter-from form-control"
                         type="<?= $e($inputType) ?>"
+                        id="<?= $e($id) ?>"
                         name="<?= $e($name) ?>[from]"
                         value="<?= $e($from) ?>"
                         placeholder="From"
@@ -60,6 +70,7 @@
                         name="<?= $e($name) ?>[to]"
                         value="<?= $e($to) ?>"
                         placeholder="To"
+                        aria-label="<?= $e($filter->label . ' to') ?>"
                     >
                 </div>
             <?php } elseif ($filter->type === 'boolean') { ?>

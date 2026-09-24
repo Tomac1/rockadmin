@@ -79,7 +79,8 @@ $debugValue = $config->get('debug', false);
 $debug = is_bool($debugValue) ? $debugValue : false;
 
 $session = new ArraySessionStore();
-$urls = new UrlGenerator('/', $configString($config, 'url_mode', 'path'));
+$urlMode = $configString($config, 'url_mode', 'path');
+$urls = new UrlGenerator('/', $urlMode);
 
 // ViewFactory is the proof that template_paths, assets.css, assets.js and
 // theme.dark — all declared in RootSchema, none of them read anywhere before
@@ -311,9 +312,22 @@ $errors = new ErrorHandler(
 
 $kernel = new Kernel(new Router(), $handlers, $errors);
 
-$requestUri = $_SERVER['REQUEST_URI'] ?? '/';
-$requestUri = is_string($requestUri) ? $requestUri : '/';
-$requestPath = parse_url($requestUri, PHP_URL_PATH);
-$path = rawurldecode(is_string($requestPath) ? $requestPath : '/');
+// In 'path' mode the route lives in the URL's own path, e.g. /p/ads. In
+// 'query' mode UrlGenerator instead writes it into a query parameter --
+// /index.php?ra=p%2Fads -- so the host has to read the route from there
+// instead: Request itself takes no view on how a path was derived (see its
+// own docblock), which is exactly why this is the demo's job, not the
+// SDK's. Reading $_GET directly rather than $urls->route() is deliberate:
+// UrlGenerator builds outgoing links, this is decoding the one incoming
+// one, and 'ra' here is UrlGenerator's own default query key.
+if ($urlMode === UrlGenerator::MODE_QUERY) {
+    $route = $_GET['ra'] ?? '';
+    $path = is_string($route) ? $route : '';
+} else {
+    $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+    $requestUri = is_string($requestUri) ? $requestUri : '/';
+    $requestPath = parse_url($requestUri, PHP_URL_PATH);
+    $path = rawurldecode(is_string($requestPath) ? $requestPath : '/');
+}
 
 $kernel->handle(Request::fromGlobals($path))->send();

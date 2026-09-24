@@ -1,19 +1,20 @@
 <?php
 
 /**
- * A cell wrapped in a link to the row's detail page. `Display::Link` is only
- * ever paired with `Text` or `Int` (see `ColumnType::allows()`), and neither
- * gives it a progress bar or a badge, so the content it wraps is always
- * plain text — there is no further display to delegate to, only the anchor
- * this partial itself adds.
+ * A cell wrapped in an anchor to the row's detail page. Applied whenever
+ * `$view->url !== null` — a fact of the column's own `link: true`, decided
+ * once by `ListRegion` and carried on `CellView::$url`, never a display of
+ * its own. This is a wrapper, not an alternative rendering: the content
+ * inside the anchor is exactly what `CellPartial::templateFor()` would have
+ * drawn for this cell's actual display, so a badge, a progress bar or plain
+ * text can all open the same row.
+ *
+ * Callers (`row.php`, `field.php`) reach this template only when
+ * `$view->url` is set, so it is not re-checked here.
  *
  * @var \RockAdmin\Grid\CellView $view
- * @var \Closure(mixed): string $e
  * @var \Closure(mixed): string $href
+ * @var \Closure(string, mixed=): string $partial
  */
 ?>
-<?php if ($view->url !== null) { ?>
-    <a class="ra-grid-cell-link" href="<?= $href($view->url) ?>"><?= $e($view->text) ?></a>
-<?php } else { ?>
-    <span class="ra-grid-cell-link"><?= $e($view->text) ?></span>
-<?php } ?>
+<a class="ra-grid-cell-link" href="<?= $href($view->url) ?>"><?= $partial(\RockAdmin\Grid\CellPartial::templateFor($view), $view) ?></a>

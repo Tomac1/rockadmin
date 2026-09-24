@@ -12,6 +12,11 @@
  * utility class rather than an inline style, so a project overriding the
  * theme still controls it from one place.
  *
+ * `data-ra-sort-column` carries the column's own key on the sort link —
+ * identity metadata a project's own CSS or script can hook a specific
+ * column by, the same role `data-ra-region` plays on the fragment root.
+ * `core.js` itself never reads it: `data-ra-action="sort"` is what it binds.
+ *
  * @var \RockAdmin\Grid\ListView $view
  * @var \Closure(mixed): string $e
  * @var \Closure(mixed): string $href

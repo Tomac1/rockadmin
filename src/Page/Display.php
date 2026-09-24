@@ -19,7 +19,6 @@ enum Display: string
     case YesNo = 'yesno';
     case Progress = 'progress';
     case Percent = 'percent';
-    case Link = 'link';
 
     /** @throws PageException when the value names no display */
     public static function parse(string $value): self

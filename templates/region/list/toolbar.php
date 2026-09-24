@@ -10,6 +10,19 @@
  * region's own fragment address with the same query instead — declared here
  * as `data-ra-behavior="grid-toolbar"`, nothing scripted.
  *
+ * The current sort travels as a hidden input, `<region>[sort]`, in the same
+ * bracket convention `GridState::toQuery()` uses -- built here from
+ * `$view->columns` rather than from a `GridState` this template is never
+ * handed, since at most one column ever carries a `sortDirection`. Without
+ * it, submitting the form (with JavaScript or without) carries only `q` and
+ * the filters: `GridState::fromQuery()` finds no `sort` key in the request,
+ * falls back to the region's own default, and a person who sorted by price
+ * and then searched watches the grid silently snap back to it -- and the
+ * URL this form's submit pushes into the address bar, spec 8.11's
+ * shareable link, has quietly lost half the state it promised to carry.
+ * Resetting to page 1 is different: a new search or filter really does
+ * start a fresh result set, so this form carries no page number at all.
+ *
  * @var \RockAdmin\Grid\ListView $view
  * @var \Closure(mixed): string $e
  * @var \Closure(mixed): string $href
@@ -33,6 +46,15 @@
         <?php } ?>
         <?php if ($view->filters !== []) { ?>
             <?= $partial('region/list/filters', $view) ?>
+        <?php } ?>
+        <?php foreach ($view->columns as $column) { ?>
+            <?php if ($column->sortDirection !== null) { ?>
+                <input
+                    type="hidden"
+                    name="<?= $e($view->key) ?>[sort]"
+                    value="<?= $e(($column->sortDirection === 'descending' ? '-' : '') . $column->key) ?>"
+                >
+            <?php } ?>
         <?php } ?>
         <button class="ra-grid-toolbar-submit btn btn-primary" type="submit">Apply</button>
     </form>

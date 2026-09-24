@@ -160,6 +160,15 @@ final class GridPageTest extends DatabaseTestCase
         $this->assertStringContainsString('Jana', $response->body, 'the joined column');
         $this->assertStringContainsString('bazar', $response->body, 'the one-to-many collection');
 
+        // The 'id' column declares 'link' => true: the rendered grid must
+        // actually carry an anchor to the row's detail page, not a bare
+        // <span> -- the critical fix of this round. Ad 1 is 'Horské kolo'.
+        $this->assertMatchesRegularExpression(
+            '#<a\b[^>]*href="/admin/p/ads/1"[^>]*>#',
+            $response->body,
+            'the id column links to the row it belongs to',
+        );
+
         $this->assertSame(1, $rows->calls, 'one RowSource::fetch() call for the whole page');
         $this->assertNotNull($rows->lastResult);
         $this->assertCount(

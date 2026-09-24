@@ -5,6 +5,8 @@
  * truncated, the untruncated value travels in `$view->attributes['title']`,
  * so hovering the cell shows the whole thing without the grid growing to fit
  * it — `$attrs()` writes that attribute only when it is actually present.
+ * Reached by `CellPartial::templateFor()` whenever the display is
+ * `Display::Plain` and the column's type is `Json`.
  *
  * @var \RockAdmin\Grid\CellView $view
  * @var \Closure(mixed): string $e

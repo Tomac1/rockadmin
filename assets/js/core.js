@@ -254,6 +254,18 @@
      * actually fetches, by combining its query with the region's own
      * fragment URL, already sitting on the fragment's root element.
      *
+     * In path mode the fragment address carries no query string of its own
+     * ('/admin/r/ads/grid'), so appending '?' + query is correct. In query
+     * mode it already carries one ('/admin/index.php?ra=r%2Fads%2Fgrid'),
+     * naming the fragment route itself — appending a second '?' produced
+     * '...?ra=r%2Fads%2Fgrid?ra=p%2Fads&sort=...', which PHP parses as a
+     * single 'ra' parameter with a literal '?' in it, matching no route at
+     * all. Both query strings are parsed and merged instead: the page
+     * route's own 'ra' entry is dropped from the carried state — it names
+     * the *page* route, not the fragment, and the fragment address already
+     * names its own route — and everything else layers on top of the
+     * fragment address's own parameters.
+     *
      * @param {Element} region
      * @param {string} hrefOrQuery
      * @return {string}
@@ -262,7 +274,20 @@
         var base = region.getAttribute('data-ra-region-url') || '';
         var query = queryOf(hrefOrQuery);
 
-        return query === '' ? base : base + '?' + query;
+        var splitAt = base.indexOf('?');
+        var baseUrl = splitAt === -1 ? base : base.slice(0, splitAt);
+        var baseParams = new URLSearchParams(splitAt === -1 ? '' : base.slice(splitAt + 1));
+
+        var stateParams = new URLSearchParams(query);
+        stateParams.delete('ra');
+
+        stateParams.forEach(function (value, key) {
+            baseParams.append(key, value);
+        });
+
+        var merged = baseParams.toString();
+
+        return merged === '' ? baseUrl : baseUrl + '?' + merged;
     }
 
     /**

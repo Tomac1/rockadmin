@@ -78,6 +78,22 @@ final class CellFormatterTest extends TestCase
         ];
     }
 
+    public function testAnEmptyArrayIsAnEmptyCellNotTheLiteralTextBracketBracket(): void
+    {
+        // A one-to-many column with no related rows arrives as []. Past this
+        // guard it would reach formatJson(), whose honest encoding of an
+        // empty array is the literal text '[]' -- correct for a value that
+        // holds an item, misleading for a value that holds none: a shipped
+        // grid showed it verbatim in every cell for an ad with no tags.
+        $column = $this->column(type: ColumnType::Json, display: Display::Plain);
+
+        $cell = $this->formatter->format($column, []);
+
+        $this->assertSame('', $cell->text);
+        $this->assertStringNotContainsString('[]', $cell->text);
+        $this->assertStringContainsString('ra-grid-cell-empty', $cell->classes);
+    }
+
     // -- zero and false are values, not absences -----------------------
 
     public function testZeroIsNotTreatedAsEmpty(): void

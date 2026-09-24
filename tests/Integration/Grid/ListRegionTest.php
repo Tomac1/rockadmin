@@ -125,7 +125,11 @@ final class ListRegionTest extends DatabaseTestCase
         $this->assertSame('["bazar","sleva"]', $firstCells['tags']->text, 'the one-to-many collection, fetched once for the page');
 
         $secondCells = $this->cellsByKey($second);
-        $this->assertSame('[]', $secondCells['tags']->text, 'an ad with no tags gets an empty list, not an error');
+        // An ad with no tags reads as deliberately empty, not as the literal
+        // text '[]' -- CellFormatter::format() now treats an empty array the
+        // same way it already treats null (see CellFormatterTest).
+        $this->assertSame('', $secondCells['tags']->text, 'an ad with no tags gets an empty list, not an error');
+        $this->assertStringContainsString('ra-grid-cell-empty', $secondCells['tags']->classes);
 
         $thirdCells = $this->cellsByKey($third);
         $this->assertSame('["novinka"]', $thirdCells['tags']->text);

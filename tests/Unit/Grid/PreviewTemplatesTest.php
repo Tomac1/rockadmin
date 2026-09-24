@@ -133,7 +133,7 @@ final class PreviewTemplatesTest extends TestCase
         $html = $this->renderer()->render('region/preview/field', $view);
 
         $this->assertStringNotContainsString('ra-field-missing', $html, 'an honest false is a value, not an absence');
-        $this->assertStringContainsString('ra-grid-cell-bool', $html);
+        $this->assertStringContainsString('ra-grid-cell-check', $html);
     }
 
     public function testAnHonestEmptyStringIsNotShownAsMissing(): void

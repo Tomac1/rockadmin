@@ -5,7 +5,11 @@
  * already built by `PaginationView::of()` from the grid's full current
  * state, filters and sort included, so paging never resets either: this
  * template only writes out the URLs it was handed, never builds one of its
- * own.
+ * own. Each link's own `data-ra-action="paginate"` is what `core.js`
+ * actually binds; the `<nav>` itself carries no `data-ra-behavior` —
+ * nothing was ever registered under `grid-pagination`, and a "behaviour"
+ * attribute nothing binds is worse than none, since a project cannot tell
+ * "this build binds nothing here" from "the binding failed".
  *
  * @var \RockAdmin\Grid\PaginationView $view
  * @var \Closure(mixed): string $e
@@ -13,7 +17,7 @@
  */
 ?>
 <?php if ($view->hasPrevious || $view->hasNext || \count($view->pages) > 1) { ?>
-    <nav class="ra-grid-pagination" aria-label="Pagination" data-ra-behavior="grid-pagination">
+    <nav class="ra-grid-pagination" aria-label="Pagination">
         <ul class="ra-grid-pagination-list pagination">
             <li class="ra-grid-pagination-item ra-grid-pagination-prev page-item<?= $e($view->hasPrevious ? '' : ' disabled') ?>">
                 <?php if ($view->hasPrevious && $view->previousUrl !== null) { ?>

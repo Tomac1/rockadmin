@@ -10,6 +10,8 @@
  * `templates/region/list/row.php` also calls, so a value reads identically
  * wherever it is shown; see
  * `PreviewRegionTest::testThePreviewAndTheGridFormatTheSameValueIdentically()`.
+ * A field whose cell carries a `$url` is wrapped in `region/list/cell/link.php`
+ * instead, exactly as a grid cell would be.
  *
  * A field whose value is genuinely absent — `$view->cell->value` is null,
  * which `CellFormatter` only ever produces for an actually-missing value —
@@ -31,7 +33,10 @@
         <?php if ($view->cell->value === null) { ?>
             <?= $partial('region/preview/missing', $view) ?>
         <?php } else { ?>
-            <?= $partial(\RockAdmin\Grid\CellPartial::templateFor($view->cell), $view->cell) ?>
+            <?= $partial(
+                $view->cell->url !== null ? 'region/list/cell/link' : \RockAdmin\Grid\CellPartial::templateFor($view->cell),
+                $view->cell,
+            ) ?>
         <?php } ?>
     </dd>
 </div>

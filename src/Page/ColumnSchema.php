@@ -40,8 +40,9 @@ final class ColumnSchema
             ),
             'display' => new SchemaKey(
                 ValueType::String,
-                description: 'How the column looks: plain, badge, check, yesno, progress, percent or link. '
-                    . 'Defaults to the type\'s own. Not every type allows every display.',
+                description: 'How the column looks: plain, badge, check, yesno, progress or percent. '
+                    . 'Defaults to the type\'s own. Not every type allows every display. A cell links to '
+                    . 'the row\'s detail page independently of this, via the `link` key.',
                 example: 'badge',
             ),
             'sortable' => new SchemaKey(

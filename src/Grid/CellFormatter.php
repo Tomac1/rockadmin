@@ -85,7 +85,12 @@ final class CellFormatter
 
     public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView
     {
-        if ($value === null) {
+        // An empty collection -- a one-to-many column with nothing to show --
+        // reads as deliberately empty for the same reason null does, rather
+        // than as the literal text '[]': that is CellFormatter::formatJson()'s
+        // honest encoding of an empty array, correct for a value that holds
+        // one item, and misleading for a value that holds none.
+        if ($value === null || $value === []) {
             return new CellView(
                 key: $column->key,
                 value: null,

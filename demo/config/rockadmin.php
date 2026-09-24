@@ -16,7 +16,11 @@ declare(strict_types=1);
  */
 return [
     'brand' => 'RockAdmin Demo',
-    'url_mode' => 'path',
+    // 'path' needs a rewrite rule; RA_URL_MODE=query runs the same demo with
+    // none, e.g.: RA_URL_MODE=query php -S localhost:8080 -t demo demo/index.php
+    // Query mode is otherwise never exercised anywhere in this repository --
+    // this is what makes it possible to look at, not only read about.
+    'url_mode' => getenv('RA_URL_MODE') !== false ? getenv('RA_URL_MODE') : 'path',
     'debug' => true,
     'paths' => [
         'logs' => __DIR__ . '/../storage/logs',

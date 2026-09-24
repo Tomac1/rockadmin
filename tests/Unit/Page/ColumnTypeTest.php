@@ -124,8 +124,8 @@ final class ColumnTypeTest extends TestCase
         // returned true for everything would pass, because only two negative
         // cases were pinned and both happened to be about money.
         return [
-            'text' => ['text', ['plain', 'badge', 'link']],
-            'int' => ['int', ['plain', 'progress', 'percent', 'badge', 'link']],
+            'text' => ['text', ['plain', 'badge']],
+            'int' => ['int', ['plain', 'progress', 'percent', 'badge']],
             'money' => ['money', ['plain']],
             'datetime' => ['datetime', ['plain']],
             'bool' => ['bool', ['check', 'yesno', 'badge']],
