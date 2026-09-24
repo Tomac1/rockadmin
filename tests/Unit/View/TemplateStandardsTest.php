@@ -34,9 +34,11 @@ final class TemplateStandardsTest extends TestCase
     public function testTheStandardIsCheckedAgainstEveryTemplate(): void
     {
         // A provider that silently found nothing would make every rule below
-        // pass. Milestone 4 ships fourteen templates; this fails loudly if a
-        // future refactor moves the directory.
-        $this->assertGreaterThanOrEqual(14, \count(iterator_to_array(self::templates())));
+        // pass. Milestone 4 shipped fourteen templates; milestone 6 task 7
+        // added the list region's seventeen (nine region/list/*.php plus
+        // eight region/list/cell/*.php), for thirty-one. This fails loudly if
+        // a future refactor moves the directory.
+        $this->assertGreaterThanOrEqual(31, \count(iterator_to_array(self::templates())));
     }
 
     #[DataProvider('templates')]

@@ -70,6 +70,7 @@
     --ra-sidebar-width: 15rem;
     --ra-header-height: 3rem;
     --ra-grid-row-padding: 0.35rem;
+    --ra-grid-gap: 0.5rem;
 
     /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
        those flip with the page theme, and the navbar does not. It is the
@@ -256,6 +257,121 @@
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1rem;
+}
+
+/*
+ * The list region: the toolbar (search + filters), the table's sort
+ * affordances, the empty state and the pager. Density here follows the same
+ * --ra-grid-row-padding token the shell's own density block already reads,
+ * rather than a second scale of its own.
+ */
+.ra-region-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ra-grid-gap);
+}
+
+.ra-grid-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--ra-grid-gap);
+    padding: 1rem;
+    padding-bottom: 0;
+}
+
+.ra-grid-search {
+    flex: 1 1 16rem;
+    min-width: 12rem;
+}
+
+.ra-grid-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ra-grid-gap);
+}
+
+.ra-grid-filter {
+    min-width: 9rem;
+}
+
+.ra-grid-filter-range {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.ra-grid-table {
+    margin-bottom: 0;
+}
+
+/*
+ * The sort arrow is drawn from aria-sort, not an image or an icon font: an
+ * unsorted sortable header gets a faint neutral indicator, the current sort
+ * gets a solid one pointing the right way. th[aria-sort] rather than
+ * .ra-grid-sort keeps the arrow keyed to the same attribute a screen reader
+ * already reads, so the visual and the accessible state cannot drift apart.
+ */
+.ra-grid-head th {
+    white-space: nowrap;
+}
+
+.ra-grid-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    color: inherit;
+    text-decoration: none;
+}
+
+.ra-grid-sort:hover {
+    text-decoration: underline;
+}
+
+.ra-grid-sort::after {
+    content: "";
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 0.3em solid transparent;
+    border-right: 0.3em solid transparent;
+    border-bottom: 0.35em solid var(--bs-secondary-color, var(--bs-secondary));
+    opacity: 0.45;
+}
+
+th[aria-sort="ascending"] .ra-grid-sort::after {
+    border-bottom: 0.35em solid var(--bs-body-color);
+    border-top: none;
+    opacity: 1;
+}
+
+th[aria-sort="descending"] .ra-grid-sort::after {
+    border-bottom: none;
+    border-top: 0.35em solid var(--bs-body-color);
+    opacity: 1;
+}
+
+.ra-grid-cell-progress {
+    min-width: 6rem;
+    height: 0.9rem;
+}
+
+.ra-grid-cell-json {
+    font-family: var(--bs-font-monospace, monospace);
+    font-size: 0.8rem;
+}
+
+.ra-grid-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--bs-secondary-color, var(--bs-secondary));
+}
+
+.ra-grid-pagination {
+    padding: 0 1rem 1rem;
+}
+
+.ra-grid-pagination-list {
+    margin-bottom: 0;
 }
 
 /*
