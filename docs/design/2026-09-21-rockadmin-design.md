@@ -320,11 +320,11 @@ region; a two-pane inbox has two. Regions are specified in 8.4.
             'sort'     => ['created_at' => 'desc'],
             'columns'  => [
                 'id'         => ['use' => '@column:id'],
-                'title'      => ['type' => 'text', 'sortable' => true, 'link' => 'edit',
+                'title'      => ['type' => 'text', 'sortable' => true, 'link' => true,
                                  'filter' => ['type' => 'text', 'op' => 'contains']],
                 'user_name'  => ['use' => '@column:name', 'label' => 'Author',
                                  'source' => 'user.name'],
-                'price'      => ['type' => 'money', 'currency' => 'CZK', 'align' => 'right'],
+                'price'      => ['type' => 'money', 'currency' => 'CZK', 'align' => 'end'],
                 'state'      => ['type' => 'enum', 'options' => '@enum:ad_state',
                                  'display' => 'badge', 'filter' => ['type' => 'select']],
                 'is_active'  => ['type' => 'bool', 'display' => 'check'],
@@ -385,17 +385,32 @@ and sorting must not change with the presentation.
 'progress'  => ['type' => 'int',  'display' => 'percent'],
 ```
 
-Both are registries, not switches. A **type** is a class that reads and casts
-a value and declares which filter operators and which form fields suit it.
-A **display** is a template, `region/list/cell/{display}.php`. Omitting
-`display` picks the type's default one, which is why `'title' => []` still
-renders correctly.
+A **type** is what a value *is*: it reads and casts, and declares which filter
+operators and which form fields suit it. A **display** is how that value
+*looks*, and is named for its template, `region/list/cell/{display}.php`.
+Omitting `display` picks the type's default one, which is why `'title' => []`
+still renders correctly. Not every pair means anything — a money column drawn
+as a progress bar is a mistake rather than a look — so the type declares which
+displays it allows and the rest are refused when the page loads.
 
-Adding a presentation therefore costs one template and nothing else — no
-class, no type, no change to querying. Restyling an existing one means copying
-its template into the project. This separation is what keeps the template
-cascade useful: a project can change how every boolean in the admin looks
-without touching a single page configuration.
+**Restyling a presentation means copying its template into the project**, and
+the filename tells you which one to copy. That is what keeps the template
+cascade useful: a project changes how every boolean in the admin looks without
+touching a single page configuration.
+
+**Adding a presentation costs a template and an enum case.** An earlier draft
+of this specification said a template and nothing else, which would make the
+set of displays open — and an open set cannot tell `progres` from `progress`.
+Every other closed vocabulary in this project is refused by name with a
+suggestion, and a typo that silently renders as something else is worse than
+one that fails at load. The enum, the type's list of allowed displays, and the
+one place that maps a display to its template are the three edits.
+
+**Linking is not a display.** Whether a cell's value opens its row is
+orthogonal to how that value is drawn: a date, a price and a badge should all
+be able to link. So a column carrying `link` has its rendered content wrapped
+in an anchor, whatever its display drew, rather than choosing a `link` display
+that would then exclude every other one.
 
 **Placeholders resolve at load time**, always into bound parameters, never
 into SQL text:
@@ -1487,8 +1502,9 @@ must not hand the database schema to the first person who gets in.
   relations with path sources and JSON traversal, offset and keyset pagination
 - regions: `list`, `form`, `preview`, `nav`, `stat`; pages hidden from the menu
 - layouts: `single`, `two-column`, `sidebar-detail`
-- column types: text, int, money, datetime, bool, enum, image, link, relation
-- displays: plain, badge, check, yesno, progress, percent, image, link
+- column types: text, int, money, datetime, bool, enum, json, image, relation
+- displays: plain, badge, check, yesno, progress, percent, image; and `link`,
+  which is not a display but a wrapper any column may carry — see 6.3
 - form field types: text, textarea, number, select, multiselect, checkbox, radio, date, datetime, file, hidden, password
 - filters: text, select, multiselect, range, date, boolean, plus multi-column search
 - actions: `link`, `open` (modal, offcanvas, page), `post`; built-in create,

@@ -11,12 +11,17 @@ resolve once, while the configuration loads. `{{user.*}}` and
 `{{workspace.*}}` survive as placeholders and bind per request, so they reach
 the database as bound parameters and never as SQL text.
 
+The pages themselves are described in their own files and documented in
+[the page reference](pages.md).
+
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `url_mode` | string | `path` | `path` | How links are built: 'path' needs a rewrite rule, 'query' does not. |
 | `debug` | bool | `false` | `true` | Shows what went wrong instead of a neutral error page. Never on in production. |
 | `brand` | string | `RockAdmin` | `Cyklobazar admin` | Shown in the navbar. |
 | `template_paths` | array | `[]` | `['resources/rockadmin', 'vendor/company/admin-theme']` | Directories searched for templates before the SDK's own, highest priority first. A file with the same name as an SDK template replaces it; nothing needs copying or registering. |
+| `pages_path` | string | `pages` | `pages` | Where page files live, relative to the configuration directory. One file per page, named after the page: pages/ads.php is reachable at /p/ads. |
+| `per_page` | int | `25` | `50` | Rows in one page of a grid, for regions that do not set their own. *Performance:* A large value makes every grid render slower for everyone; set it per region where a particular page needs more. |
 
 ## `paths`
 

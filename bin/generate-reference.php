@@ -3,31 +3,25 @@
 declare(strict_types=1);
 
 /**
- * Writes docs/reference/configuration.md from the schema.
+ * Writes the reference documentation from the schemas.
  *
  * Run it with `composer run docs:reference`. ReferenceIsCurrentTest fails the
- * build when the committed file and the schema disagree, so adding a key
- * without running this is caught rather than noticed.
+ * build when a committed file and its schema disagree, so adding a key
+ * without running this is caught rather than noticed. What gets written is
+ * listed in bin/reference-targets.php, which that test reads too.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
 
 use RockAdmin\Config\Reference;
-use RockAdmin\Config\RootSchema;
 
-$intro = <<<'TEXT'
-Every key `rockadmin.php` accepts. A key that is not listed here does not
-exist: the loader refuses an unknown key rather than ignoring it, and suggests
-the nearest declared one when it looks like a typo.
+/** @var list<array{file: string, schema: \RockAdmin\Config\Schema, title: string, intro: string}> $targets */
+$targets = require __DIR__ . '/reference-targets.php';
 
-Values may carry placeholders. `{{env.NAME}}` and `{{config.path.to.key}}`
-resolve once, while the configuration loads. `{{user.*}}` and
-`{{workspace.*}}` survive as placeholders and bind per request, so they reach
-the database as bound parameters and never as SQL text.
-TEXT;
+foreach ($targets as $target) {
+    $markdown = Reference::markdown($target['schema'], $target['title'], $target['intro']);
 
-$markdown = Reference::markdown(RootSchema::create(), 'Configuration reference', $intro);
+    file_put_contents(__DIR__ . '/../docs/reference/' . $target['file'], $markdown);
 
-file_put_contents(__DIR__ . '/../docs/reference/configuration.md', $markdown);
-
-echo 'Wrote docs/reference/configuration.md (' . strlen($markdown) . " bytes).\n";
+    echo 'Wrote docs/reference/' . $target['file'] . ' (' . strlen($markdown) . " bytes).\n";
+}

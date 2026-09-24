@@ -45,4 +45,12 @@ final class MySqlDialect implements Dialect
             [$table],
         );
     }
+
+    public function columns(string $table): Sql
+    {
+        // SHOW COLUMNS takes no bound parameter for the table name -- it is
+        // not a SELECT -- so the identifier is quoted and inlined the same
+        // way quoteIdentifier() already is everywhere else in this class.
+        return new Sql('SHOW COLUMNS FROM ' . $this->quoteIdentifier($table));
+    }
 }

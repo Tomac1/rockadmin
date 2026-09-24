@@ -115,6 +115,20 @@ final class ConnectionTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
+    public function testColumnsReturnsTheTablesOwnColumnsInDeclaredOrder(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        $columns = $connection->columns('ra_test_ads');
+
+        $this->assertSame(['id', 'user_id', 'title', 'price', 'state', 'stats'], $columns);
+
+        $this->dropFixtures($connection);
+    }
+
+    #[DataProvider('connections')]
     public function testAFailingStatementRaisesDbExceptionCarryingTheSql(?Connection $connection): void
     {
         $connection = $this->requireConnection($connection);
@@ -130,6 +144,67 @@ final class ConnectionTest extends DatabaseTestCase
         } catch (DbException $e) {
             $this->assertStringContainsString('ra_marker_xyz', $e->getMessage());
             $this->assertStringContainsString($sql->text, $e->getMessage());
+        }
+    }
+
+    #[DataProvider('connections')]
+    public function testAFailingStatementCarriesTheDriversSqlState(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        // Undefined table: '42S02' on MySQL, '42P01' on PostgreSQL -- both
+        // class '42' (syntax error or access rule violation), which is the
+        // fact PreviewRegion and anything else reading sqlStateClass() cares
+        // about, not the five-character code itself.
+        try {
+            $connection->select(new Sql('SELECT 1 FROM ra_test_nonexistent'));
+            $this->fail('Expected the missing table to raise a DbException.');
+        } catch (DbException $e) {
+            $this->assertNotNull($e->sqlState, 'the driver always reports one for a failed statement');
+            $this->assertSame('42', $e->sqlStateClass());
+        }
+    }
+
+    #[DataProvider('connections')]
+    public function testAnIdThatDoesNotFitTheKeyColumnsTypeCarriesADataExceptionSqlState(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->createFixtures($connection);
+
+        // MySQL coerces 'abc' to 0 and simply matches nothing -- no
+        // exception, and nothing for this test to check beyond that fact
+        // itself, which is why PreviewRegion never needs the SQLSTATE
+        // check on that driver: an ordinary empty result already reads as
+        // "no such row". PostgreSQL raises '22P02', which is SQLSTATE class
+        // '22' (data exception): a value that does not fit where it was
+        // put, not a broken connection or a missing table.
+        try {
+            $rows = $connection->select(new Sql('SELECT id FROM ra_test_ads WHERE id = ?', ['abc']));
+            $this->assertSame([], $rows, "MySQL coerces 'abc' to 0 and matches nothing");
+        } catch (DbException $e) {
+            $this->assertSame('22', $e->sqlStateClass());
+        }
+
+        $this->dropFixtures($connection);
+    }
+
+    #[DataProvider('connections')]
+    public function testColumnsOfATableThatDoesNotExistIsRefusedNamingTheTable(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        // No createFixtures(): the table genuinely does not exist, which is
+        // the point -- MySQL's SHOW COLUMNS already throws for one, and
+        // PostgreSQL's information_schema.columns silently matches zero
+        // rows instead, so without Connection::columns() checking for that
+        // itself, the same typo in entity.table fails loudly on one driver
+        // and produces an empty '@all' preview on the other.
+        try {
+            $connection->columns('ra_test_nonexistent');
+            $this->fail('Expected a nonexistent table to be refused.');
+        } catch (DbException $e) {
+            $this->assertStringContainsString('ra_test_nonexistent', $e->getMessage());
         }
     }
 }

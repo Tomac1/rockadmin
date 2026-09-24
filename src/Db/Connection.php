@@ -74,6 +74,56 @@ final class Connection
         return $this->run($sql)->rowCount();
     }
 
+    /**
+     * The table's own columns, in their declared order — what `'fields' =>
+     * '@all'` (spec 8.5) reads from. The statement itself is the one thing
+     * that differs per server, and `Dialect::columns()` already carries that
+     * difference; MySQL's `SHOW COLUMNS` names the column 'Field',
+     * PostgreSQL's `information_schema.columns` names it 'column_name', so
+     * both are read here rather than making a caller guess which ran.
+     *
+     * A table that does not exist is refused here rather than left to
+     * answer for itself: MySQL's `SHOW COLUMNS` already throws for one, but
+     * PostgreSQL's `information_schema.columns` simply matches no rows, so
+     * without this check the same typo in `entity.table` fails loudly on
+     * one driver and silently produces a preview with no fields at all on
+     * the other -- the two-behaviours-from-one-configuration rule 3
+     * forbids.
+     *
+     * @return list<string>
+     */
+    public function columns(string $table): array
+    {
+        $names = [];
+
+        foreach ($this->select($this->dialect->columns($table)) as $row) {
+            $name = $row['column_name'] ?? $row['Field'] ?? null;
+
+            if (\is_string($name)) {
+                $names[] = $name;
+            }
+        }
+
+        if ($names === []) {
+            // Every table that exists has at least one column, so an empty
+            // result means this connection cannot see one -- the same fact
+            // MySQL's own SHOW COLUMNS already raised as an exception before
+            // this method got a chance to run.
+            //
+            // The message hedges deliberately. PostgreSQL's
+            // information_schema.columns hides rows the connecting role has
+            // no privilege on, so an existing table the role cannot read is
+            // indistinguishable here from one that was never created. Saying
+            // flatly that it does not exist would send whoever reads this
+            // hunting for a typo when what they need is a GRANT.
+            throw new DbException(
+                "Table '{$table}' does not exist, or is not visible to this connection.",
+            );
+        }
+
+        return $names;
+    }
+
     private function run(Sql $sql): PDOStatement
     {
         try {
@@ -82,10 +132,18 @@ final class Connection
 
             return $statement;
         } catch (PDOException $e) {
+            // PDOException::getCode() is the driver's own SQLSTATE once
+            // ATTR_ERRMODE is EXCEPTION -- a five-character string such as
+            // '22P02' or '42S02' -- but PHP types Throwable::getCode() as
+            // int|string, so a caller that constructed one directly with an
+            // integer code is still honoured: no SQLSTATE is claimed for it.
+            $sqlState = \is_string($e->getCode()) ? $e->getCode() : null;
+
             throw new DbException(
                 "Query failed: {$e->getMessage()}" . PHP_EOL . $sql->text,
                 0,
                 $e,
+                $sqlState,
             );
         }
     }

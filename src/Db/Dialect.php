@@ -36,4 +36,13 @@ interface Dialect
      * however much has changed since the last statistics update.
      */
     public function estimatedCount(string $table): Sql;
+
+    /**
+     * The table's own columns, in their declared order — what `'fields' =>
+     * '@all'` (spec 8.5) expands to. `SHOW COLUMNS` on MySQL,
+     * `information_schema.columns` on PostgreSQL; the two name the column
+     * holding the column's own name differently ('Field' vs 'column_name'),
+     * which `Connection::columns()` reads regardless of which arrives.
+     */
+    public function columns(string $table): Sql;
 }

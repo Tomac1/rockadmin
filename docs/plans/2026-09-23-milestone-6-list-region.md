@@ -137,6 +137,7 @@ src/Grid/FilterInput.php         one filter as it arrived, before it is trusted
 src/Grid/QueryFactory.php        definition + state -> RockAdmin\Db\Query
 src/Grid/ListRegion.php          runs the query, builds the view
 src/Grid/ListView.php            what the list templates read
+src/Grid/ColumnView.php          one header: label, classes, sort link
 src/Grid/RowView.php             one row, with its cells and its identity
 src/Grid/CellView.php            one cell: value, formatted text, classes, link
 src/Grid/PaginationView.php      pages, current page, total, page links
@@ -186,7 +187,7 @@ chooses from. Nothing loads yet — this task declares the vocabulary.
       case Text = 'text'; case Int = 'int'; case Money = 'money';
       case Datetime = 'datetime'; case Bool = 'bool'; case Enum = 'enum';
       case Json = 'json';
-      public static function from(string $value): self;      // refuses with PageException
+      public static function parse(string $value): self;     // refuses with PageException
       public function defaultDisplay(): Display;
       public function allows(Display $display): bool;
       public function defaultAlignment(): string;            // 'start' or 'end'
@@ -340,8 +341,9 @@ Expected: FAIL — none of these classes exist.
 
 - [ ] **Step 3: Write the implementation**
 
-`ColumnType::from()` shadows the enum's own `from()` deliberately: the native
-one throws `\ValueError` with a message nobody can act on. Use
+`ColumnType::parse()` exists because a backed enum's own `from()` cannot be
+redeclared, and its `\ValueError` names no alternatives. `Display::parse()`
+is its twin. Use
 `Schema::nearestOf()` — it already exists and already solves "did you mean" —
 to suggest the closest case, and list all seven when nothing is close.
 
@@ -724,9 +726,22 @@ below it executes, and this is where description becomes a `Query`.
 2. **Scope.** The entity's `scope` becomes filters that are not negotiable —
    they are the workspace boundary, so they are appended after the URL's
    filters and can never be dropped by the discard rule.
-3. **Filters.** Each `FilterInput` becomes a `Filter` with the operator its
-   column declared. A range becomes `Between` when both ends are present and
-   `GreaterOrEqual`/`LessOrEqual` when one is.
+3. **Filters.** Each `FilterInput` carries a column and a value shape; this
+   step reconciles that shape with the operator the column declared, and
+   drops the filter when the two cannot be honestly reconciled. A URL may
+   narrow what the page offered; it may never change its meaning.
+
+   - `is_null` and `is_not_null` ignore the value entirely.
+   - A list of one unwraps to its scalar and follows the scalar rules.
+   - A list of several becomes `in` for `in` or `equals`, and is dropped for
+     anything else: "contains any of these" has no single-condition SQL, and
+     guessing is worse than dropping.
+   - A scalar with `in` becomes a one-element list; with `between` it is
+     dropped, because one value is not a range.
+   - A range is reconcilable only with an operator that compares by magnitude
+     — `between`, `gt`, `gte`, `lt`, `lte` — and is dropped for the rest.
+     Within those, the ends decide: both is `between`, a lone `from` is
+     `gte`, a lone `to` is `lte`, neither is dropped.
 4. **Search.** When the state has a term and the region has searchable
    columns, a `Search` over those columns' source paths.
 5. **Sort.** The state's sort, or the region's own when the URL carries none.
@@ -842,8 +857,8 @@ difference between a grid that reads well and one that does not.
 - Test: `tests/Unit/Grid/CellFormatterTest.php`
 
 **Interfaces:**
-- Consumes: `ColumnDefinition`, `ColumnType`, `Display` (Task 1-2);
-  `RockAdmin\Config\Enums` for `enum` columns; `RockAdmin\View\Classes`.
+- Consumes: `ColumnDefinition`, `ColumnType`, `Display` (Task 1-2) and
+  `RockAdmin\View\Classes`. **Not `Enums`** — see below.
 - Produces:
   ```php
   namespace RockAdmin\Grid;
@@ -864,11 +879,18 @@ difference between a grid that reads well and one that does not.
 
   final class CellFormatter
   {
-      public function __construct(private readonly Enums $enums);
-
       public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView;
   }
   ```
+
+**Where an enum column's options come from.** Task 2 already resolved them:
+a column carries `$column->options['enum']` as an `array<string, EnumOption>`,
+with `@enum:` references followed and literal maps parsed, refusing anything
+malformed by name. This class reads that array and nothing else. Taking an
+`Enums` and looking the reference up again would be a second path to the same
+data, and the two would eventually disagree about a column whose options were
+overridden per page — which is exactly the kind of seam this milestone has
+already had to close twice.
 
 **How each type formats**, and the reasoning where it is not obvious:
 
@@ -885,8 +907,8 @@ difference between a grid that reads well and one that does not.
 - **bool** — `check` renders a tick or nothing; `yesno` renders words; both
   read `true`, `1`, `'1'` and `'t'` as true, because three databases spell a
   boolean three ways.
-- **enum** — the option's label from `Enums::options()`, and its variant for
-  the badge colour. A value with no matching option keeps its raw value and
+- **enum** — the option's label from `$column->options['enum']`, and its
+  colour for the badge variant. A value with no matching option keeps its raw value and
   gets no variant, so an unmapped state is visible rather than blank.
 - **json** — a compact one-line rendering, truncated with an ellipsis past a
   sensible length, with the full value in a `title` attribute.
@@ -963,7 +985,7 @@ git commit -m "Format a value for a grid cell without losing zero or false"
   {
       public readonly string $key;              // the region key
       public readonly string $pageName;
-      /** @var list<ColumnDefinition> */
+      /** @var list<ColumnView> */
       public readonly array $columns;
       /** @var list<RowView> */
       public readonly array $rows;
@@ -975,10 +997,25 @@ git commit -m "Format a value for a grid cell without losing zero or false"
       public readonly string $regionUrl;        // /r/{page}/{region}, for refreshes
       public function isEmpty(): bool;
       public function classes(): string;
-      public function sortUrl(ColumnDefinition $column): string;
-      public function sortDirection(ColumnDefinition $column): ?string;
+  }
+
+  final class ColumnView
+  {
+      public readonly string $key;
+      public readonly string $label;
+      public readonly string $classes;         // ra-grid-head ra-grid-head-<key> ...
+      public readonly string $align;
+      public readonly ?string $width;
+      public readonly ?string $sortUrl;        // null when the column is not sortable
+      public readonly ?string $sortDirection;  // 'ascending', 'descending' or null
   }
   ```
+
+**Why the columns are a view and not the definitions.** Handing templates a
+`ColumnDefinition` would hand them configuration, which rule 4 of this project
+forbids — and it would force `ListView` to hold a `UrlGenerator` and a
+`GridState` so it could answer `sortUrl()` while rendering. Everything a
+header needs is decided once, in `ListRegion`, and arrives already decided.
 
   `RowView` carries the row's key value, its `CellView`s in column order, its
   detail URL and its `ra-grid-row` classes. `PaginationView` carries the
@@ -1004,6 +1041,9 @@ public function testARowCarriesItsKeyValueSoTheTemplateCanIdentifyIt(): void
 public function testAColumnThatLinksGivesItsCellTheRowsDetailUrl(): void
 public function testTheSortUrlForAColumnTogglesItsDirection(): void
 public function testTheSortUrlKeepsTheCurrentFiltersAndSearch(): void
+public function testAnUnsortableColumnHasNoSortUrl(): void
+public function testOnlyTheCurrentSortColumnCarriesADirection(): void
+public function testNoViewObjectCarriesAColumnDefinition(): void
 public function testAnEmptyResultIsAnEmptyViewRatherThanAnError(): void
 public function testTheRegionUrlIsTheFragmentAddressForThisRegion(): void
 public function testFiltersCarryTheValueTheUrlAlreadyHeld(): void
@@ -1253,6 +1293,124 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
 
 ---
 
+### Task 9: The preview region
+
+A grid whose rows cannot be opened is half a tool. This adds the second region
+type — one row, rendered as a field list — reachable at `/p/{page}/{id}` as a
+standalone page and at `/r/{page}/{region}?id=42` as a fragment, which is what
+milestone 8 will later open in an offcanvas without changing anything here.
+
+**Files:**
+- Create: `src/Grid/PreviewRegion.php`
+- Create: `src/Grid/PreviewView.php`
+- Create: `src/Grid/FieldView.php`
+- Create: `src/Http/DetailHandler.php`
+- Create: `templates/region/preview/region.php`, `field.php`, `missing.php`
+- Modify: `src/Page/PageSchema.php` — a region's `fields` key
+- Modify: `src/Page/RegionDefinition.php` — resolved fields
+- Test: `tests/Unit/Grid/PreviewRegionTest.php`
+- Test: `tests/Unit/Http/DetailHandlerTest.php`
+- Test: `tests/Integration/Grid/PreviewTest.php`
+
+**Interfaces:**
+- Consumes: `PageDefinition`, `RegionDefinition`, `ColumnDefinition`,
+  `CellFormatter`, `RowSource`, `QueryFactory` — everything Tasks 2-6 built.
+- Produces:
+  ```php
+  namespace RockAdmin\Grid;
+
+  final class PreviewRegion
+  {
+      public function __construct(
+          private readonly RowSource $rows,
+          private readonly QueryFactory $queries,
+          private readonly CellFormatter $cells,
+      );
+
+      /** Null when no row has that key — the caller turns that into a 404. */
+      public function render(PageDefinition $page, RegionDefinition $region, string $id): ?PreviewView;
+  }
+
+  final class PreviewView
+  {
+      public readonly string $key;          // the region key
+      public readonly string $title;        // the row's own label, not the page's
+      public readonly string $id;
+      /** @var list<FieldView> */
+      public readonly array $fields;
+      public function classes(): string;
+  }
+
+  final class FieldView
+  {
+      public readonly string $key;
+      public readonly string $label;
+      public readonly CellView $cell;
+      public readonly bool $wide;   // long text and json span the full width
+      public function classes(): string;
+  }
+  ```
+
+**Which fields a preview shows**, from spec 8.5, exactly:
+
+| Configuration | Meaning |
+|---|---|
+| key omitted | inherit the grid's columns |
+| `'fields' => ['a', 'b']` | exactly these, in this order |
+| `'fields' => '@all'` | every column of the entity's table |
+| `'fields' => []` | none — legal, but the loader warns, since it is almost always a mistake |
+
+`@all` needs the table's real columns, which only the database knows. Add
+`Connection::columns(string $table): list<string>` to milestone 3's connection
+— `Dialect` already isolates everything else per-server, so put the two
+information-schema queries there rather than in `Connection`. On MySQL that is
+`SHOW COLUMNS`; on PostgreSQL, `information_schema.columns`. Write it with an
+integration test on both drivers before anything else in this task, because
+everything else here depends on it being right.
+
+**A preview reuses the grid's query machinery.** Build a `Query` for the
+region's fields with a `Filter` on the entity key and a `Page` of one row. Do
+not write a second query path: a preview that fetches differently from the
+grid it came from will eventually disagree with it about what a column means.
+
+**Long values get their own row.** A `json` cell, a `text` cell past a
+sensible length and anything the column marks `wide` span the full width
+rather than squeezing into a definition-list column. Everything else is a
+label-and-value pair.
+
+**A missing row is a 404, not an empty preview.** `DetailHandler` throws
+`NotFoundException` when `render()` returns null, because `/p/ads/999999` is a
+URL that names nothing.
+
+- [ ] **Step 1: Write the failing tests**
+
+```php
+public function testAPreviewRendersOneFieldPerColumn(): void
+public function testFieldsDefaultToTheGridsColumns(): void
+public function testAnExplicitFieldListIsUsedInItsOwnOrder(): void
+public function testAFieldNamingAnUndeclaredColumnIsRefusedAtLoad(): void
+public function testAllExpandsToEveryColumnOfTheTable(): void
+public function testAnEmptyFieldListWarnsRatherThanFailing(): void
+public function testAJsonFieldIsWide(): void
+public function testAMissingRowIsNull(): void
+public function testThePreviewAndTheGridFormatTheSameValueIdentically(): void
+public function testThePreviewIssuesOneStatementForOneRow(): void
+```
+
+That ninth test is the seam: format the same column through `ListRegion` and
+through `PreviewRegion` and assert the two `CellView`s are equal. Two renderers
+over one formatter is exactly the shape that drifts, and milestones 1 through 4
+each lost a day to one.
+
+- [ ] **Step 2-6: Fail, implement, verify on both drivers, gate, commit**
+
+```bash
+git add src templates tests
+git commit -m "Open a row: one region, as a page and as a fragment"
+```
+
+---
+
 ## Milestone acceptance
 
 1. `composer run check` is green, with the database variables exported so the
@@ -1265,9 +1423,11 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
 5. A filter, a search, a sort and a page change each survive a round trip
    through the URL, and a link copied out of the address bar reproduces the
    same grid.
-6. The same region renders identically as a page and as a fragment.
-7. Everything works with JavaScript disabled.
-8. Every new configuration key is in `docs/reference/`, and
+6. The same region renders identically as a page and as a fragment, and a
+   preview formats a value exactly as the grid it came from does.
+7. A row opens at `/p/{page}/{id}` showing every field the page declares.
+8. Everything works with JavaScript disabled.
+9. Every new configuration key is in `docs/reference/`, and
    `ReferenceIsCurrentTest` proves it.
 
 ## What this milestone deliberately leaves out
@@ -1276,8 +1436,8 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
   type, bulk actions and the header's action buttons. They are built on routes
   that mutate, which is milestone 7.
 - **Forms and writes** — milestone 7.
-- **The `preview`, `form`, `nav` and `stat` region types.** This milestone
-  builds `list` and the machinery all of them share.
+- **The `form`, `nav` and `stat` region types.** This milestone builds `list`
+  and `preview`, and the machinery all of them share.
 - **Permissions and `{{user.*}}` binding** — milestone 5. Until then a page's
   `scope` may reference `{{workspace.*}}` and the placeholder will survive
   unbound, which the query builder already refuses loudly rather than
@@ -1289,3 +1449,111 @@ git commit -m "Serve a page, refresh one region, and show a real grid"
   pages where offsets hurt.
 - **The dev console** — milestone 10. `Result::$statements` is already carried
   through for it.
+
+## Amendments made during execution
+
+Written after the fact. The plan above is what was dispatched; this records
+where reality differed, so a reader comparing plan to branch is not left
+guessing.
+
+**Three things the plan depended on and never declared.** The column schema
+listed fourteen keys and no `filter`, while three later tasks read a column's
+filter block and its operator. The same for collections: the demo was to show
+a one-to-many of tags and the query factory to build one, with nothing in
+configuration through which a page could ask for it. And `PageDefinition`
+carried no `scope`, which the query factory needs. All three were the same
+mistake — writing the consumers before the vocabulary, then not re-reading the
+vocabulary — and all three were fixed in the plan before Task 1 was dispatched.
+
+**The column type stayed an enum.** The plan said it should shadow the enum's
+native `from()`, which PHP forbids, so the only way to obey was to stop being
+an enum — at the cost of mutable public statics, lazy initialisation and a
+`default` arm in every match. The parser is called `parse()`.
+
+**`FilterInput` carries no operator.** It originally did, decided from the
+value's shape, while `QueryFactory` was specified to decide the same thing —
+two places deciding one thing, and already wrong, since a one-ended range
+emitted `Between` with a single bound. The shape is what the URL said; the
+mapping to an operator lives once. This was caught before the second half was
+written, which is the first time in this project that happened.
+
+**A range must agree with its column's operator.** The rule table dropped list
+shapes that did not fit the declared operator and *overrode* it for range
+shapes, so `?f[title][from]=A&f[title][to]=Z` on a `contains` column became a
+`BETWEEN` the page never offered. The asymmetry was in the table, not in the
+code that followed it.
+
+**The grid's view objects are views, not definitions.** `ListView` was to carry
+`ColumnDefinition` objects and answer `sortUrl()` on demand, which hands
+templates configuration and forces the view to hold a `UrlGenerator` and the
+grid state so it can compute a link while rendering.
+
+**The cell formatter reads the options the column already carries.** It was to
+take an `Enums` and resolve `@enum:` references itself, which is a second path
+to data the page loader has already resolved.
+
+**A cell knows what it is, not only how it looks.** Dispatching the cell
+partial by display alone cannot distinguish money from a date from JSON from
+text, because all four are `Display::Plain` — so three shipped templates were
+unreachable by any configuration. A cell carries its type as well.
+
+**Linking is not a display.** This was the milestone's worst defect and it
+shipped through eight task reviews: `'link' => true` was read from
+configuration, carried into the cell, and never rendered, because only a
+`Display::Link` cell reached the one partial that emits an anchor. The served
+demo contained zero links to any row, so the entire preview region was
+unreachable by clicking, while one test asserted the URL reaches the cell and
+another rendered a `Link` display and found its anchor. Each half correct,
+neither crossing. A link is now a wrapper around whatever the display drew,
+`Display::Link` is gone, and specification 6.3 says so.
+
+**The entity key is always selected.** A region with a one-to-many but no key
+column raised a 500 as a page and rendered perfectly as a preview, because the
+preview force-selected the key and the query factory did not. Three separate
+things depended on it: the collection's attach, the tiebreaker surviving
+`QueryBuilder`, and every row's detail URL.
+
+**`DbException` carries its SQLSTATE.** `/p/ads/abc` returned an honest 404 on
+MySQL, which coerces the id to zero, and a 500 on PostgreSQL, which refuses it
+— leaking SQL in debug mode. The class could not distinguish "this value does
+not fit that column" from "the database is unreachable", which is why a
+blanket catch would have been the wrong repair.
+
+**Configuration a page can write and nothing reads is refused.** A `filter`,
+`sortable` or `searchable` on a collection column produced a control the user
+typed into to no effect; a default sort naming an undeclared column loaded
+silently and was dropped; `align` accepted any string, including the `right`
+the specification's own example writes; and `search.placeholder` was declared,
+documented and read by nothing.
+
+**Query mode had never been rendered.** `core.js` appended a second `?` to a
+region URL that already carried one, so every interaction failed with a toast
+— and nothing in the repository exercised `url_mode = query` at all, for a
+mode the specification treats as first-class. The demo can now run in it.
+
+**A shareable link has to be a page.** Sort and pager links addressed the
+region fragment, so copying one out of the address bar gave a shell-less
+fragment. The empty state's "clear filters" link was missed in that fix and
+had to be caught again by the final review.
+
+**An empty array is not always an absence.** The fix that made an empty
+collection read as empty fired on any `[]`, so a JSON column genuinely storing
+one read as "not set" — the third time this formatter conflated an absence
+with a value, after a false boolean and an empty string.
+
+## What this milestone leaves for the next one
+
+- **Layout slots.** Every list region goes into the layout's `main` slot;
+  `two-column` and `sidebar-detail` have named slots nothing maps to. The
+  shape when it is needed is a `slot` key on a region, defaulting to `main`.
+- **Shell assembly.** `PageHandler` builds a `ShellView` by hand because
+  nothing assembles one from configuration. A `ShellFactory` is the right home.
+- **`count`.** Specification 7.3 makes it page configuration; the schema has no
+  such key and `QueryFactory` hardcodes an exact count. The real table this
+  will run against has 47,000 rows.
+- **`link` as a boolean.** Specification 8.5 makes opening a row an action;
+  milestone 8 will widen or replace it.
+- **No `_ret`.** `DetailHandler` discards the query string, so there is nowhere
+  for milestone 7's save-and-return to attach.
+- **No JavaScript test harness.** `core.js`'s delegation contract is pinned by
+  nothing; a regression would need a human to open a browser.

@@ -40,4 +40,14 @@ final class PgDialect implements Dialect
     {
         return new Sql('SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(?)', [$table]);
     }
+
+    public function columns(string $table): Sql
+    {
+        return new Sql(
+            'SELECT column_name FROM information_schema.columns '
+            . 'WHERE table_schema = current_schema() AND table_name = ? '
+            . 'ORDER BY ordinal_position',
+            [$table],
+        );
+    }
 }
