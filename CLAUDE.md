@@ -64,8 +64,24 @@ composer run stan      # PHPStan, level max
 ```
 
 Database tests read `RA_TEST_MYSQL_*` and `RA_TEST_PGSQL_*` from the
-environment and skip when those are unset. Local development uses MySQL on
-localhost, database `rockadmin_test`, user `root`, password `root`.
+environment and skip when those are unset. A server whose DSN *is* set but
+cannot be reached fails instead of skipping, naming the variable to fix.
+
+The suffix is `_PASSWORD`, not `_PASS`. Both servers run locally against
+database `rockadmin_test`:
+
+```bash
+export RA_TEST_MYSQL_DSN="mysql:host=127.0.0.1;dbname=rockadmin_test"
+export RA_TEST_MYSQL_USER=root
+export RA_TEST_MYSQL_PASSWORD=root
+
+export RA_TEST_PGSQL_DSN="pgsql:host=127.0.0.1;port=5432;dbname=rockadmin_test"
+export RA_TEST_PGSQL_USER=postgres
+export RA_TEST_PGSQL_PASSWORD=root
+```
+
+Run the gate with both exported. Rule 3 is only actually checked when both
+drivers run, and a run that skips them still reports OK.
 
 ## Layout
 
