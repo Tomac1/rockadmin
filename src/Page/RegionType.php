@@ -9,14 +9,15 @@ namespace RockAdmin\Page;
  *
  * A closed set, for the same reason ColumnType is one: a region typed
  * 'lsit' should fail at load, naming the alternatives, rather than render as
- * nothing later. `form`, `nav` and `stat` arrive in later milestones — adding
- * one is adding a case here, not editing a condition at every place that
- * checks a region's type.
+ * nothing later. `nav` and `stat` arrive in later milestones — adding one is
+ * adding a case here, not editing a condition at every place that checks a
+ * region's type.
  */
 enum RegionType: string
 {
     case List = 'list';
     case Preview = 'preview';
+    case Form = 'form';
 
     /** @throws PageException when the value names no region type */
     public static function parse(string $value): self

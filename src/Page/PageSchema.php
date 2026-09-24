@@ -101,8 +101,8 @@ final class PageSchema
                     'type' => new SchemaKey(
                         ValueType::String,
                         required: true,
-                        description: 'The region type: list or preview. Refused at load if it names anything '
-                            . 'else. `form`, `nav` and `stat` arrive in later milestones.',
+                        description: 'The region type: list, preview or form. Refused at load if it names '
+                            . 'anything else. `nav` and `stat` arrive in later milestones.',
                         example: 'list',
                     ),
                     'per_page' => new SchemaKey(
@@ -141,6 +141,12 @@ final class PageSchema
                             . 'none, which is legal but almost always a mistake, so the loader warns. Only '
                             . 'for preview regions.',
                         example: ['name', 'email', 'created_at'],
+                    ),
+                    'form' => new SchemaKey(
+                        ValueType::Array,
+                        description: 'The fields this form reads and writes, and how copying a row differs '
+                            . 'from editing one. Only for form regions.',
+                        children: FormSchema::create(),
                     ),
                 ]),
             ),

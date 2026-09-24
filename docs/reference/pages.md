@@ -79,7 +79,7 @@ Every entry of `regions`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | — | `list` | The region type: list or preview. Refused at load if it names anything else. `form`, `nav` and `stat` arrive in later milestones. **Required.** |
+| `type` | string | — | `list` | The region type: list, preview or form. Refused at load if it names anything else. `nav` and `stat` arrive in later milestones. **Required.** |
 | `per_page` | int | — | `25` | Rows to show per page. Only for list regions. |
 | `sort` | array | — | `['created_at' => 'desc']` | The default sort order: a map of column key to direction, applied until a user picks their own. |
 | `fields` | mixed | — | `['name', 'email', 'created_at']` | Which fields a preview region shows. Omitted, it inherits the page's list region's columns; a list of column keys shows exactly those, in that order; '@all' shows every column of the entity's table; an empty list shows none, which is legal but almost always a mistake, so the loader warns. Only for preview regions. |
@@ -134,3 +134,37 @@ Fetches a one-to-many relationship. The column displays collected values; a supp
 | `table` | string | — | `order_items` | The table holding the many-side records. **Required.** |
 | `foreign_key` | string | — | `order_id` | The column in the collection table that points back to this entity's key. **Required.** |
 | `column` | string | — | `sku` | The column in the collection table to collect, one value per related row. **Required.** |
+
+## `regions.*.form`
+
+The fields this form reads and writes, and how copying a row differs from editing one. Only for form regions.
+
+
+## `regions.*.form.fields.*`
+
+Every entry of `regions.*.form.fields`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `type` | string | `text` | `text` | What the field holds and which control it renders: text, textarea, number, select, multiselect, checkbox, radio, date, datetime, hidden or password. |
+| `label` | string | — | `First Name` | The label shown beside the control. Defaults at load to the key, first letter upper-cased, underscores turned to spaces. |
+| `default` | mixed | — | `draft` | What a new row starts with: a literal, a `{{placeholder}}`, or one of the tokens `@now` and `@uuid`. Applies only when a row is created — an existing row is never touched by it. |
+| `required` | bool | `false` | `true` | Whether an empty value is refused on submission. |
+| `readonly` | bool | `false` | `true` | Renders the control disabled, and the field is never read from a submission — its value on save always comes from its default or from the existing row. |
+| `hidden` | bool | `false` | `true` | Renders no control at all. Its default is still applied on save, so a hidden field is how a form carries a value the user never sees or edits, such as a workspace scope. |
+| `help` | string | — | `Shown to customers on the storefront.` | Help text shown under the control. |
+| `placeholder` | string | — | `Enter a title...` | Placeholder text shown inside an empty text-like control. |
+| `options` | mixed | — | `['active' => 'Active', 'inactive' => 'Inactive']` | The choices offered: an `@enum:` reference to a shared enumeration, or a literal map from stored value to label. For `select`, `multiselect` and `radio` only. |
+| `min` | int | — | `0` | For a `number` field, the smallest accepted value. For a text-like field, the shortest accepted length. |
+| `max` | int | — | `100` | For a `number` field, the largest accepted value. For a text-like field, the longest accepted length. |
+| `step` | string | — | `0.01` | The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. |
+| `rows` | int | — | `4` | How many rows tall a `textarea` control is. |
+| `pattern` | string | — | `[A-Z]{2}\d{4}` | A regular expression the value must match, written without delimiters. |
+
+## `regions.*.form.copy`
+
+How the copy action differs from a plain edit.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `reset` | array | — | `['state', 'published_at']` | Field keys that fall back to their own default on a copy, instead of being carried over from the source row. |
