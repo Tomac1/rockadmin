@@ -272,6 +272,31 @@ final class MigratorTest extends DatabaseTestCase
         $this->insertUser($connection, 'jana@example.com');
     }
 
+    /**
+     * The same address may not name two accounts on either server.
+     *
+     * `UNIQUE (email)` alone does not give that: MySQL's default collation
+     * compares without regard to case and refuses the variant, PostgreSQL's
+     * does not and accepts it. Two rows for one human's address is not a
+     * cosmetic difference — each carries its own roles and, until
+     * `SqlAuthenticator` folded the case, its own throttle budget. So the
+     * property is asserted as behaviour rather than as an index: what matters
+     * is that both servers answer the same way, not how each one gets there.
+     */
+    #[DataProvider('connections')]
+    public function testEmailIsUniqueOnUsersWithoutRegardToCase(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        (new Migrator($connection))->migrate();
+
+        $this->insertUser($connection, 'jana@example.com');
+
+        $this->expectException(DbException::class);
+
+        $this->insertUser($connection, 'JANA@Example.com');
+    }
+
     #[DataProvider('connections')]
     public function testLoginAttemptsAreIndexedByEmailAndByIp(?Connection $connection): void
     {
