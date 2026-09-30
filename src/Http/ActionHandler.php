@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Http;
 
 use RockAdmin\Db\DbException;
+use RockAdmin\Db\NoSuchRowException;
 use RockAdmin\Db\WriteHandler;
 use RockAdmin\Form\DefaultValue;
 use RockAdmin\Form\FieldValidator;
@@ -163,6 +164,11 @@ final class ActionHandler implements Handler
     {
         try {
             $this->writes->delete($page->entity, $key);
+        } catch (NoSuchRowException $e) {
+            // Somebody deleted it between this page being drawn and the
+            // button being pressed. That is a row that is gone, not a server
+            // that broke, so it answers the way any missing row does.
+            throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
             if ($e->sqlStateClass() !== '23') {
                 throw $e;
@@ -216,6 +222,11 @@ final class ActionHandler implements Handler
             $write = $isCreate
                 ? $this->writes->insert($page->entity, $values)
                 : $this->writes->update($page->entity, (string) $key, $values);
+        } catch (NoSuchRowException $e) {
+            // The row went away while this form was open. Redrawing the form
+            // would offer to save into nothing; the honest answer is that
+            // what was being edited no longer exists.
+            throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
             if ($e->sqlStateClass() !== '23') {
                 throw $e;

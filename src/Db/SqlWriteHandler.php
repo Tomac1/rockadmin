@@ -169,7 +169,7 @@ final class SqlWriteHandler implements WriteHandler
             $before = $this->find($entity, $key);
 
             if ($before === null) {
-                throw new DbException("No row '{$key}' in '{$entity->table}' to update.");
+                throw NoSuchRowException::for($entity->table, $key, 'update');
             }
 
             if ($values !== []) {
@@ -209,7 +209,7 @@ final class SqlWriteHandler implements WriteHandler
             $before = $this->find($entity, $key);
 
             if ($before === null) {
-                throw new DbException("No row '{$key}' in '{$entity->table}' to delete.");
+                throw NoSuchRowException::for($entity->table, $key, 'delete');
             }
 
             $this->connection->execute($this->deleteSql($entity, $key));

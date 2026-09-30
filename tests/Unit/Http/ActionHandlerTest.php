@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\DbException;
+use RockAdmin\Db\NoSuchRowException;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\Sql;
 use RockAdmin\Form\FieldValidator;
@@ -499,6 +500,45 @@ final class ActionHandlerTest extends TestCase
         // What was typed survives, so the person can change the one thing
         // the database refused.
         $this->assertStringContainsString('value="Horské kolo"', $response->body);
+    }
+
+    public function testWritingARowThatHasSinceGoneIsNotFoundRatherThanAServerError(): void
+    {
+        // A plain DbException carries no SQLSTATE, so it is indistinguishable
+        // from an internal fault and becomes a 500 -- which is what this was
+        // before NoSuchRowException existed. Two people editing one row is an
+        // ordinary race, not a broken server, and the person who loses it
+        // should be told the row is gone.
+        $this->writeAdsPageWithForm();
+        $handler = $this->handler(NoSuchRowException::for('ads', '1', 'update'));
+
+        try {
+            $handler->handle(
+                new Route('action', ['page' => 'ads', 'action' => 'update']),
+                new Request('POST', 'a/ads/update', body: $this->signed([
+                    FormFields::ID => '1',
+                    'title' => 'Edited',
+                ])),
+            );
+
+            $this->fail('Updating a row that is gone should be refused.');
+        } catch (NotFoundException $e) {
+            $this->assertSame(404, $e->status);
+            $this->assertInstanceOf(NoSuchRowException::class, $e->getPrevious());
+        }
+    }
+
+    public function testADeleteOfARowThatHasSinceGoneIsAlsoNotFound(): void
+    {
+        $this->writeAdsPageWithForm();
+        $handler = $this->handler(NoSuchRowException::for('ads', '1', 'delete'));
+
+        $this->expectException(NotFoundException::class);
+
+        $handler->handle(
+            new Route('action', ['page' => 'ads', 'action' => 'delete']),
+            new Request('POST', 'a/ads/delete', body: $this->signed([FormFields::ID => '1'])),
+        );
     }
 
     public function testAnyOtherDatabaseErrorPropagatesRatherThanBecomingAFormError(): void

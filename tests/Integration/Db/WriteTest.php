@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Entity;
+use RockAdmin\Db\NoSuchRowException;
 use RockAdmin\Db\Sql;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Db\WriteHandler;
@@ -354,6 +355,34 @@ final class WriteTest extends DatabaseTestCase
 
         $this->assertSame([], $result->after);
         $this->assertSame('Horské kolo', $result->before['title']);
+    }
+
+    #[DataProvider('connections')]
+    public function testWritingARowThatIsNotThereRaisesATypeNotJustAMessage(?Connection $connection): void
+    {
+        // Two people open the same row, one saves, the other deletes: an
+        // ordinary race, and the person who loses it should be told the row
+        // is gone. A bare DbException cannot say that -- it carries no
+        // SQLSTATE, because no driver raised it, so a handler cannot tell it
+        // from an internal fault and answers 500. The type is what makes the
+        // difference reportable, and matching the message text instead would
+        // tie the handler to wording that is free to change.
+        $connection = $this->requireConnection($connection);
+        $handler = $this->handler($connection);
+        $entity = $this->entity();
+
+        foreach (['update', 'delete'] as $verb) {
+            try {
+                $verb === 'update'
+                    ? $handler->update($entity, '404', ['title' => 'edited'])
+                    : $handler->delete($entity, '404');
+
+                $this->fail("A {$verb} of a row that is not there should be refused.");
+            } catch (NoSuchRowException $e) {
+                $this->assertStringContainsString('404', $e->getMessage());
+                $this->assertStringContainsString($verb, $e->getMessage());
+            }
+        }
     }
 
     #[DataProvider('connections')]
