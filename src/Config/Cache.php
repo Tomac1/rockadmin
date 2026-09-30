@@ -32,6 +32,21 @@ final class Cache
             );
         }
 
+        // A file written by an older RockAdmin restores an object missing
+        // whatever the class has gained since -- valid-looking and quietly
+        // incomplete. Treated as absent so the caller rebuilds it, rather
+        // than thrown: an upgrade that empties a cache is a slow request, an
+        // upgrade that fatals is an outage.
+        //
+        // This covers what Config itself gained. A class it holds -- Enums,
+        // today -- whose own __set_state() gains a required key still fatals
+        // inside the require above, before anything here can look at it.
+        // Fixing that means the same version guard on each of them, and is
+        // worth doing the first time one of them changes shape.
+        if (!$restored->isCurrent()) {
+            return null;
+        }
+
         return $restored;
     }
 

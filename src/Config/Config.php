@@ -8,6 +8,23 @@ namespace RockAdmin\Config;
 final class Config
 {
     /**
+     * Bumped whenever the shape this class exports changes.
+     *
+     * `Cache` writes a compiled configuration with `var_export()` and reads it
+     * back through `__set_state()`, so a cache file written by an older
+     * RockAdmin restores an object missing whatever was added since. That is
+     * not a loud failure: it is a configuration that looks valid and is
+     * quietly incomplete -- a cache from before roles existed would restore
+     * with no roles at all, and once the gate is in place no-roles means
+     * nobody may do anything, with nothing anywhere saying why.
+     *
+     * So the version travels with the file, and a mismatch makes `Cache` treat
+     * it as absent and rebuild. Raise this when you add a constructor
+     * argument, never otherwise.
+     */
+    public const int CACHE_VERSION = 2;
+
+    /**
      * @param array<string, mixed> $data
      * @param array<string, mixed> $roles the contents of roles.php, expanded and resolved but not
      *                                    yet interpreted — `Roles::fromConfig()` needs the catalogue
@@ -19,7 +36,19 @@ final class Config
         private readonly array $data,
         private readonly Enums $enums,
         private readonly array $roles = [],
+        /**
+         * The version of the class that produced this object. Only ever
+         * differs from CACHE_VERSION for an object restored from a stale
+         * cache file, which `Cache::read()` discards.
+         */
+        public readonly int $cacheVersion = self::CACHE_VERSION,
     ) {
+    }
+
+    /** Whether this object was built by the current shape of the class. */
+    public function isCurrent(): bool
+    {
+        return $this->cacheVersion === self::CACHE_VERSION;
     }
 
     public function get(string $path, mixed $default = null): mixed
@@ -70,11 +99,22 @@ final class Config
     }
 
     /**
-     * @param array{data: array<string, mixed>, enums: Enums, roles?: array<string, mixed>} $state
-     *        written by var_export()
+     * @param array{data: array<string, mixed>, enums: Enums, roles?: array<string, mixed>,
+     *              cacheVersion?: int} $state written by var_export()
+     *
+     * The defaults are not compatibility shims: they exist so that a stale
+     * cache file can be *constructed* without a TypeError, and then
+     * recognised as stale by `isCurrent()` and discarded. Without them the
+     * upgrade fails here, before anything can tell the difference between a
+     * corrupt file and an old one.
      */
     public static function __set_state(array $state): self
     {
-        return new self($state['data'], $state['enums'], $state['roles'] ?? []);
+        return new self(
+            $state['data'],
+            $state['enums'],
+            $state['roles'] ?? [],
+            $state['cacheVersion'] ?? 1,
+        );
     }
 }
