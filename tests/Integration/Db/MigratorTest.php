@@ -93,7 +93,7 @@ final class MigratorTest extends DatabaseTestCase
             'ra_login_attempts' => ['id', 'email', 'ip', 'at'],
             'ra_password_resets' => ['id', 'email', 'token_hash', 'expires_at', 'used_at'],
             'ra_activity_log' => ['id', 'user_id', 'page', 'action', 'row_id', 'at', 'diff'],
-            'ra_migrations' => ['name', 'applied_at'],
+            'ra_migrations' => ['name', 'checksum', 'applied_at'],
         ] as $table => $columns) {
             self::assertSame($columns, $connection->columns($table), "Columns of {$table}");
         }
@@ -175,6 +175,81 @@ final class MigratorTest extends DatabaseTestCase
             $this->tableExists($connection, 'ra_test_migrate_a'),
             'MySQL commits DDL implicitly and keeps the table; PostgreSQL rolls it back.',
         );
+    }
+
+    /**
+     * The failure this refuses is a silent one: the name is recorded, so an
+     * installation that already ran the file never reads it again, and two
+     * installations from the same commit end up with different schemas.
+     */
+    #[DataProvider('connections')]
+    public function testAnAppliedMigrationThatHasBeenEditedIsRefused(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->write('001_a.sql', 'CREATE TABLE ra_test_migrate_a (id INTEGER PRIMARY KEY);');
+
+        self::assertSame(['001_a.sql'], (new Migrator($connection, $this->scratch))->migrate());
+
+        $this->write('001_a.sql', 'CREATE TABLE ra_test_migrate_a (id INTEGER PRIMARY KEY, extra INTEGER);');
+        $this->write('002_b.sql', 'CREATE TABLE ra_test_migrate_b (id INTEGER PRIMARY KEY);');
+
+        try {
+            (new Migrator($connection, $this->scratch))->migrate();
+            $this->fail('An edited migration was passed over in silence.');
+        } catch (DbException $e) {
+            self::assertStringContainsString('001_a.sql', $e->getMessage());
+            self::assertStringContainsString('edited since it was applied', $e->getMessage());
+            self::assertStringContainsString('new migration', $e->getMessage());
+        }
+
+        // The pending migration behind it is not applied either: a run that has
+        // found the schema and the ledger disagreeing must stop, not carry on
+        // adding to the difference.
+        self::assertSame(['001_a.sql'], $this->ledger($connection));
+        self::assertFalse($this->tableExists($connection, 'ra_test_migrate_b'));
+    }
+
+    /** Line endings are not schema, so a CRLF checkout is not an edit. */
+    #[DataProvider('connections')]
+    public function testAChangeOfLineEndingsIsNotAnEdit(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $this->write('001_a.sql', "CREATE TABLE ra_test_migrate_a (\nid INTEGER PRIMARY KEY\n);\n");
+
+        self::assertSame(['001_a.sql'], (new Migrator($connection, $this->scratch))->migrate());
+
+        $this->write('001_a.sql', "CREATE TABLE ra_test_migrate_a (\r\nid INTEGER PRIMARY KEY\r\n);\r\n");
+
+        self::assertSame([], (new Migrator($connection, $this->scratch))->migrate());
+    }
+
+    /**
+     * A row exists in this table only because somebody with database access
+     * put it there, so the default is the useful one rather than the one that
+     * locks the first administrator out.
+     */
+    #[DataProvider('connections')]
+    public function testAUserIsActiveUnlessSaidOtherwise(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        (new Migrator($connection))->migrate();
+
+        $connection->execute(new Sql(
+            'INSERT INTO ra_users (email, name, roles, workspaces, created_at) VALUES (?, ?, ?, ?, ?)',
+            ['jana@example.com', 'Jana', '[]', '[]', gmdate('Y-m-d H:i:s')],
+        ));
+
+        $active = $connection->scalar(new Sql(
+            'SELECT is_active FROM ra_users WHERE email = ?',
+            ['jana@example.com'],
+        ));
+
+        // PostgreSQL hands a BOOLEAN back as 't', MySQL a TINYINT(1) as 1 or
+        // '1' depending on the driver's own settings.
+        self::assertContains($this->text($active), ['1', 't', 'true']);
     }
 
     #[DataProvider('connections')]

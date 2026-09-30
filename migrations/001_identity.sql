@@ -11,7 +11,13 @@ CREATE TABLE ra_users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255),
     name VARCHAR(255) NOT NULL,
-    is_active {{ddl.bool}} NOT NULL,
+    -- is_active defaults to true because a row in this table exists only
+    -- because somebody with database access put it there. Defaulting to
+    -- inactive would make the first administrator created by the CLI unable
+    -- to log in, which people fix by flipping the column and never think
+    -- about again -- and it buys nothing, since the insert is already the
+    -- privileged act.
+    is_active {{ddl.bool}} NOT NULL DEFAULT TRUE,
     roles {{ddl.json}} NOT NULL,
     workspaces {{ddl.json}} NOT NULL,
     auth_provider VARCHAR(50),

@@ -34,6 +34,31 @@ use Throwable;
  * halfway on MySQL has to be cleaned up by hand — drop what it created —
  * before it can be retried, and no amount of transaction handling here would
  * change that.
+ *
+ * **An applied migration that has been edited is refused, not re-applied.**
+ * The ledger stores a checksum of each file alongside its name, and every run
+ * checks it. Without that, changing a migration after it has been applied
+ * somewhere is silent: the name is recorded, so the file is never read again,
+ * and two installations from the same commit end up holding different schemas
+ * — the exact failure that shipping the DDL with the SDK exists to prevent.
+ * The fix for an edited migration is a new migration, never a change to an old
+ * one, and the exception says so. Nothing is repaired automatically and
+ * nothing continues with a warning, because a schema that quietly disagrees
+ * with its ledger is the thing being prevented.
+ *
+ * There is no installation whose `ra_migrations` predates the checksum column,
+ * because nothing has shipped yet — so there is no compatibility path here,
+ * and writing one would be code for a case that cannot exist. It is worth
+ * knowing that this was the last free moment to add such a column: the ledger
+ * is created with `IF NOT EXISTS`, which does nothing to a table that already
+ * exists, so a column added to it after release needs special-case code in
+ * this class rather than a migration.
+ *
+ * **There is no rollback, and that is a decision rather than an omission.**
+ * MySQL commits DDL implicitly, so an undo that claimed to reverse a migration
+ * would be a lie on one of the two servers this project supports. The way back
+ * is a new migration that does the reverse, which is also the only way back
+ * that leaves the ledger telling the truth.
  */
 final class Migrator
 {
@@ -57,6 +82,7 @@ final class Migrator
     public function migrate(): array
     {
         $this->createLedger();
+        $this->verifyChecksums();
 
         $applied = [];
 
@@ -89,19 +115,45 @@ final class Migrator
     /** @return list<string> */
     public function applied(): array
     {
+        return array_keys($this->ledger());
+    }
+
+    /**
+     * Refuses an applied migration whose file has changed since.
+     *
+     * Public so that the diagnostics page can ask, and report the answer,
+     * without running a migration. `migrate()` calls it before applying
+     * anything: a run that would apply `002` while `001` has been edited
+     * underneath it has already lost, and should say so rather than add to the
+     * damage first.
+     *
+     * A recorded migration with no file on disk is passed over rather than
+     * refused. That is a different fact — the ledger knowing more than the disk
+     * is what a downgrade of the SDK looks like — and refusing it here would
+     * describe a downgrade as an edit, sending whoever read the message to look
+     * for a change nobody made.
+     */
+    public function verifyChecksums(): void
+    {
         $this->createLedger();
 
-        $names = [];
+        $available = array_flip($this->available());
 
-        foreach ($this->connection->select(new Sql('SELECT name FROM ' . self::LEDGER . ' ORDER BY name')) as $row) {
-            $name = $row['name'];
-
-            if (\is_string($name)) {
-                $names[] = $name;
+        foreach ($this->ledger() as $name => $recorded) {
+            if (!isset($available[$name]) || $recorded === $this->checksum($name)) {
+                continue;
             }
-        }
 
-        return $names;
+            throw new DbException(\sprintf(
+                "Migration '%s' has been edited since it was applied: the file no longer matches the "
+                    . 'checksum recorded in %s. An applied migration must never be changed, because an '
+                    . 'installation that has already run it will never read it again -- the two would '
+                    . 'hold different schemas from the same commit. Put the change in a new migration '
+                    . 'and restore this file.',
+                $name,
+                self::LEDGER,
+            ));
+        }
     }
 
     /**
@@ -136,8 +188,8 @@ final class Migrator
             }
 
             $this->connection->execute(new Sql(
-                'INSERT INTO ' . self::LEDGER . ' (name, applied_at) VALUES (?, ?)',
-                [$name, gmdate('Y-m-d H:i:s')],
+                'INSERT INTO ' . self::LEDGER . ' (name, checksum, applied_at) VALUES (?, ?, ?)',
+                [$name, $this->checksum($name), gmdate('Y-m-d H:i:s')],
             ));
         };
 
@@ -174,14 +226,7 @@ final class Migrator
      */
     private function statements(string $name): array
     {
-        $path = $this->directory . '/' . $name;
-        $text = file_get_contents($path);
-
-        if ($text === false) {
-            throw new DbException("Migration '{$name}' could not be read from {$path}.");
-        }
-
-        $text = preg_replace('/^\s*--.*$/m', '', $this->expand($text, $name)) ?? '';
+        $text = preg_replace('/^\s*--.*$/m', '', $this->expand($this->read($name), $name)) ?? '';
 
         $statements = [];
 
@@ -194,6 +239,61 @@ final class Migrator
         }
 
         return $statements;
+    }
+
+    /**
+     * The file's contents, with line endings normalised to LF.
+     *
+     * The normalisation is what the checksum is taken over, so a checkout that
+     * landed CRLF — `.gitattributes` asks for LF, but a zip download or a
+     * badly configured client can still do it — does not read as an edited
+     * migration. A change of line endings is not a change of schema.
+     */
+    private function read(string $name): string
+    {
+        $path = $this->directory . '/' . $name;
+        $text = file_get_contents($path);
+
+        if ($text === false) {
+            throw new DbException("Migration '{$name}' could not be read from {$path}.");
+        }
+
+        return str_replace("\r\n", "\n", $text);
+    }
+
+    /**
+     * The file as committed, hashed — before `{{ddl.*}}` expansion, so that
+     * the same file checksums identically on both servers and an installation
+     * that moves from one to the other is not told its migrations were edited.
+     */
+    private function checksum(string $name): string
+    {
+        return hash('sha256', $this->read($name));
+    }
+
+    /**
+     * The ledger, name to recorded checksum, in name order.
+     *
+     * @return array<string, string>
+     */
+    private function ledger(): array
+    {
+        $this->createLedger();
+
+        $rows = [];
+
+        foreach ($this->connection->select(
+            new Sql('SELECT name, checksum FROM ' . self::LEDGER . ' ORDER BY name'),
+        ) as $row) {
+            $name = $row['name'];
+            $checksum = $row['checksum'] ?? null;
+
+            if (\is_string($name)) {
+                $rows[$name] = \is_string($checksum) ? $checksum : '';
+            }
+        }
+
+        return $rows;
     }
 
     private function expand(string $text, string $name): string
@@ -219,11 +319,16 @@ final class Migrator
      * `IF NOT EXISTS` rather than a migration of its own, because the table
      * that records which migrations ran cannot be one of them: reading it to
      * find out would require it to exist already.
+     *
+     * `checksum` holds a SHA-256 of the file as committed — 64 hexadecimal
+     * characters. See the class docblock for why the column is here from the
+     * first release rather than added by a later one.
      */
     private function createLedger(): void
     {
         $this->connection->execute(new Sql(\sprintf(
-            'CREATE TABLE IF NOT EXISTS %s (name VARCHAR(255) NOT NULL PRIMARY KEY, applied_at %s NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS %s (name VARCHAR(255) NOT NULL PRIMARY KEY, '
+                . 'checksum VARCHAR(64) NOT NULL, applied_at %s NOT NULL)',
             self::LEDGER,
             $this->connection->dialect()->ddl('timestamp'),
         )));

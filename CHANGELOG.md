@@ -33,7 +33,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - RockAdmin's own tables — `ra_users`, `ra_login_attempts`,
   `ra_password_resets`, `ra_activity_log` and `ra_migrations` — as one
   dialect-neutral migration file, and `Migrator`, which applies pending
-  migrations in name order, records them, and is safe to run on every deploy.
-  `bin/ra-migrate.php` is the script a project calls until the CLI exists.
+  migrations in name order, records each with a checksum, refuses to continue
+  when an applied migration has been edited since, and is safe to run on every
+  deploy. `bin/ra-migrate.php` is the script a project calls until the CLI
+  exists.
 
 [Unreleased]: https://github.com/tomac1/rockadmin/commits/main
