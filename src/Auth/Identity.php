@@ -42,6 +42,27 @@ final class Identity
      */
     public const string SESSION_KEY = 'ra.user';
 
+    /**
+     * Where the person was going when the kernel sent them to the login page.
+     *
+     * It lives here, next to the key that says who they are, for the reason
+     * the class docblock gives about that one: three copies of a session key
+     * is how a logout stops logging somebody out, and this is the second key
+     * the sign-in flow owns. The alternative was a second seam — the kernel
+     * holding a `SessionStore` of its own beside the `Identity` it already
+     * has — which would put two classes in charge of the same session and
+     * two namespaces in play for one conversation.
+     *
+     * The kernel writes it and the login handler reads it. It is deliberately
+     * not a query parameter or a link: at the moment it is written nobody is
+     * authenticated, and a user-controlled path in a `Location` header at that
+     * exact moment is the open-redirect surface `ReturnAddress` exists to
+     * keep closed. What comes back out of here is still validated by
+     * `ReturnAddress` before it is used, because a session is a place a host
+     * sharing its own session array can write to.
+     */
+    public const string INTENDED_KEY = 'ra.intended';
+
     private ?AuthUser $user = null;
 
     private bool $resolved = false;
@@ -110,6 +131,36 @@ final class Identity
 
         $this->resolved = true;
         $this->user = null;
+    }
+
+    /** Remembers where somebody was going before they were sent to sign in. */
+    public function rememberIntended(string $url): void
+    {
+        $this->session->set(self::INTENDED_KEY, $url);
+    }
+
+    /**
+     * Where they were going, or null.
+     *
+     * A peek rather than a take: `LoginHandler` draws the form more than once
+     * — a refused attempt redraws it — and a value consumed by the first
+     * drawing would leave the second one with nowhere to send the person.
+     * It is forgotten when it has actually been used, by `forgetIntended()`.
+     *
+     * Anything that is not a non-empty string is nobody's address and is
+     * reported as absent, for the same reason `resolve()` treats a session
+     * key holding a non-string as no session at all.
+     */
+    public function intended(): ?string
+    {
+        $url = $this->session->get(self::INTENDED_KEY);
+
+        return \is_string($url) && $url !== '' ? $url : null;
+    }
+
+    public function forgetIntended(): void
+    {
+        $this->session->forget(self::INTENDED_KEY);
     }
 
     /**

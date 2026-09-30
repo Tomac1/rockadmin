@@ -83,15 +83,41 @@ final class Kernel
      * The redirect carries no return address. Building one here would mean
      * writing a user-controlled path into a `Location` header at the exact
      * moment nobody is authenticated, which is the open-redirect surface
-     * `ReturnAddress` exists to keep closed; the login handler that owns the
-     * return address should read the intended URL from the session instead.
+     * `ReturnAddress` exists to keep closed. The address the person was going
+     * to goes into the session instead, through `Identity`, and the login
+     * handler reads it back and validates it there.
      */
     private function unauthenticated(Route $route, Request $request): Response
     {
         if ($request->method === 'GET' && $route->name !== 'region') {
+            $this->identity->rememberIntended($this->intendedUrl($request));
+
             return Response::redirect($this->urls->route('login.form'));
         }
 
         throw new UnauthorizedException();
+    }
+
+    /**
+     * The URL this request was for, query string and all.
+     *
+     * The query string is half the address of a grid — a person deep-linked
+     * into `p/ads?grid[page]=3` who came back to page one would reasonably
+     * think the admin had lost their place. `Request` keeps the parameters
+     * parsed rather than raw, and `UrlGenerator::route()` takes only flat
+     * scalars, so the two halves are joined here: the generator builds the
+     * path in whichever mode this installation runs, and `http_build_query()`
+     * re-encodes the parameters, including the nested ones a grid uses.
+     */
+    private function intendedUrl(Request $request): string
+    {
+        $url = $this->urls->to($request->path);
+        $query = http_build_query($request->query);
+
+        if ($query === '') {
+            return $url;
+        }
+
+        return $url . (str_contains($url, '?') ? '&' : '?') . $query;
     }
 }

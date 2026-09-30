@@ -17,6 +17,16 @@ final class RecordingSessionStore implements SessionStore
 {
     public int $regenerations = 0;
 
+    /**
+     * A stand-in for the session id a real store would reissue.
+     *
+     * Counting regenerations proves the call was made; this proves the thing
+     * the call exists for, which is that the identifier a browser is holding
+     * is not the one it held a moment ago. A test asserting session fixation
+     * is closed should be able to compare the id rather than a counter.
+     */
+    public string $id = 'ra-session-0';
+
     /** @param array<string, mixed> $data */
     public function __construct(private array $data = [])
     {
@@ -40,5 +50,6 @@ final class RecordingSessionStore implements SessionStore
     public function regenerate(): void
     {
         ++$this->regenerations;
+        $this->id = 'ra-session-' . $this->regenerations;
     }
 }

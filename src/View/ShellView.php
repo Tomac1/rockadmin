@@ -31,6 +31,17 @@ final class ShellView
         public readonly ?string $profileUrl = null,
         public readonly ?string $logoutUrl = null,
         public readonly string $darkMode = 'auto',
+        /**
+         * The CSRF token the logout form posts, or null when the shell draws
+         * no logout form.
+         *
+         * `LogoutHandler` refuses a post without one, so a shell that carries
+         * a `logoutUrl` and no token draws a button that cannot work. Milestone
+         * 5 added the check; this is the other half of it, and it is on the
+         * shell rather than in the template because a template may not reach
+         * for a `Csrf` of its own.
+         */
+        public readonly ?string $csrfToken = null,
     ) {
         if (!\in_array($this->darkMode, self::ALLOWED_DARK_MODES, true)) {
             throw new ViewException(

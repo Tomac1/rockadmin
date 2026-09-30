@@ -21,6 +21,12 @@ final class FakeAuthenticator implements Authenticator
 
     public ?AuthUser $loggedOut = null;
 
+    /** What the next attempt answers. Null refuses, as it always did. */
+    public ?LoginResult $nextResult = null;
+
+    /** @var list<array{string, string, string}> every attempt, as it arrived */
+    public array $attempts = [];
+
     /**
      * Keyed by user id. The key type is `array-key` rather than `string`
      * because PHP turns a numeric string key in an array literal into an int,
@@ -35,7 +41,9 @@ final class FakeAuthenticator implements Authenticator
 
     public function attempt(string $email, string $password, string $ip): LoginResult
     {
-        return LoginResult::refused();
+        $this->attempts[] = [$email, $password, $ip];
+
+        return $this->nextResult ?? LoginResult::refused();
     }
 
     public function byId(string $id): ?AuthUser
