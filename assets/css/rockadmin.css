@@ -65,6 +65,36 @@
     --bs-link-color-rgb: var(--bs-primary-rgb);
     --bs-link-hover-color-rgb: 44, 64, 90;
 
+    /* The danger family Bootstrap builds its .alert-danger and its emphasis
+       text from. Bootstrap ships these as literal hex derived from its own
+       #dc3545, so redefining --bs-danger above never reached them: a form's
+       error summary drew Bootstrap's pink on a slate admin. They are mixed
+       from --bs-danger at the same weights Bootstrap's Sass uses
+       (shade 60% for the text, tint 80% and tint 60% for the surfaces), so
+       one palette change still moves all three. Redefined for dark mode with
+       the mix reversed -- these are the tokens whose light-mode values would
+       otherwise sit unchanged on a dark page, because Bootstrap's own dark
+       values are keyed on [data-bs-theme=dark] and nothing else. */
+    --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 40%, black);
+    --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 12%, white);
+    --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 40%, white);
+
+    /* The palette, read as *text on the page background* rather than as a
+       fill behind white text. An accent chosen to look right as a button's
+       background is not the same colour that is legible as 13px type on the
+       body: --bs-secondary measured 3.79:1 and --bs-danger 3.13:1 against
+       the dark body, both under WCAG AA, while both pass comfortably on the
+       light one. So each is darkened here and lightened in the two dark
+       blocks below, and everything that puts a palette colour on the page
+       as ink -- an outline button's label and border, the required marker --
+       reads these rather than the fill tokens. */
+    --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 90%, black);
+    --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 80%, black);
+    --ra-fg-success: color-mix(in srgb, var(--bs-success) 90%, black);
+    --ra-fg-info: color-mix(in srgb, var(--bs-info) 85%, black);
+    --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 90%, black);
+    --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 90%, black);
+
     /* The shell: tokens Bootstrap has no equivalent for, so they are ours
        to name. Templates and this stylesheet are the only readers. */
     --ra-sidebar-width: 15rem;
@@ -111,6 +141,28 @@
     margin-bottom: 0.25rem;
     font-size: 0.85rem;
     font-weight: 600;
+}
+
+/*
+ * The focus ring and the ticked checkbox are the last two places Bootstrap's
+ * own blue reaches the page: .form-control:focus hardcodes #86b7fe and
+ * rgba(13,110,253,.25), and .form-check-input:checked hardcodes #0d6efd.
+ * Neither reads a semantic custom property, so the theme's palette never
+ * touched them -- a form drawn in this admin focused blue and ticked blue
+ * against slate everything else, which is the same defect the .btn-* block
+ * below exists for. Found by looking at the form in a browser, not by
+ * reading this file.
+ */
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    border-color: color-mix(in srgb, var(--bs-primary) 55%, white);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+.form-check-input:checked {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
 }
 
 .btn {
@@ -163,6 +215,49 @@
    mode, so its text colour has to follow too — a fixed #000 would be the
    navbar's bug again, dormant until a template uses this class. */
 .btn-light { --ra-btn-color: var(--bs-light); --bs-btn-color: var(--bs-dark); --bs-btn-hover-color: var(--bs-dark); --bs-btn-active-color: var(--bs-dark); --bs-btn-disabled-color: var(--bs-dark); }
+
+/*
+ * The outline buttons have the same problem as the solid ones and one more
+ * on top of it: .btn-outline-danger hardcodes --bs-btn-color:#dc3545, so the
+ * form's Delete button was Bootstrap's red on a slate admin, and because an
+ * outline button's colour is *ink on the page* rather than a fill behind
+ * white text, the unadjusted accent failed WCAG AA on the dark body --
+ * measured 3.93:1 for Delete and 3.79:1 for Cancel before this block. They
+ * read --ra-fg-*, which is the same palette adjusted for legibility as text
+ * and redefined per theme. The hover state fills with the accent itself,
+ * where white text is what belongs.
+ */
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-success,
+.btn-outline-info,
+.btn-outline-warning,
+.btn-outline-danger,
+.btn-outline-light,
+.btn-outline-dark {
+    --bs-btn-color: var(--ra-btn-outline-color);
+    --bs-btn-border-color: var(--ra-btn-outline-color);
+    --bs-btn-hover-bg: var(--ra-btn-outline-fill);
+    --bs-btn-hover-border-color: var(--ra-btn-outline-fill);
+    --bs-btn-hover-color: var(--ra-btn-outline-contrast);
+    --bs-btn-active-bg: var(--ra-btn-outline-fill);
+    --bs-btn-active-border-color: var(--ra-btn-outline-fill);
+    --bs-btn-active-color: var(--ra-btn-outline-contrast);
+    --bs-btn-disabled-color: var(--ra-btn-outline-color);
+    --bs-btn-disabled-border-color: var(--ra-btn-outline-color);
+}
+
+.btn-outline-primary { --ra-btn-outline-color: var(--ra-fg-primary); --ra-btn-outline-fill: var(--bs-primary); --ra-btn-outline-contrast: #fff; }
+.btn-outline-secondary { --ra-btn-outline-color: var(--ra-fg-secondary); --ra-btn-outline-fill: var(--bs-secondary); --ra-btn-outline-contrast: #fff; }
+.btn-outline-success { --ra-btn-outline-color: var(--ra-fg-success); --ra-btn-outline-fill: var(--bs-success); --ra-btn-outline-contrast: #fff; }
+.btn-outline-info { --ra-btn-outline-color: var(--ra-fg-info); --ra-btn-outline-fill: var(--bs-info); --ra-btn-outline-contrast: #fff; }
+.btn-outline-warning { --ra-btn-outline-color: var(--ra-fg-warning); --ra-btn-outline-fill: var(--bs-warning); --ra-btn-outline-contrast: #fff; }
+.btn-outline-danger { --ra-btn-outline-color: var(--ra-fg-danger); --ra-btn-outline-fill: var(--bs-danger); --ra-btn-outline-contrast: #fff; }
+/* .btn-outline-light's ink is --bs-light, which is a light shade in light
+   mode and a dark one in dark mode -- it follows the theme already, so it
+   takes --bs-dark as its contrast rather than a fixed #fff. */
+.btn-outline-light { --ra-btn-outline-color: var(--bs-light); --ra-btn-outline-fill: var(--bs-light); --ra-btn-outline-contrast: var(--bs-dark); }
+.btn-outline-dark { --ra-btn-outline-color: var(--bs-dark); --ra-btn-outline-fill: var(--bs-dark); --ra-btn-outline-contrast: var(--bs-light); }
 
 /* The shell itself. */
 .ra-navbar {
@@ -439,6 +534,193 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     color: var(--bs-secondary-color, var(--bs-secondary));
 }
 
+/*
+ * The grid's own action affordances: the header strip that holds the create
+ * button and the last column of each row that holds the edit link. Both
+ * shipped with no rules at all and relied entirely on Bootstrap's `btn`,
+ * which left the button flush against the viewport edge while the toolbar
+ * below it sat inside the region's 1rem padding -- two elements a person
+ * reads as one strip, misaligned by exactly that padding.
+ */
+.ra-grid-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--ra-grid-gap);
+    padding: 1rem 1rem 0;
+}
+
+/*
+ * The actions column carries one short link, so it takes the narrowest width
+ * the table will give it (`width: 1%` with `white-space: nowrap` is the
+ * table-layout idiom for "as narrow as the content") and leaves the rest to
+ * the columns that hold data.
+ */
+.ra-grid-head-actions,
+.ra-grid-cell-actions {
+    width: 1%;
+    white-space: nowrap;
+    text-align: end;
+}
+
+.ra-grid-edit {
+    font-weight: 600;
+}
+
+/*
+ * Bootstrap's .pagination hardcodes its active background as its own blue
+ * (bootstrap.min.css: .active>.page-link{--bs-pagination-active-bg:#0d6efd}),
+ * the same way its buttons do, so the theme's palette never reaches it. The
+ * current page of the grid was Bootstrap blue against a slate admin until
+ * this block, which is spec 8.8's rule applied to the one component that had
+ * been missed.
+ */
+.ra-grid-pagination-list {
+    --bs-pagination-color: var(--bs-link-color);
+    --bs-pagination-hover-color: var(--bs-link-hover-color);
+    --bs-pagination-focus-color: var(--bs-link-hover-color);
+    --bs-pagination-active-bg: var(--bs-primary);
+    --bs-pagination-active-border-color: var(--bs-primary);
+    --bs-pagination-bg: var(--bs-body-bg);
+    --bs-pagination-hover-bg: var(--bs-tertiary-bg, var(--bs-light));
+    --bs-pagination-focus-bg: var(--bs-tertiary-bg, var(--bs-light));
+    --bs-pagination-disabled-bg: var(--bs-body-bg);
+    --bs-pagination-disabled-color: var(--bs-secondary-color, var(--bs-secondary));
+    --bs-pagination-border-color: var(--bs-border-color);
+    --bs-pagination-disabled-border-color: var(--bs-border-color);
+}
+
+/*
+ * The form region. It is the same surface as a preview -- one bordered card
+ * on the page background -- because they are the two ways this admin shows a
+ * single row, and a create screen that looked like a different application
+ * from the detail screen beside it would be the theme failing at its one job.
+ *
+ * Nothing here depends on a field having been refused: `ra-form-field-*`
+ * carries the type and the key and never the error state, so a redrawn form
+ * is laid out by exactly the selectors that laid out the fresh one.
+ */
+.ra-region-form,
+.ra-form {
+    display: block;
+    max-width: 46rem;
+    margin: 1rem;
+    background-color: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+.ra-form-title {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.ra-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.ra-form-field {
+    min-width: 0;
+}
+
+/*
+ * A checkbox is the one field whose control belongs beside its label rather
+ * than under it: a lone box on its own line under the word "Featured" reads
+ * as a box that lost its caption. The label is pulled into a row with the
+ * control, and the help text stays underneath both.
+ */
+.ra-form-field-checkbox {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0 0.5rem;
+}
+
+.ra-form-field-checkbox .ra-form-label {
+    order: 2;
+    margin-bottom: 0;
+}
+
+.ra-form-field-checkbox .ra-form-control-checkbox {
+    order: 1;
+    margin: 0;
+}
+
+.ra-form-field-checkbox .ra-form-error,
+.ra-form-field-checkbox .ra-form-help {
+    order: 3;
+    grid-column: 1 / -1;
+}
+
+/*
+ * The required marker is decorative -- `aria-hidden`, because the control
+ * itself carries `required` and a screen reader reads that -- so it is drawn
+ * as an accent rather than as part of the label's text.
+ */
+.ra-form-required {
+    color: var(--ra-fg-danger);
+    margin-left: 0.15rem;
+}
+
+/*
+ * The per-field error, deliberately not Bootstrap's .invalid-feedback, which
+ * is display:none until a sibling carries .is-invalid. Milestone 4 shipped a
+ * toast nobody could see for exactly that reason; a message someone needs in
+ * order to fix their form is not a thing to hang on another class being
+ * present. --bs-danger-text-emphasis is the theme-aware reading of the
+ * danger colour, which keeps it legible on the dark body background too.
+ */
+.ra-form-error {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--bs-danger-text-emphasis, var(--bs-danger));
+}
+
+.ra-form-help {
+    margin: 0.25rem 0 0;
+}
+
+.ra-form-errors {
+    margin-bottom: 1rem;
+}
+
+.ra-form-errors-title {
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+
+.ra-form-errors-list {
+    margin-bottom: 0;
+    padding-left: 1.1rem;
+}
+
+.ra-form-errors-link {
+    color: inherit;
+}
+
+.ra-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ra-grid-gap);
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+/*
+ * Delete is pushed to the far end of the row, away from Save: they are the
+ * two submit buttons of the same form, and a destructive one sitting next to
+ * the one everybody presses is how a row gets deleted by a slipped click.
+ */
+.ra-form-delete {
+    margin-left: auto;
+}
+
 .ra-grid-pagination {
     padding: 0 1rem 1rem;
 }
@@ -492,6 +774,17 @@ th[aria-sort="descending"] .ra-grid-sort::after {
         --bs-link-color-rgb: 126, 163, 196;
         --bs-link-hover-color-rgb: 156, 188, 216;
 
+        --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 55%, white);
+        --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 22%, black);
+        --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 45%, black);
+
+        --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 45%, white);
+        --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 55%, white);
+        --ra-fg-success: color-mix(in srgb, var(--bs-success) 55%, white);
+        --ra-fg-info: color-mix(in srgb, var(--bs-info) 55%, white);
+        --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 60%, white);
+        --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 55%, white);
+
         --bs-emphasis-color: #fff;
         --bs-emphasis-color-rgb: 255, 255, 255;
         --bs-secondary-color: rgba(223, 227, 230, 0.75);
@@ -541,6 +834,17 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     --bs-link-hover-color: #9cbcd8;
     --bs-link-color-rgb: 126, 163, 196;
     --bs-link-hover-color-rgb: 156, 188, 216;
+
+    --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 55%, white);
+    --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 22%, black);
+    --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 45%, black);
+
+    --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 45%, white);
+    --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 55%, white);
+    --ra-fg-success: color-mix(in srgb, var(--bs-success) 55%, white);
+    --ra-fg-info: color-mix(in srgb, var(--bs-info) 55%, white);
+    --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 60%, white);
+    --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 55%, white);
 
     --bs-emphasis-color: #fff;
     --bs-emphasis-color-rgb: 255, 255, 255;

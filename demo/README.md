@@ -48,3 +48,37 @@ With no database configured, `/p/ads` still renders — the shell, the menu,
 the page header — and says on the page that no database is configured,
 rather than throwing a connection error at whoever only came to look at the
 theme.
+
+## The form
+
+The same file declares a `form` region, so the grid's **New ads** button and
+each row's **Edit** link lead somewhere: `/p/ads/create`, `/p/ads/{id}/edit`
+and `/p/ads/{id}/copy` draw it, and `POST /a/ads/{create,update,delete}` is
+the only thing in the admin that changes a row.
+
+Six of the eleven field types are on it, which is every one this table can
+honestly carry — text, textarea, number, a select whose options come from
+`config/enums.php` through the same `@enum:ad_state` reference the grid's
+badge and filter read, a checkbox and a date — plus a hidden `created_at`
+with an `@now` default, applied when the row is saved and never drawn as a
+control. `copy.reset` names `published_on`, so a copy carries everything
+except the publication date, which starts at today's default again.
+
+Things worth doing once, in a browser, because each of them was a defect at
+some point in this project's history:
+
+- Save a new ad: the toast, the redirect, and the row at the top of the grid.
+- Filter the grid, go to page 2, edit a row and save: you come back to that
+  same filtered page, not to page 1. The link carries the grid's state as
+  `_ret`, which is validated as an internal path and never trusted verbatim.
+- Submit something invalid: the page comes back at 422 with every error at
+  once, each one against its field and in the summary at the top, and what
+  you typed still in the inputs.
+- Turn JavaScript off and do all of it again. Nothing here needs a script —
+  `core.js` only adds the confirmation in front of Delete, and the server
+  never treats that attribute as evidence that anybody agreed.
+- Toggle your operating system's dark mode on the form. Every colour on it
+  comes from a token that is redefined for dark mode; an accent that is legible
+  as a button fill is not automatically legible as text, which is why the
+  outline buttons and the required marker read `--ra-fg-*` and not
+  `--bs-danger`.

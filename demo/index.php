@@ -28,16 +28,22 @@ use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\SqlRowSource;
+use RockAdmin\Db\SqlWriteHandler;
+use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FormRegion;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
 use RockAdmin\Grid\PreviewRegion;
 use RockAdmin\Grid\QueryFactory;
-use RockAdmin\Http\ArraySessionStore;
+use RockAdmin\Http\ActionHandler;
+use RockAdmin\Http\Csrf;
 use RockAdmin\Http\DetailHandler;
 use RockAdmin\Http\ErrorHandler;
+use RockAdmin\Http\FormHandler;
 use RockAdmin\Http\Handler;
 use RockAdmin\Http\HandlerRegistry;
 use RockAdmin\Http\Kernel;
+use RockAdmin\Http\NativeSessionStore;
 use RockAdmin\Http\NotFoundException;
 use RockAdmin\Http\PageHandler;
 use RockAdmin\Http\RegionHandler;
@@ -78,7 +84,14 @@ $configString = static function (Config $config, string $path, string $default):
 $debugValue = $config->get('debug', false);
 $debug = is_bool($debugValue) ? $debugValue : false;
 
-$session = new ArraySessionStore();
+// A native session, not an ArraySessionStore: a CSRF token has to survive
+// from the request that draws a form to the request that posts it, and a
+// flash message has to survive a redirect. An in-memory store forgets both
+// between requests, which would make every save a 403 and every toast
+// invisible -- the two failures this milestone's browser check exists to
+// catch. ArraySessionStore is for tests and the CLI, where there is no
+// session to keep.
+$session = new NativeSessionStore();
 $urlMode = $configString($config, 'url_mode', 'path');
 $urls = new UrlGenerator('/', $urlMode);
 
@@ -225,6 +238,40 @@ if ($connection !== null) {
         ($menu)(),
     ));
     $handlers->register('region', new RegionHandler($pages, $listRegion, $previewRegion, $renderer));
+
+    // The write path. `FormHandler` draws the form for all three of
+    // `page.create`, `page.edit` and `page.copy`; `ActionHandler` is the only
+    // thing in the admin that changes a row, and every one of the three verbs
+    // it accepts arrives as a POST to `a/{page}/{action}` carrying the token
+    // the form put in its body. The two share a `FormRegion` so that a
+    // refused submission is redrawn by exactly the code that drew it first.
+    $csrf = new Csrf($session);
+    $formRegion = new FormRegion($rows, $urls, $csrf);
+    $forms = new FormHandler(
+        $pages,
+        $formRegion,
+        $renderer,
+        $assets,
+        $flashes,
+        $urls,
+        $brand,
+        $darkMode,
+        ($menu)(),
+    );
+
+    $handlers->register('page.create', $forms);
+    $handlers->register('page.edit', $forms);
+    $handlers->register('page.copy', $forms);
+    $handlers->register('action', new ActionHandler(
+        $pages,
+        $formRegion,
+        new FieldValidator(),
+        new SqlWriteHandler($connection),
+        $forms,
+        $csrf,
+        $flashes,
+        $urls,
+    ));
 } else {
     // No database configured: still render the shell and the page header for
     // every real page, so cloning the repository to look at the theme works
@@ -297,12 +344,21 @@ if ($connection !== null) {
             throw new NotFoundException('No database is configured for this demo.');
         }
     });
-    $handlers->register('page.detail', new class () implements Handler {
+    // The form routes and the action route need the same database the grid
+    // does, so without one they answer the same way the detail route already
+    // does: plainly, rather than with a fatal error from a null connection.
+    $noDatabase = new class () implements Handler {
         public function handle(Route $route, Request $request): Response
         {
             throw new NotFoundException('No database is configured for this demo.');
         }
-    });
+    };
+
+    $handlers->register('page.detail', $noDatabase);
+    $handlers->register('page.create', $noDatabase);
+    $handlers->register('page.edit', $noDatabase);
+    $handlers->register('page.copy', $noDatabase);
+    $handlers->register('action', $noDatabase);
 }
 
 $errors = new ErrorHandler(
