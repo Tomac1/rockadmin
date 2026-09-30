@@ -142,8 +142,9 @@ templates/region/form/field/     text.php textarea.php number.php select.php
 **Modified:**
 
 - `src/Db/Connection.php` — `transaction(Closure)`
+- `src/Page/RegionDefinition.php` — the form it carries when it is one
 - `src/Db/DbException.php` — nothing; milestone 6 already added the SQLSTATE
-- `src/Page/PageSchema.php`, `PageRepository.php`, `PageDefinition.php` — the `form` block
+- `src/Page/PageSchema.php`, `PageRepository.php`, `PageDefinition.php` — the `form` block and the region lookups
 - `src/Page/RegionType.php` — the `form` case
 - `templates/region/list/` — a row's edit link, and the page header's create button
 - `assets/js/core.js` — submitting a form through the action route
@@ -234,7 +235,7 @@ git commit -m "Declare what a form field may say" -- src/Page tests/Unit/Page do
 
 **Files:**
 - Create: `src/Page/FormDefinition.php`, `src/Page/FieldDefinition.php`
-- Modify: `src/Page/PageRepository.php`, `src/Page/PageDefinition.php`
+- Modify: `src/Page/PageRepository.php`, `src/Page/RegionDefinition.php`, `src/Page/PageDefinition.php`, `src/Http/DetailHandler.php`
 - Test: `tests/Unit/Page/PageRepositoryFormTest.php`
 
 **Interfaces:**
@@ -280,8 +281,22 @@ git commit -m "Declare what a form field may say" -- src/Page tests/Unit/Page do
       public readonly ?string $pattern;
   }
   ```
-  `PageDefinition` gains `public readonly ?FormDefinition $form` — null when
-  the page declares no form, which is legal: a read-only page is a page.
+  `RegionDefinition` gains `public readonly ?FormDefinition $form` — non-null
+  only for a region whose type is `form`.
+
+  **A form is a region, not a page-level block.** Specification 6.2 writes
+  `'form' => [...]` beside `regions`, but 8.5 then says a preview is "only
+  shorthand" for a region plus an action and that "nothing in the core treats
+  preview specially" — and milestone 6 built exactly that: a preview is a
+  region and the page-level shorthand was never implemented. A form is the
+  same shape for the same reason, and milestone 8 will want to open one by
+  `@region:` like anything else. The shorthand that expands `'form' => [...]`
+  into a region named `form` can be added later, for both, in one place.
+
+  `PageDefinition` gains `firstFormRegion(): ?RegionDefinition`, matching the
+  `firstPreviewRegion()` that `DetailHandler` already carries privately — and
+  moving that one onto `PageDefinition` too, so there is one lookup rather
+  than a growing set of private copies in handlers.
 
 **What is refused at load**, in the style of the refusals already there, each
 naming the page and the field:
@@ -300,8 +315,10 @@ naming the page and the field:
 Cover at least: a form loads with its fields keyed by name; a field's label
 defaults from its key; `editable()` excludes both readonly and hidden
 fields; an `@enum:` reference resolves; a placeholder default survives as
-a `Placeholder` object rather than a string; `copy.reset` is read; a page with
-no `form` block has a null form; and one test per refusal above.
+a `Placeholder` object rather than a string; `copy.reset` is read; a region that is not a
+form has a null form; a page with no form region answers null from
+`firstFormRegion()`; and `DetailHandler` still finds its preview after the
+lookup moved; and one test per refusal above.
 
 - [ ] **Step 2-6: Fail, implement, regenerate the reference, gate, commit**
 
@@ -414,7 +431,14 @@ This is the same discard rule as the grid's, and for the same reason.
   is not empty; for everything else, an empty string is empty and `'0'` is not
 - `number`: numeric, and within `min`/`max` when declared
 - `text`, `textarea`, `password`: length within `min`/`max` when declared
-- `pattern`: matches
+- `pattern`: matches. A pattern that is syntactically valid can still be
+  catastrophic — `(a+)+$` against a long non-matching string backtracks for
+  ever — and the load-time check cannot see that, because it runs the pattern
+  against an empty string and returns instantly whatever the behaviour. So
+  treat `preg_match()` returning `false` as a validation failure naming the
+  field, rather than letting it propagate: PCRE has already given up at its
+  backtrack limit, and the honest answer to the person filling in the form is
+  that the value could not be checked.
 - `select`, `radio`: the value is one of the declared options
 - `multiselect`: a list, every entry one of the declared options
 - `date`, `datetime`: parses as the format the field renders, refusing a value
@@ -782,3 +806,128 @@ links, both because nobody opened the page. This is where that is caught.
   buttons. Milestone 8.
 - **Inline cell editing**, reserved for v1.1 by spec 8.12, which this
   milestone's single write path is what makes possible.
+
+## Amendments made during execution
+
+Recorded as they were decided, so the plan and the code do not disagree.
+
+**A field's `pattern` is anchored, and this changes behaviour for anyone
+upgrading.** It was compiled unanchored, which made it a substring match: the
+schema's own example `[A-Z]{2}\d{4}` accepted
+`'; DROP TABLE users; -- AB1234`. It now compiles as `~^(?:…)$~D`. The
+`(?:…)` matters because a top-level alternation would otherwise anchor only
+its first branch, and the `D` matters because `$` admits a trailing newline
+without it. **Release note:** a project whose pattern relied on substring
+matching — `[A-Z]{2}` meaning "contains two capitals" — starts refusing
+submissions on upgrade. This is the right direction, but it must be announced
+rather than discovered. The HTML `pattern` attribute this mirrors is
+implicitly anchored by every browser, so the old behaviour made the
+server-side check strictly weaker than the client-side hint.
+
+**Validation has one entry point.** `validate()` returns a `ValidationResult`
+carrying both the errors and the coerced values, and asking it for values
+while any error stands raises. The previous shape was two calls with a
+docblock saying "call after validate()", which returned a value the
+configuration never offered when a caller got the order wrong. There were no
+callers outside `src/Form/` at the time, so this was the cheapest it would
+ever be to change.
+
+**`required` on a checkbox means "must be ticked".** The plan originally said
+an unchecked one passes, which makes the flag do nothing on the one type where
+"you must accept the terms" is the commonest reason to set it.
+
+**An insert may let the database assign the key.** The plan assumed a key is
+always known before the write, which `@uuid` supports but autoincrement and
+identity columns do not — and every table in the first real project this runs
+against uses a generated key. The server difference lives in `Dialect`:
+`lastInsertId()` on MySQL, `INSERT … RETURNING` on PostgreSQL, whose
+`lastInsertId()` needs a sequence name and is fragile.
+
+**`transaction()` joins a transaction it opened itself.** Nesting was refused
+outright, which is right for a transaction RockAdmin knows nothing about but
+forbids the atomic bulk action rule 7 requires. It is now depth-counted with
+no savepoints: the outermost call commits, inner calls neither commit nor roll
+back, and a foreign transaction is still refused.
+
+**Values are bound by inferred type.** `PDOStatement::execute(array)` binds
+everything as a string and PHP stringifies `false` to `''`, so the one write
+path could not store a `false` — which is what every unchecked checkbox
+produces. This was invisible locally because the development MySQL runs
+without `STRICT_TRANS_TABLES`, silently coercing `''` to `0`; the test suite
+now sets a strict `sql_mode` per session so it tests the world it deploys
+into.
+
+**A field key may not begin with an underscore.** Those names are reserved for
+the body keys a form carries but an entity does not — `_csrf`, `_id`, `_ret`,
+named in `RockAdmin\Form\FormFields`. Without the refusal, a field named `_id`
+would render a control colliding with the hidden input that says which row to
+write, so whichever the browser sent last would win.
+
+**The form block lives inside a region, not beside `regions`.** Specification
+6.2 writes it at page level, but 8.5 calls a preview "only shorthand" for a
+region, and milestone 6 built exactly that. A form is the same shape for the
+same reason, and milestone 8 will want to open one by `@region:`.
+
+**A return address is a parameter of every `FormRegion` method.** It was left
+to Task 8, which would have made the milestone's own acceptance criterion —
+saving returns to the grid page you came from, filters intact — unreachable,
+because `_ret` is lost the moment somebody enters the form.
+
+**A return address is validated in two places, because one of them cannot see
+the mount point.** The brief's `ReturnAddress::from(mixed): ?self` has no
+access to a `UrlGenerator`, so it cannot answer "does this begin with the
+admin's own path". It therefore answers everything that is context-free — a
+string, absolute, not `//`, no scheme, no backslash, no control character, no
+percent-escape decoding to one, no dot segment, at most 2048 bytes — and
+`url(UrlGenerator)` asks the remaining question at the moment the answer is
+needed, falling back to the admin's own root. It reads the mount point as
+`$urls->to('')` rather than through a new accessor, so the one piece of
+knowledge about where the admin lives stays in the one class that has it.
+
+**A delete's integrity failure is a flash and a redirect, not a 422.** Steps 3
+and 4 of the action route's shape both say "redraw the form", and a delete has
+no form and no submission: a 422 carrying a form the person was not filling in
+would be a fiction, and redrawing the edit form for the row that would not
+delete puts them back on a page whose Save button is not what they wanted. The
+honest answer is the message on the grid they were going back to. The 422 shape
+still holds for create and update.
+
+**A default is reapplied on save for a create, not for an update.** Spec 7.6
+says a default applies again on save "for fields the form did not offer", which
+is what stops a tampered submission dropping a workspace scope. Doing the same
+on an update would overwrite a row's own `created_at` with `@now` every time
+somebody fixed a typo. The scope-dropping attack it exists to stop is an insert
+of a row into somebody else's workspace; an update cannot move a row it was
+already allowed to address.
+
+**The grid's create button and edit links are `ListView`/`RowView` data, and
+`Grid` now imports `Form\FormFields`.** A template has no `UrlGenerator` and
+must not build a URL, and the return address these links carry is the grid's
+current filters, sort and page — which only `ListRegion` knows. So `ListView`
+gained `createUrl` (null when the page declares no form) and `RowView` gained
+`editUrl`, and the actions column exists exactly when
+`ListView::hasRowActions()` says so, because a `<th>` and a `<td>` that decided
+it separately would disagree. Writing `_ret` through `FormFields::RETURN_TO`
+rather than as a literal adds a `Grid` → `Form` edge to the dependency note
+below; `FormFields` is static leaf vocabulary and moves with the rest of it.
+
+**Delete is a submit button with `formaction`, and `FormView` gained
+`deleteAction`.** A delete needs the token, the row's key and the return
+address, all of which the edit form already carries, and HTML forbids a nested
+`<form>`. `formaction` on a submit button redirects that one submission to
+`POST /a/{page}/delete` with no script and no duplicated inputs;
+`formnovalidate` is what lets a row with an empty required field still be
+deleted. It carries `data-ra-confirm`, which `core.js` binds in the capture
+phase; the handler looks for no confirmation flag at all, because an attribute
+in an editable document is not evidence that anybody agreed.
+
+### Carried forward, deliberately not done here
+
+**`Page` must not depend on `Form`.** The two now import each other:
+`PageRepository` reaches for `DefaultValue::isToken()` and
+`FormFields::reserved()`, while `Form` reads `FieldDefinition` and `FieldType`.
+A configuration loader has no business reaching into the runtime that consumes
+its output, and a cycle is what makes a layer diagram stop explaining
+anything. Both things `Page` needs are static leaf vocabulary and move
+cheaply. Left until the milestone's agents are out of those files; do it
+before milestone 8 adds callers.

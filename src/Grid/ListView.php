@@ -49,7 +49,26 @@ final class ListView
          * region's own fetch address instead of navigating there.
          */
         public readonly string $pageUrl,
+        /**
+         * '/p/{page}/create' with this grid's own state as the return
+         * address, or null when the page declares no form region and there
+         * is therefore nothing to create. The same fact decides whether each
+         * row carries an edit link, which is what `hasRowActions()` reads:
+         * a grid that can create can edit, because both are the one form.
+         */
+        public readonly ?string $createUrl = null,
     ) {
+    }
+
+    /**
+     * Whether the table carries an actions column at all. `head.php` and
+     * `row.php` must agree about this or the header and the body disagree
+     * about how many cells a row has, so it is answered here once rather
+     * than inferred twice.
+     */
+    public function hasRowActions(): bool
+    {
+        return $this->createUrl !== null;
     }
 
     public function isEmpty(): bool

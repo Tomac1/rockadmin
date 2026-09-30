@@ -25,6 +25,9 @@ use RockAdmin\Db\Relation;
 use RockAdmin\Db\Sort;
 use RockAdmin\Db\SortDirection;
 use RockAdmin\Db\SourcePath;
+use RockAdmin\Form\DefaultValue;
+use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FormFields;
 
 /**
  * Reads a directory of page files and turns each into a PageDefinition.
@@ -626,7 +629,280 @@ final class PageRepository
         $searchConfig = \is_array($regionConfig['search'] ?? null) ? $regionConfig['search'] : [];
         $searchPlaceholder = \is_string($searchConfig['placeholder'] ?? null) ? $searchConfig['placeholder'] : null;
 
-        return new RegionDefinition($regionKey, $type, $perPage, $columns, $sort, $searchable, searchPlaceholder: $searchPlaceholder);
+        $form = null;
+        $hasFormBlock = \array_key_exists('form', $regionConfig) && $regionConfig['form'] !== null;
+
+        if ($type === RegionType::Form) {
+            if (!\is_array($regionConfig['form'] ?? null)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' is a form, but declares no 'form' block.",
+                    $pageName,
+                    $regionKey,
+                ));
+            }
+
+            /** @var array<string, mixed> $formConfig */
+            $formConfig = $regionConfig['form'];
+            $form = $this->buildForm($pageName, $regionKey, $formConfig);
+        } elseif ($hasFormBlock) {
+            // Everything else in this loader refuses configuration that
+            // does nothing: a source paired with a collection, a filter on
+            // a collection column, an undeclared sort target. A 'form'
+            // block on a region whose type is not 'form' is read only
+            // inside the branch above and would otherwise be dropped
+            // exactly as silently.
+            throw new PageException(\sprintf(
+                "Page '%s': region '%s' has a 'form' block, but its type is '%s', not 'form'.",
+                $pageName,
+                $regionKey,
+                $type->value,
+            ));
+        }
+
+        return new RegionDefinition(
+            $regionKey,
+            $type,
+            $perPage,
+            $columns,
+            $sort,
+            $searchable,
+            searchPlaceholder: $searchPlaceholder,
+            form: $form,
+        );
+    }
+
+    /** @param array<string, mixed> $formConfig */
+    private function buildForm(string $pageName, string $regionKey, array $formConfig): FormDefinition
+    {
+        /** @var array<string, mixed> $fieldsConfig */
+        $fieldsConfig = \is_array($formConfig['fields'] ?? null) ? $formConfig['fields'] : [];
+        $fields = [];
+
+        foreach ($fieldsConfig as $fieldKey => $fieldConfig) {
+            $fieldKey = (string) $fieldKey;
+
+            if (!\is_array($fieldConfig)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': field '%s' must be an array, got %s.",
+                    $pageName,
+                    $fieldKey,
+                    get_debug_type($fieldConfig),
+                ));
+            }
+
+            /** @var array<string, mixed> $fieldConfig */
+            $fields[$fieldKey] = $this->buildField($pageName, $fieldKey, $fieldConfig);
+        }
+
+        /** @var array<string, mixed> $copyConfig */
+        $copyConfig = \is_array($formConfig['copy'] ?? null) ? $formConfig['copy'] : [];
+        $resetRaw = \is_array($copyConfig['reset'] ?? null) ? $copyConfig['reset'] : [];
+        $resetOnCopy = [];
+
+        foreach ($resetRaw as $resetKey) {
+            if (!\is_string($resetKey) && !\is_int($resetKey)) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' names a copy.reset entry as a %s. Field keys are strings.",
+                    $pageName,
+                    $regionKey,
+                    get_debug_type($resetKey),
+                ));
+            }
+
+            $resetKey = (string) $resetKey;
+
+            if (!isset($fields[$resetKey])) {
+                $nearest = Schema::nearestOf(array_keys($fields), $resetKey);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' has copy.reset naming '%s', which is not a field of this form.%s",
+                    $pageName,
+                    $regionKey,
+                    $resetKey,
+                    $suffix,
+                ));
+            }
+
+            $resetOnCopy[] = $resetKey;
+        }
+
+        return new FormDefinition($fields, $resetOnCopy);
+    }
+
+    /** @param array<string, mixed> $fieldConfig */
+    private function buildField(string $pageName, string $fieldKey, array $fieldConfig): FieldDefinition
+    {
+        // A form carries a few body keys that are not columns: the row's own
+        // key and the return address. A field named one of them would render
+        // a control colliding with the hidden input beside it, and whichever
+        // the browser sent last would win — so a person could aim an update
+        // at a different row by typing into a visible text box. The refusal
+        // covers every leading underscore rather than only today's two
+        // names, which is the rule FormFields itself states, so that adding
+        // a third reserved key later cannot collide with a page already in
+        // git.
+        if (str_starts_with($fieldKey, '_')) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' may not begin with an underscore. Those names are reserved for the "
+                    . "keys a form carries beside its fields: '%s'.",
+                $pageName,
+                $fieldKey,
+                implode("', '", FormFields::reserved()),
+            ));
+        }
+
+        $typeValue = \is_string($fieldConfig['type'] ?? null) ? $fieldConfig['type'] : 'text';
+
+        try {
+            $type = FieldType::parse($typeValue);
+        } catch (PageException $e) {
+            throw new PageException(
+                "Page '{$pageName}': field '{$fieldKey}': {$e->getMessage()}",
+                previous: $e,
+            );
+        }
+
+        $label = \is_string($fieldConfig['label'] ?? null) && $fieldConfig['label'] !== ''
+            ? $fieldConfig['label']
+            : $this->labelFromKey($fieldKey);
+
+        // An explicit 'options' => [] is the same broken state as declaring
+        // none at all: a control with nothing to choose from. Both are
+        // refused the same way, by the same check below.
+        $optionsRaw = \array_key_exists('options', $fieldConfig) ? $fieldConfig['options'] : null;
+        $hasOptions = $optionsRaw !== null && $optionsRaw !== [];
+
+        if ($hasOptions && !$type->takesOptions()) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has 'options', but type '%s' does not take options.",
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        if (!$hasOptions && $type->takesOptions()) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has type '%s', which needs 'options', but none were given.",
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        $options = $hasOptions ? $this->resolveOptions($optionsRaw, $pageName, $fieldKey, 'field') : [];
+
+        $required = ($fieldConfig['required'] ?? false) === true;
+        $readonly = ($fieldConfig['readonly'] ?? false) === true;
+        $hidden = ($fieldConfig['hidden'] ?? false) === true;
+        $default = \array_key_exists('default', $fieldConfig) ? $fieldConfig['default'] : null;
+
+        // A default is a literal, a {{placeholder}}, or one of the tokens
+        // DefaultValue knows how to expand -- @now and @uuid. Anything else
+        // starting with '@' is refused here, at load, rather than left to
+        // fail silently the first time a row is created: DefaultValue::for()
+        // refuses it too, but only once a page is already being served.
+        // isToken() is reused rather than a second literal list of tokens,
+        // so the two cannot drift apart.
+        if (\is_string($default) && str_starts_with($default, '@') && !DefaultValue::isToken($default)) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has default '%s', which is not a known token. The tokens are '@now' "
+                    . "and '@uuid'.",
+                $pageName,
+                $fieldKey,
+                $default,
+            ));
+        }
+
+        if ($required && $readonly) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is both 'required' and 'readonly', which asks for a value the form "
+                    . 'will never send.',
+                $pageName,
+                $fieldKey,
+            ));
+        }
+
+        // Unlike readonly, hidden is not always the same dead end: a hidden
+        // field's value comes from its default when the row is saved (rule
+        // 7.6), so 'required' + 'hidden' with a default is how a workspace
+        // scope is both always present and never editable. Without a
+        // default there is nothing that could ever satisfy 'required'.
+        if ($required && $hidden && $default === null) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is both 'required' and 'hidden' but declares no 'default'. A hidden "
+                    . 'field takes its value from its default when the row is saved, so nothing could ever '
+                    . "satisfy 'required'.",
+                $pageName,
+                $fieldKey,
+            ));
+        }
+
+        $help = \is_string($fieldConfig['help'] ?? null) ? $fieldConfig['help'] : '';
+        $placeholder = \is_string($fieldConfig['placeholder'] ?? null) ? $fieldConfig['placeholder'] : '';
+
+        $min = \is_int($fieldConfig['min'] ?? null) ? $fieldConfig['min'] : null;
+        $max = \is_int($fieldConfig['max'] ?? null) ? $fieldConfig['max'] : null;
+
+        if ($min !== null && $max !== null && $min > $max) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has min %d greater than max %d.",
+                $pageName,
+                $fieldKey,
+                $min,
+                $max,
+            ));
+        }
+
+        $step = \is_string($fieldConfig['step'] ?? null) ? $fieldConfig['step'] : null;
+        $rows = \is_int($fieldConfig['rows'] ?? null) ? $fieldConfig['rows'] : null;
+        $pattern = \is_string($fieldConfig['pattern'] ?? null) ? $fieldConfig['pattern'] : null;
+
+        // Compiled through FieldValidator::compile(), not a second
+        // expression of its own: the validator anchors a pattern and sets
+        // the D modifier, and a load-time check run against a different
+        // expression from the one that actually runs is not a check.
+        if ($pattern !== null && @preg_match(FieldValidator::compile($pattern), '') === false) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has an invalid pattern '%s'.",
+                $pageName,
+                $fieldKey,
+                $pattern,
+            ));
+        }
+
+        // A pattern is run against a scalar value. A multiselect's value is
+        // a list and a checkbox's is one bit that is never inspected, so on
+        // either the key would sit in the page file doing nothing — and
+        // silently dead configuration is what this loader exists to catch.
+        if ($pattern !== null && ($type === FieldType::Multiselect || $type === FieldType::Checkbox)) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is a '%s' and declares a 'pattern', which would never be applied. A "
+                    . 'pattern constrains a single typed value, so it belongs on a text-like field.',
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        return new FieldDefinition(
+            key: $fieldKey,
+            label: $label,
+            type: $type,
+            default: $default,
+            required: $required,
+            readonly: $readonly,
+            hidden: $hidden,
+            help: $help,
+            placeholder: $placeholder,
+            options: $options,
+            min: $min,
+            max: $max,
+            step: $step,
+            rows: $rows,
+            pattern: $pattern,
+        );
     }
 
     /** @param array<string, mixed> $columnConfig */
@@ -710,7 +986,7 @@ final class PageRepository
         $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
 
         $enumOptions = \array_key_exists('options', $columnConfig)
-            ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey)
+            ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey, 'column')
             : [];
 
         $options = [];
@@ -897,7 +1173,7 @@ final class PageRepository
         $options = $columnOptions;
 
         if (\array_key_exists('options', $filterConfig) && $filterConfig['options'] !== null) {
-            $options = $this->resolveOptions($filterConfig['options'], $pageName, $columnKey);
+            $options = $this->resolveOptions($filterConfig['options'], $pageName, $columnKey, 'column');
         }
 
         return new FilterDefinition($type, $operator, $label, $options, $placeholder);
@@ -909,16 +1185,21 @@ final class PageRepository
      * refused by name: an entry that is neither of those is almost always a
      * typo, and dropping it would produce a filter quietly missing a choice.
      *
+     * Shared by a column, its filter, and a form field — the shape is
+     * identical for all three, so `$noun` is what makes each refusal name
+     * the thing that actually carries the malformed `options`, rather than
+     * every caller reading as if it were a column.
+     *
      * @return array<string, EnumOption>
      */
-    private function resolveOptions(mixed $raw, string $pageName, string $columnKey): array
+    private function resolveOptions(mixed $raw, string $pageName, string $key, string $noun): array
     {
         if ($raw instanceof EnumReference) {
             try {
                 return $this->enums->options($raw);
             } catch (ConfigException $e) {
                 throw new PageException(
-                    "Page '{$pageName}': column '{$columnKey}': {$e->getMessage()}",
+                    "Page '{$pageName}': {$noun} '{$key}': {$e->getMessage()}",
                     previous: $e,
                 );
             }
@@ -926,7 +1207,7 @@ final class PageRepository
 
         if (!\is_array($raw)) {
             throw new PageException(
-                "Page '{$pageName}': column '{$columnKey}': options must be an @enum: reference or a map "
+                "Page '{$pageName}': {$noun} '{$key}': options must be an @enum: reference or a map "
                 . 'of value to label, not a ' . get_debug_type($raw) . '.',
             );
         }
@@ -954,7 +1235,7 @@ final class PageRepository
             // saying why. Every other malformed thing in a page file is
             // refused by name; so is this.
             throw new PageException(
-                "Page '{$pageName}': column '{$columnKey}': the option '{$value}' is neither a label nor "
+                "Page '{$pageName}': {$noun} '{$key}': the option '{$value}' is neither a label nor "
                 . "['label' => ..., 'color' => ...].",
             );
         }

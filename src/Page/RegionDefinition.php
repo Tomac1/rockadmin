@@ -27,6 +27,7 @@ final class RegionDefinition
         public readonly array $searchable,
         public readonly array $fields = [],
         public readonly ?string $searchPlaceholder = null,
+        public readonly ?FormDefinition $form = null,
     ) {
     }
 

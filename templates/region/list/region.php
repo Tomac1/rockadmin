@@ -16,6 +16,7 @@
 $classes = 'ra-region ra-region-list ' . \RockAdmin\View\Classes::identity('region-list', $view->pageName);
 ?>
 <div class="<?= $e($classes) ?>" data-ra-region="<?= $e($view->key) ?>" data-ra-region-url="<?= $e($view->regionUrl) ?>">
+    <?= $partial('region/list/header', $view) ?>
     <?= $partial('region/list/toolbar', $view) ?>
     <?php if ($view->isEmpty()) { ?>
         <?= $partial('region/list/empty', $view) ?>

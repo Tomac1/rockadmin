@@ -145,6 +145,13 @@ of tags, sorted and paginated with JavaScript on or off. It needs a
 database; `demo/seed.php` fills one from the same variables the test suite
 reads. See `demo/README.md` for the exact steps.
 
+The same page also creates, edits, copies and deletes a row — a text field, a
+textarea, a number, a select from a shared enumeration, a checkbox, a date and
+a hidden field stamped with `@now`, all declared in the same file as the grid.
+Every write is a plain `POST` with a CSRF token and runs inside a transaction,
+so it works with JavaScript switched off, and an invalid submission comes back
+with every error at once and what was typed still in the inputs.
+
 ## Documentation
 
 - [Design specification][spec] — the complete architecture and the reasoning

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace RockAdmin\Db;
 
+use Closure;
 use PDO;
 use PDOException;
 use PDOStatement;
+use Throwable;
 
 /**
  * Executes a Sql. It never composes one — that is the builder's job, and
@@ -15,6 +17,13 @@ use PDOStatement;
  */
 final class Connection
 {
+    /**
+     * Zero outside any `transaction()` call; the nesting depth of the
+     * outermost one currently running on this connection while inside it.
+     * See `transaction()`.
+     */
+    private int $transactionDepth = 0;
+
     public function __construct(
         private readonly PDO $pdo,
         private readonly Dialect $dialect,
@@ -75,6 +84,20 @@ final class Connection
     }
 
     /**
+     * The key the database assigned to the row inserted last on this
+     * connection -- MySQL's own way of answering "what key did that INSERT
+     * get". PostgreSQL is asked through a `RETURNING` clause instead
+     * (`Dialect::returningClause()`), because its `lastInsertId()` needs a
+     * sequence name to be reliable and is fragile without one.
+     */
+    public function lastInsertId(): string
+    {
+        $id = $this->pdo->lastInsertId();
+
+        return $id === false ? '' : $id;
+    }
+
+    /**
      * The table's own columns, in their declared order — what `'fields' =>
      * '@all'` (spec 8.5) reads from. The statement itself is the one thing
      * that differs per server, and `Dialect::columns()` already carries that
@@ -124,11 +147,93 @@ final class Connection
         return $names;
     }
 
+    /**
+     * Begins, calls, commits, and rolls back before rethrowing.
+     *
+     * A call made from inside a `transaction()` already running on this
+     * connection joins it rather than nesting: no second `BEGIN`, no
+     * `COMMIT`, no savepoint, and only the outermost call decides the
+     * outcome. PDO's own nested transactions are a fiction on both
+     * servers, so an inner `COMMIT` would end the outer transaction early
+     * and an inner rollback would only unwind part of its work. Joining is
+     * what lets a bulk action (rule 7) open one transaction around a loop
+     * of writes that each open their own — the loop's `transaction()` call
+     * is the one that begins and commits; every write inside it joins.
+     *
+     * It still refuses a transaction this connection did not open itself:
+     * `$pdo->inTransaction()` true while this call's own depth is zero
+     * means something outside `transaction()` holds one open, and joining
+     * that blind would mean committing or rolling back work this method
+     * knows nothing about.
+     *
+     * PostgreSQL aborts the whole transaction on its first failed
+     * statement and refuses every statement after it until a rollback,
+     * where MySQL carries on regardless. A caller that catches a
+     * `DbException` raised from work done inside this method must let it
+     * propagate out of `transaction()` (or otherwise abandon the
+     * transaction) rather than catch it and keep writing inside the same
+     * call: continuing is only safe on one of the two servers this project
+     * supports.
+     *
+     * @template T
+     * @param Closure(): T $work
+     * @return T
+     */
+    public function transaction(Closure $work): mixed
+    {
+        if ($this->transactionDepth > 0) {
+            $this->transactionDepth++;
+
+            try {
+                return $work();
+            } finally {
+                $this->transactionDepth--;
+            }
+        }
+
+        if ($this->pdo->inTransaction()) {
+            throw new DbException(
+                'A transaction is already open, and this connection did not open it. Refusing to '
+                . 'join a transaction it does not control, rather than commit or roll back work it '
+                . 'knows nothing about.',
+            );
+        }
+
+        $this->transactionDepth = 1;
+        $this->pdo->beginTransaction();
+
+        try {
+            $result = $work();
+            $this->pdo->commit();
+
+            return $result;
+        } catch (Throwable $e) {
+            try {
+                $this->pdo->rollBack();
+            } catch (Throwable) {
+                // The original exception is what matters here; a rollback
+                // that itself fails must not replace it with "there is no
+                // active transaction" or similar.
+            }
+
+            throw $e;
+        } finally {
+            $this->transactionDepth = 0;
+        }
+    }
+
     private function run(Sql $sql): PDOStatement
     {
         try {
             $statement = $this->pdo->prepare($sql->text);
-            $statement->execute($sql->bindings);
+
+            foreach ($sql->bindings as $index => $value) {
+                // Positional '?' placeholders are bound 1-indexed -- $index
+                // is the 0-based position in the list, so +1.
+                $statement->bindValue($index + 1, $value, $this->paramType($value));
+            }
+
+            $statement->execute();
 
             return $statement;
         } catch (PDOException $e) {
@@ -146,5 +251,26 @@ final class Connection
                 $sqlState,
             );
         }
+    }
+
+    /**
+     * `PDOStatement::execute(array)` binds every value as `PDO::PARAM_STR`,
+     * and PHP's own string coercion turns `false` into `''` before it ever
+     * reaches PDO -- a value neither server accepts into an integer or
+     * boolean column: MySQL refuses it once `STRICT_TRANS_TABLES` is on,
+     * PostgreSQL refuses it unconditionally. `true` survives that path
+     * because `'1'` happens to be a valid literal for both; `false` does
+     * not, because `''` is not. Binding each value individually, with its
+     * own inferred type, is what makes `false` reach the driver as a
+     * boolean rather than as an empty string.
+     */
+    private function paramType(mixed $value): int
+    {
+        return match (true) {
+            $value === null => PDO::PARAM_NULL,
+            \is_bool($value) => PDO::PARAM_BOOL,
+            \is_int($value) => PDO::PARAM_INT,
+            default => PDO::PARAM_STR,
+        };
     }
 }

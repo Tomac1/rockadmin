@@ -20,8 +20,14 @@ use Throwable;
  * treat one kind of failure differently from another reads this rather
  * than pattern-matching the message text, which is free to change with a
  * server's own version or locale.
+ *
+ * Not final, so that a condition a caller must distinguish can be a type
+ * rather than a string to match. `NoSuchRowException` is the one such case
+ * today: it is raised by RockAdmin itself rather than by a driver, so it
+ * carries no SQLSTATE, and without a type of its own it would be
+ * indistinguishable from an internal fault and answered as one.
  */
-final class DbException extends RuntimeException
+class DbException extends RuntimeException
 {
     public function __construct(
         string $message,
