@@ -1217,8 +1217,20 @@ ra_migrations       name, applied_at
 `auth_provider` and `auth_subject` exist from day one so that adding OIDC in
 v1.1 requires no migration.
 
+**"Logout everywhere" is v1.1, and this says what it needs.** An earlier draft
+of this section listed it beside throttling as though it were part of the
+default authenticator; it is not, and building it silently would have been
+worse than saying so. It needs a `sessions_valid_from` column on `ra_users`,
+stamped at logout, and a comparison against the session's own creation time —
+which `SessionStore` does not record today, so it needs a fourth method there
+too. Until both exist, `Authenticator::logout()` ends the caller's session and
+nothing else, and says so in its docblock. Stamping a column that nothing
+reads would look exactly like the feature while every other session stayed
+live, which is the failure mode worth avoiding: a security control that is
+believed rather than present.
+
 The default `Authenticator` uses Argon2id password hashing, attempt
-throttling, session regeneration on login, and logout everywhere. Projects
+throttling and session regeneration on login. Projects
 wanting to authenticate against their own table or against Laravel's auth
 replace the three-method interface; a recipe ships in the docs.
 
