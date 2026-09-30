@@ -6,6 +6,11 @@ namespace RockAdmin\Tests\Unit\Http;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Auth\AuthUser;
+use RockAdmin\Auth\Gate;
+use RockAdmin\Auth\Identity;
+use RockAdmin\Auth\Roles;
+use RockAdmin\Http\ArraySessionStore;
 use RockAdmin\Http\ErrorHandler;
 use RockAdmin\Http\ForbiddenException;
 use RockAdmin\Http\Handler;
@@ -15,14 +20,34 @@ use RockAdmin\Http\Request;
 use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\Router;
+use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Tests\Support\FakeAuthenticator;
 
 #[CoversClass(Kernel::class)]
 #[CoversClass(HandlerRegistry::class)]
 final class KernelTest extends TestCase
 {
+    /**
+     * Dispatch, not authorisation: every request here arrives as a signed-in
+     * superadmin, so that what these tests observe is the routing and the
+     * error handling rather than the gate. `KernelAuthTest` is the other half.
+     */
     private function kernel(HandlerRegistry $handlers, bool $debug = false): Kernel
     {
-        return new Kernel(new Router(), $handlers, new ErrorHandler($debug));
+        $session = new ArraySessionStore([Identity::SESSION_KEY => '7']);
+        $user = new AuthUser('7', 'jana@example.test', 'Jana', ['god']);
+
+        $catalogue = ['ads.view', 'ads.create', 'ads.update', 'ads.delete'];
+        $roles = Roles::fromConfig(['god' => ['permissions' => ['*']]], $catalogue);
+
+        return new Kernel(
+            new Router(),
+            $handlers,
+            new ErrorHandler($debug),
+            new Identity($session, new FakeAuthenticator(['7' => $user])),
+            new Gate($roles),
+            new UrlGenerator('/'),
+        );
     }
 
     /**

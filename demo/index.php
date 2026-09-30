@@ -24,6 +24,12 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use RockAdmin\Auth\Authenticator;
+use RockAdmin\Auth\AuthUser;
+use RockAdmin\Auth\Gate;
+use RockAdmin\Auth\Identity;
+use RockAdmin\Auth\LoginResult;
+use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
@@ -366,7 +372,47 @@ $errors = new ErrorHandler(
     page: new TemplateErrorPage($renderer),
 );
 
-$kernel = new Kernel(new Router(), $handlers, $errors);
+/**
+ * Steps 3, 4 and 7 of the lifecycle.
+ *
+ * `Gate::fromConfig()` is what actually reads `demo/config/roles.php`: the
+ * loader stores that file raw, because deciding which permissions exist needs
+ * the pages and the loader has no page repository. Building the gate here —
+ * eagerly, before a single request is handled — is therefore also what
+ * validates the file, so a role naming a page that does not exist stops this
+ * script with an explanation rather than granting nothing in silence.
+ *
+ * Without a database there is nobody to authenticate against, so the demo
+ * supplies an authenticator that refuses everything. Every page then redirects
+ * to the login form, which is the honest answer: an admin with no user store
+ * has no users. The assets route stays open, so the theme still serves.
+ */
+$authenticator = $connection !== null
+    ? new SqlAuthenticator($connection)
+    : new class () implements Authenticator {
+        public function attempt(string $email, string $password, string $ip): LoginResult
+        {
+            return LoginResult::refused();
+        }
+
+        public function byId(string $id): ?AuthUser
+        {
+            return null;
+        }
+
+        public function logout(AuthUser $user): void
+        {
+        }
+    };
+
+$kernel = new Kernel(
+    new Router(),
+    $handlers,
+    $errors,
+    new Identity($session, $authenticator),
+    Gate::fromConfig($config, $pages),
+    $urls,
+);
 
 // In 'path' mode the route lives in the URL's own path, e.g. /p/ads. In
 // 'query' mode UrlGenerator instead writes it into a query parameter --

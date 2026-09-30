@@ -70,6 +70,31 @@ final class Router
         return null;
     }
 
+    /**
+     * Every route name this table can match, in declaration order.
+     *
+     * It exists so that `Gate` can be checked against the real registry rather
+     * than against a list somebody copied: the acceptance criterion is "every
+     * registered route names a permission or is a named exception", and a test
+     * that enumerates the routes by hand asserts nothing about the ones
+     * somebody adds afterwards. Two routes may share a name — `_setup` has a
+     * GET and a POST — so the names are de-duplicated, keeping the first.
+     *
+     * @return list<string>
+     */
+    public static function routeNames(): array
+    {
+        $names = [];
+
+        foreach (self::ROUTES as [, , $name]) {
+            if (!\in_array($name, $names, true)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     /** Used by UrlGenerator to build a link from a route name. */
     public static function patternFor(string $name): string
     {
