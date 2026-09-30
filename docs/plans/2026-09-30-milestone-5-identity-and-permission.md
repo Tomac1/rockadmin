@@ -100,7 +100,17 @@ Every task inherits these. They are not repeated in each brief.
   description and example, or `ReferenceIsCurrentTest` fails.
 - **Template rules.** `ra-` classes, no `<script>` bodies, no hardcoded URLs,
   everything escaped.
-- **One write path.** The audit log hooks `WriteHandler`, not each caller.
+- **One write path.** The audit log is written in one place, not copied into
+  each caller. **Corrected during execution:** this said "hooks
+  `WriteHandler`", which reads as instructing the hook into the data layer and
+  contradicts rule 4 — an audit row needs the acting user and the page, and a
+  `WriteHandler` is handed an `Entity`, which names a table. Two pages may sit
+  over one table, so a table is not a page. Rule 4 wins: the hook is in
+  `ActionHandler`, the one HTTP write path, and the constraint means what it
+  now says. The cost is that a write arriving from somewhere other than HTTP
+  records nothing; the fix, if it is ever needed, is a `WriteContext` value
+  passed through `WriteHandler` as an argument, so the data layer carries it
+  without knowing what is in it.
 - **The gate is not optional.** No handler may be reachable without passing
   through it.
 
