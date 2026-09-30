@@ -40,7 +40,7 @@
                     id="ra-grid-search-<?= $e($view->key) ?>"
                     name="<?= $e($view->key) ?>[q]"
                     value="<?= $e($view->search) ?>"
-                    placeholder="Search…"
+                    placeholder="<?= $e($view->searchPlaceholder ?? 'Search…') ?>"
                 >
             </div>
         <?php } ?>

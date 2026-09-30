@@ -57,6 +57,14 @@ final class ListView
          * a grid that can create can edit, because both are the one form.
          */
         public readonly ?string $createUrl = null,
+        /**
+         * What the empty search box says, from the region's
+         * `search.placeholder`, or null to let the template use its own
+         * wording. A grid over one table is searched differently from a
+         * grid over another -- 'Hledat doménu…' says which of several
+         * columns the box actually looks in, which 'Search…' cannot.
+         */
+        public readonly ?string $searchPlaceholder = null,
     ) {
     }
 

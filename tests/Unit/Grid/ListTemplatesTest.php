@@ -51,6 +51,7 @@ final class ListTemplatesTest extends TestCase
         bool $searchable = false,
         string $regionUrl = '/admin/r/ads/grid',
         string $pageUrl = '/admin/p/ads',
+        ?string $searchPlaceholder = null,
     ): ListView {
         return new ListView(
             key: $key,
@@ -63,6 +64,7 @@ final class ListTemplatesTest extends TestCase
             searchable: $searchable,
             regionUrl: $regionUrl,
             pageUrl: $pageUrl,
+            searchPlaceholder: $searchPlaceholder,
         );
     }
 
@@ -461,6 +463,31 @@ final class ListTemplatesTest extends TestCase
 
         $this->assertStringContainsString('name="grid[q]"', $html);
         $this->assertStringContainsString('value="bike"', $html);
+    }
+
+    public function testTheSearchBoxSaysWhatTheRegionConfiguredItToSay(): void
+    {
+        // `search.placeholder` is a documented key, PageRepository reads it
+        // and RegionDefinition carries it -- and it reached the template and
+        // was dropped there, because the placeholder was written into the
+        // markup as a literal. A configured key that survives the whole
+        // pipeline and dies on the last line is worse than one nothing
+        // reads, because every layer in between says it works.
+        $view = $this->listView(searchable: true, searchPlaceholder: 'Hledat doménu…');
+
+        $html = $this->renderer()->render('region/list/toolbar', $view);
+
+        $this->assertStringContainsString('placeholder="Hledat doménu…"', $html);
+        $this->assertStringNotContainsString('placeholder="Search…"', $html);
+    }
+
+    public function testTheSearchBoxFallsBackToItsOwnWordingWhenNothingIsConfigured(): void
+    {
+        $view = $this->listView(searchable: true);
+
+        $html = $this->renderer()->render('region/list/toolbar', $view);
+
+        $this->assertStringContainsString('placeholder="Search…"', $html);
     }
 
     public function testATextFilterCarriesTheRegionNamespacedFieldName(): void

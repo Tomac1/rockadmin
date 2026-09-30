@@ -79,6 +79,7 @@ final class ListRegion
                     [FormFields::RETURN_TO => $returnTo],
                 )
                 : null,
+            searchPlaceholder: $region->searchPlaceholder,
         );
     }
 
