@@ -336,7 +336,19 @@
 
 .ra-toast-container {
     position: fixed;
-    top: 1rem;
+
+    /* Anchored to the bottom, which is the point: at the top it covered the
+       navigation links completely, so for as long as a toast was on screen --
+       after every single write -- no link in the admin could be clicked.
+       Nothing in the markup shows that; the toast is correct and the navbar
+       is correct, and only their stacking on a real page is wrong.
+
+       Offsetting by the header's height instead would be arithmetic against a
+       number that is not true: --ra-header-height is a min-height the navbar
+       exceeds as soon as its content is taller, so the two would drift apart
+       the first time a menu wrapped. The bottom of the viewport has nothing
+       to collide with. */
+    bottom: 1rem;
     right: 1rem;
     z-index: 1080;
 }
