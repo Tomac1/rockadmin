@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace RockAdmin\Http;
 
+use RockAdmin\Auth\AuditLog;
+use RockAdmin\Auth\AuthUser;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
 use RockAdmin\Db\WriteHandler;
+use RockAdmin\Db\WriteResult;
 use RockAdmin\Form\DefaultValue;
 use RockAdmin\Form\FieldValidator;
 use RockAdmin\Form\FormFields;
@@ -18,6 +21,7 @@ use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\View\FlashBag;
+use Throwable;
 
 /**
  * `POST /a/{page}/{action}` — the only way anything in this admin changes.
@@ -73,6 +77,8 @@ final class ActionHandler implements Handler
         private readonly Csrf $csrf,
         private readonly FlashBag $flashes,
         private readonly UrlGenerator $urls,
+        private readonly ?AuditLog $audit = null,
+        private readonly ?AuthUser $actor = null,
     ) {
     }
 
@@ -163,7 +169,7 @@ final class ActionHandler implements Handler
     private function delete(PageDefinition $page, string $returnTo, string $key): Response
     {
         try {
-            $this->writes->delete($page->entity, $key);
+            $write = $this->writes->delete($page->entity, $key);
         } catch (NoSuchRowException $e) {
             // Somebody deleted it between this page being drawn and the
             // button being pressed. That is a row that is gone, not a server
@@ -178,6 +184,8 @@ final class ActionHandler implements Handler
 
             return Response::redirect($returnTo);
         }
+
+        $this->record('delete', $page, $write);
 
         $this->flashes->success("Deleted {$page->title} {$key}.");
 
@@ -242,6 +250,8 @@ final class ActionHandler implements Handler
             );
         }
 
+        $this->record($isCreate ? 'create' : 'update', $page, $write);
+
         $this->flashes->success(
             $isCreate
                 ? "Created {$page->title} {$write->key}."
@@ -272,6 +282,57 @@ final class ActionHandler implements Handler
         $view = $this->region->reject($page, $region, $submission, $errors, $key, $returnTo);
 
         return $this->forms->document($page, $view, 422);
+    }
+
+    /**
+     * The audit row (spec 9.4), written after the write it describes and
+     * never able to fail it.
+     *
+     * **Why here and not in `SqlWriteHandler`.** An audit row needs two facts
+     * a `WriteHandler` does not have and should not be given: the acting user,
+     * which lives in `src/Auth`, and the page, which lives in `src/Page`. A
+     * `WriteHandler` is handed an `Entity`, and an entity names a table — two
+     * pages may share one, so a table is not a page. Hooking it in the data
+     * layer would mean smuggling a mutable "current user, current page" into
+     * `src/Db`, which is rule 4's failure mode exactly: a layer reaching two
+     * levels up for facts that belong to the request. This is the request
+     * layer, it already holds both facts, and rule 7 is satisfied because
+     * `ActionHandler` is the one HTTP write path — milestone 8's bulk actions
+     * and inline cell editing arrive here, as the class docblock above
+     * records. The trade is stated honestly in the task report: a write made
+     * by something other than a request would not be recorded here.
+     *
+     * **After the write, not inside it.** `WriteHandler` commits before it
+     * returns, so the change is durable by the time this runs. A log insert
+     * inside that transaction could roll the write back with it, and 9.4 says
+     * the log can be turned off — a subsystem that is optional must not be
+     * able to refuse a save.
+     *
+     * **A failure is kept, not swallowed.** The write stands and the person
+     * who made it is told that the record of it does not. There is no logger
+     * in this SDK to write to instead (rule 1 forbids adding one), and
+     * `error_log()` goes wherever the host's ini points, which is often
+     * nowhere; the person at the keyboard is the one who can report it.
+     */
+    private function record(string $action, PageDefinition $page, WriteResult $write): void
+    {
+        if ($this->audit === null) {
+            return;
+        }
+
+        try {
+            $this->audit->record($this->actor, $page->name, $action, $write);
+        } catch (Throwable) {
+            // Throwable rather than DbException: whatever went wrong, it must
+            // not undo a change that has already been committed. The message
+            // says nothing about the schema, for the same reason
+            // integrityMessage() does not.
+            $this->flashes->danger(
+                'This change was saved, but it could not be written to the audit log. The change '
+                . 'stands; the record of who made it does not. Tell whoever administers this '
+                . 'installation.',
+            );
+        }
     }
 
     /**
