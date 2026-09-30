@@ -30,5 +30,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   ordering, offset and keyset paging, counting strategies, a row source whose
   one-to-many reads cost one query per page, and enumerations that read their
   options from a table.
+- RockAdmin's own tables — `ra_users`, `ra_login_attempts`,
+  `ra_password_resets`, `ra_activity_log` and `ra_migrations` — as one
+  dialect-neutral migration file, and `Migrator`, which applies pending
+  migrations in name order, records them, and is safe to run on every deploy.
+  `bin/ra-migrate.php` is the script a project calls until the CLI exists.
 
 [Unreleased]: https://github.com/tomac1/rockadmin/commits/main

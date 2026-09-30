@@ -60,4 +60,26 @@ final class MySqlDialect implements Dialect
         // Connection::lastInsertId() once the INSERT has run instead.
         return null;
     }
+
+    public function ddl(string $token): string
+    {
+        return match ($token) {
+            'key' => 'BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
+            'bigint' => 'BIGINT UNSIGNED',
+            'bool' => 'TINYINT(1)',
+            'json' => 'JSON',
+            // DATETIME rather than TIMESTAMP: MySQL's TIMESTAMP tops out in
+            // 2038 and converts to and from the session time zone on the way
+            // through, which would make the same UTC string read back
+            // differently on two servers configured differently.
+            'timestamp' => 'DATETIME',
+            default => throw new DbException("Unknown DDL token '{$token}'."),
+        };
+    }
+
+    public function transactionalDdl(): bool
+    {
+        // MySQL commits implicitly before and after every DDL statement.
+        return false;
+    }
 }

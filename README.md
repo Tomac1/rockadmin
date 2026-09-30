@@ -126,6 +126,33 @@ like HTML that arrived with it.
 - A way to route admin requests to one entry point — a rewrite rule, your
   framework's router, or `?ra=`
 
+## Its own tables
+
+RockAdmin keeps its administrators in its own `ra_`-prefixed tables rather
+than in your `users` table: five admins and a hundred thousand customers need
+different fields and different security properties, and your own schema stays
+yours to restructure. The DDL ships with the package, in `migrations/`, so the
+schema does not fork per project.
+
+Run it once per deploy:
+
+```bash
+php vendor/tomac1/rockadmin/bin/ra-migrate.php "mysql:host=127.0.0.1;dbname=shop" root secret
+```
+
+or, where the application already has a PDO:
+
+```php
+(new RockAdmin\Db\Migrator(RockAdmin\Db\Connection::fromPdo($pdo)))->migrate();
+```
+
+Either is safe to run every time: a migration already recorded in
+`ra_migrations` is not applied again. One caveat is worth knowing before you
+need it — PostgreSQL rolls a failed migration back completely, but MySQL
+commits every `CREATE TABLE` implicitly, so a migration that fails halfway
+there leaves what it had already created behind and has to be tidied by hand
+before it is retried.
+
 ## Looking at it
 
 A themed admin shell — navbar, menu, a page header with buttons, a flash
