@@ -22,7 +22,10 @@ use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
+use RockAdmin\Page\FieldDefinition;
+use RockAdmin\Page\FieldType;
 use RockAdmin\Page\FilterDefinition;
+use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
@@ -50,6 +53,36 @@ final class ListRegionTest extends TestCase
     private function page(Entity $entity = new Entity('ra_test_ads', 'id')): PageDefinition
     {
         return new PageDefinition('ads', 'Ads', 'default', 'Ads', $entity, [], []);
+    }
+
+    /** The same page, with a form region — so it can be created into and edited. */
+    private function writablePage(Entity $entity = new Entity('ra_test_ads', 'id')): PageDefinition
+    {
+        $form = new RegionDefinition(
+            'form',
+            RegionType::Form,
+            20,
+            [],
+            [],
+            [],
+            form: new FormDefinition(['title' => new FieldDefinition(
+                key: 'title',
+                label: 'Title',
+                type: FieldType::Text,
+                default: null,
+                required: false,
+                readonly: false,
+                hidden: false,
+                help: '',
+                placeholder: '',
+                options: [],
+                min: null,
+                max: null,
+                pattern: null,
+            )]),
+        );
+
+        return new PageDefinition('ads', 'Ads', 'default', 'Ads', $entity, [], ['form' => $form]);
     }
 
     /**
@@ -132,6 +165,39 @@ final class ListRegionTest extends TestCase
         }
 
         return \is_string($value) ? $value : null;
+    }
+
+    public function testAPageWithNoFormDrawsNoEditLinkAndNoActionsColumn(): void
+    {
+        // A read-only page was giving every row an edit link into
+        // `p/{page}/{id}/edit`, a route that 404s because there is no form to
+        // draw -- and `hasRowActions()` said there was no actions column at
+        // the same time, so the header had one cell fewer than every row in
+        // the body. Two facts decided by two different conditions:
+        // `createUrl` asked whether the page has a form, and the row's edit
+        // link asked only whether a return address existed, which it always
+        // did.
+        $region = $this->region();
+        $rows = new FakeRowSource([$this->fetchResult([['id' => 1, 'title' => 'A']], 1)]);
+
+        $view = $this->listRegion($rows)->render($this->page(), $region, GridState::fromQuery([], 'grid', $region));
+
+        $this->assertNull($view->createUrl, 'a page with no form has nothing to create');
+        $this->assertFalse($view->hasRowActions());
+        $this->assertNull($view->rows[0]->editUrl, 'a row on a read-only page has nothing to edit');
+    }
+
+    public function testAPageWithAFormDrawsAnEditLinkOnEveryRow(): void
+    {
+        $region = $this->region();
+        $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'A']], 1)]);
+
+        $view = $this->listRegion($rows)->render($this->writablePage(), $region, GridState::fromQuery([], 'grid', $region));
+
+        $this->assertNotNull($view->createUrl);
+        $this->assertTrue($view->hasRowActions());
+        $this->assertIsString($view->rows[0]->editUrl);
+        $this->assertStringContainsString('/7/edit', (string) $view->rows[0]->editUrl);
     }
 
     public function testEveryRowBecomesARowViewWithACellPerColumn(): void

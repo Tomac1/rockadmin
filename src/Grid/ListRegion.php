@@ -59,7 +59,14 @@ final class ListRegion
             $result = $this->rows->fetch($query);
         }
 
-        $returnTo = $this->pageStateUrl($page, $region, $state);
+        // Null when the page declares no form, which is what stops every row
+        // drawing an edit link into a route that does not exist. `$writable`
+        // has to decide both this and `createUrl` below: deciding them
+        // separately is how a page with no form came to show a create button
+        // (correctly) and an Edit link on every row (which 404'd), and how
+        // `hasRowActions()` came to say there is no actions column while
+        // every row rendered one -- a body one cell wider than its header.
+        $returnTo = $writable ? $this->pageStateUrl($page, $region, $state) : null;
 
         return new ListView(
             key: $region->key,
@@ -72,7 +79,12 @@ final class ListRegion
             searchable: $region->searchable !== [],
             regionUrl: $this->urls->route('region', ['page' => $page->name, 'region' => $region->key]),
             pageUrl: $this->urls->route('page.index', ['page' => $page->name]),
-            createUrl: $writable
+            // Branching on $returnTo rather than on $writable, though they
+            // now say the same thing: it makes the create button and the
+            // rows' edit links read from one value instead of two that have
+            // to be kept in agreement, and it is what lets the type be
+            // `string` here rather than `?string` narrowed by eye.
+            createUrl: $returnTo !== null
                 ? $this->urls->route(
                     'page.create',
                     ['page' => $page->name],
