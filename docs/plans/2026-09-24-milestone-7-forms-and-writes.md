@@ -873,6 +873,54 @@ to Task 8, which would have made the milestone's own acceptance criterion —
 saving returns to the grid page you came from, filters intact — unreachable,
 because `_ret` is lost the moment somebody enters the form.
 
+**A return address is validated in two places, because one of them cannot see
+the mount point.** The brief's `ReturnAddress::from(mixed): ?self` has no
+access to a `UrlGenerator`, so it cannot answer "does this begin with the
+admin's own path". It therefore answers everything that is context-free — a
+string, absolute, not `//`, no scheme, no backslash, no control character, no
+percent-escape decoding to one, no dot segment, at most 2048 bytes — and
+`url(UrlGenerator)` asks the remaining question at the moment the answer is
+needed, falling back to the admin's own root. It reads the mount point as
+`$urls->to('')` rather than through a new accessor, so the one piece of
+knowledge about where the admin lives stays in the one class that has it.
+
+**A delete's integrity failure is a flash and a redirect, not a 422.** Steps 3
+and 4 of the action route's shape both say "redraw the form", and a delete has
+no form and no submission: a 422 carrying a form the person was not filling in
+would be a fiction, and redrawing the edit form for the row that would not
+delete puts them back on a page whose Save button is not what they wanted. The
+honest answer is the message on the grid they were going back to. The 422 shape
+still holds for create and update.
+
+**A default is reapplied on save for a create, not for an update.** Spec 7.6
+says a default applies again on save "for fields the form did not offer", which
+is what stops a tampered submission dropping a workspace scope. Doing the same
+on an update would overwrite a row's own `created_at` with `@now` every time
+somebody fixed a typo. The scope-dropping attack it exists to stop is an insert
+of a row into somebody else's workspace; an update cannot move a row it was
+already allowed to address.
+
+**The grid's create button and edit links are `ListView`/`RowView` data, and
+`Grid` now imports `Form\FormFields`.** A template has no `UrlGenerator` and
+must not build a URL, and the return address these links carry is the grid's
+current filters, sort and page — which only `ListRegion` knows. So `ListView`
+gained `createUrl` (null when the page declares no form) and `RowView` gained
+`editUrl`, and the actions column exists exactly when
+`ListView::hasRowActions()` says so, because a `<th>` and a `<td>` that decided
+it separately would disagree. Writing `_ret` through `FormFields::RETURN_TO`
+rather than as a literal adds a `Grid` → `Form` edge to the dependency note
+below; `FormFields` is static leaf vocabulary and moves with the rest of it.
+
+**Delete is a submit button with `formaction`, and `FormView` gained
+`deleteAction`.** A delete needs the token, the row's key and the return
+address, all of which the edit form already carries, and HTML forbids a nested
+`<form>`. `formaction` on a submit button redirects that one submission to
+`POST /a/{page}/delete` with no script and no duplicated inputs;
+`formnovalidate` is what lets a row with an empty required field still be
+deleted. It carries `data-ra-confirm`, which `core.js` binds in the capture
+phase; the handler looks for no confirmation flag at all, because an attribute
+in an editable document is not evidence that anybody agreed.
+
 ### Carried forward, deliberately not done here
 
 **`Page` must not depend on `Form`.** The two now import each other:

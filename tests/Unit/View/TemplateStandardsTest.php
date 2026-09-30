@@ -38,9 +38,12 @@ final class TemplateStandardsTest extends TestCase
         // added the list region's seventeen (nine region/list/*.php plus
         // eight region/list/cell/*.php), for thirty-one; task 9 added the
         // preview region's three (region.php, field.php, missing.php), for
-        // thirty-four. This fails loudly if a future refactor moves the
-        // directory.
-        $this->assertGreaterThanOrEqual(34, \count(iterator_to_array(self::templates())));
+        // thirty-four. Milestone 7 task 7 added the form region's seventeen
+        // (four region/form/*.php plus eleven region/form/field/*.php, one per
+        // field type), for fifty-one, and task 8 added
+        // region/list/header.php, for fifty-two. This fails loudly if a
+        // future refactor moves the directory.
+        $this->assertGreaterThanOrEqual(52, \count(iterator_to_array(self::templates())));
     }
 
     #[DataProvider('templates')]

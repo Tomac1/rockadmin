@@ -40,5 +40,10 @@
                 <?php } ?>
             </th>
         <?php } ?>
+        <?php if ($view->hasRowActions()) { ?>
+            <th class="ra-grid-head-actions" scope="col">
+                <span class="ra-grid-head-label visually-hidden">Actions</span>
+            </th>
+        <?php } ?>
     </tr>
 </thead>

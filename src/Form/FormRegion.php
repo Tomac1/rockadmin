@@ -317,6 +317,10 @@ final class FormRegion
             fields: $fields,
             errors: $formErrors,
             id: $id,
+            deleteAction: $isCreate ? null : $this->urls->route('action', [
+                'page' => $page->name,
+                'action' => 'delete',
+            ]),
         );
     }
 

@@ -7,6 +7,7 @@ namespace RockAdmin\Grid;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\SortDirection;
+use RockAdmin\Form\FormFields;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
@@ -38,6 +39,14 @@ final class ListRegion
         $query = $this->queries->build($page, $region, $state);
         $result = $this->rows->fetch($query);
 
+        // Whether this page can be written at all: one form region is what
+        // gives the grid a create button and every row an edit link. The
+        // return address is this grid's own state URL, so saving or
+        // cancelling lands back on the page the person left -- filters, sort
+        // and page number intact, which is the whole point of spec 8.11
+        // keeping that state in the URL.
+        $writable = $page->firstFormRegion() !== null;
+
         $limit = $query->page === null ? max(1, $region->perPage) : $query->page->limit;
         $pageCount = $result->total !== null ? max(1, (int) ceil($result->total / $limit)) : null;
 
@@ -50,17 +59,26 @@ final class ListRegion
             $result = $this->rows->fetch($query);
         }
 
+        $returnTo = $this->pageStateUrl($page, $region, $state);
+
         return new ListView(
             key: $region->key,
             pageName: $page->name,
             columns: $this->columnViews($page, $region, $state),
-            rows: $this->rowViews($page, $region, $result->rows),
+            rows: $this->rowViews($page, $region, $result->rows, $returnTo),
             filters: $this->filterViews($region, $state),
             pagination: $this->pagination($page, $region, $state, $limit, $result),
             search: $state->search,
             searchable: $region->searchable !== [],
             regionUrl: $this->urls->route('region', ['page' => $page->name, 'region' => $region->key]),
             pageUrl: $this->urls->route('page.index', ['page' => $page->name]),
+            createUrl: $writable
+                ? $this->urls->route(
+                    'page.create',
+                    ['page' => $page->name],
+                    [FormFields::RETURN_TO => $returnTo],
+                )
+                : null,
         );
     }
 
@@ -95,10 +113,16 @@ final class ListRegion
 
     /**
      * @param  list<array<string, mixed>> $rows
+     * @param  ?string                     $returnTo null when the page declares no
+     *                                              form, so no row draws an edit link
      * @return list<RowView>
      */
-    private function rowViews(PageDefinition $page, RegionDefinition $region, array $rows): array
-    {
+    private function rowViews(
+        PageDefinition $page,
+        RegionDefinition $region,
+        array $rows,
+        ?string $returnTo,
+    ): array {
         $views = [];
 
         foreach ($rows as $row) {
@@ -107,16 +131,41 @@ final class ListRegion
                 ? $this->urls->route('page.detail', ['page' => $page->name, 'id' => (string) $key])
                 : '';
 
+            $editUrl = $this->editUrl($page, $key, $returnTo);
+
             $cells = [];
 
             foreach ($region->columns as $column) {
                 $cells[] = $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
             }
 
-            $views[] = new RowView($key, $cells, $url, Classes::of('grid-row'));
+            $views[] = new RowView($key, $cells, $url, Classes::of('grid-row'), $editUrl);
         }
 
         return $views;
+    }
+
+    /**
+     * One row's edit address: null when the page declares no form at all,
+     * `''` when it does but this row came back with no key to address, and
+     * the URL otherwise. See `RowView::$editUrl` for why the two empty cases
+     * are not the same one.
+     */
+    private function editUrl(PageDefinition $page, mixed $key, ?string $returnTo): ?string
+    {
+        if ($returnTo === null) {
+            return null;
+        }
+
+        if ($key === null || !\is_scalar($key)) {
+            return '';
+        }
+
+        return $this->urls->route(
+            'page.edit',
+            ['page' => $page->name, 'id' => (string) $key],
+            [FormFields::RETURN_TO => $returnTo],
+        );
     }
 
     /** @return list<FilterView> */

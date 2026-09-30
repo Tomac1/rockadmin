@@ -32,6 +32,42 @@
     var behaviors = {};
 
     /**
+     * A confirmation in front of anything carrying data-ra-confirm — the
+     * delete button on an edit form, and whatever else asks for one later.
+     *
+     * Bound in the capture phase, before the action dispatcher below and
+     * before any submit handler, so declining actually stops the event rather
+     * than stopping it after something already acted on it. Delegated for the
+     * same reason everything else here is: a button that arrived with an AJAX
+     * fragment must behave exactly like one that was in the first response.
+     *
+     * This is a courtesy, not a check. The server never looks for evidence
+     * that it ran, because an attribute in a document the reader can edit is
+     * not evidence of anything; ActionHandler verifies the CSRF token and the
+     * method, which is all that can be verified.
+     *
+     * @param {Event} event
+     */
+    function confirmFirst(event) {
+        var target = event.target;
+        var trigger = target && target.closest ? target.closest('[data-ra-confirm]') : null;
+
+        if (!trigger) {
+            return;
+        }
+
+        if (window.confirm(trigger.getAttribute('data-ra-confirm') || 'Are you sure?')) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    document.addEventListener('click', confirmFirst, true);
+    document.addEventListener('submit', confirmFirst, true);
+
+    /**
      * The one delegated listener every action relies on. It never binds to
      * an individual element, so an element inserted after this runs behaves
      * exactly like one that was here from the start.

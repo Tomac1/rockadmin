@@ -40,6 +40,15 @@ final class FormView
          * body.
          */
         public readonly ?string $id = null,
+        /**
+         * Where a delete posts, null for a create -- there is nothing to
+         * delete before the row exists. It is a separate address from
+         * `$action` because the verb is in the URL (`POST /a/{page}/delete`),
+         * so the template reaches it through the submit button's own
+         * `formaction` rather than through a second, nested `<form>`, which
+         * HTML does not allow.
+         */
+        public readonly ?string $deleteAction = null,
     ) {
     }
 
