@@ -1367,6 +1367,22 @@ vendor/bin/rockadmin migrate       # creates ra_* tables
 vendor/bin/rockadmin user:create   # first admin, interactive
 ```
 
+**`migrate` is not transactional on MySQL, and cannot be.** MySQL commits
+implicitly on DDL, which does more than prevent a rollback: it ends the
+transaction outright, so `inTransaction()` goes false and the `COMMIT` that
+follows raises "There is no active transaction" — a migration that applied
+correctly reports failure. Verified on MySQL 8 and PostgreSQL 17; the
+PostgreSQL half does roll back, which is why `Dialect` is asked before
+anything is wrapped.
+
+What keeps the ledger honest is therefore **ordering, not the transaction**:
+the `ra_migrations` row is written only after every statement in a file has
+succeeded, so a failure never records itself on either server. The
+consequence, stated rather than hidden: a migration that fails halfway on
+MySQL leaves the tables it already created, and must be tidied by hand before
+a retry. Anything reintroducing a transaction around DDL must ask
+`Dialect::transactionalDdl()` first.
+
 Plus one line in the project:
 
 ```php
