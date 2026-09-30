@@ -29,7 +29,15 @@ $theme = $view->shell->themeAttribute();
     <?php } ?>
 </head>
 <body class="<?= $e($view->bodyClasses()) ?>">
-    <nav class="ra-navbar navbar" data-ra-navbar>
+    <?php // `navbar-expand` with no breakpoint, deliberately: Bootstrap's
+          // .navbar-nav is flex-direction:column until a .navbar-expand-*
+          // class turns it into a row, so without one the menu stands on end
+          // at every width. The breakpointed variants would fix that above
+          // the breakpoint and collapse the menu into a .navbar-collapse
+          // below it -- which this shell has no toggler to open, so the menu
+          // would simply disappear on a phone. Always horizontal, wrapping
+          // when it must, is the one option that is never wrong here. ?>
+    <nav class="ra-navbar navbar navbar-expand" data-ra-navbar>
         <div class="ra-navbar-inner container-fluid">
             <a class="ra-navbar-brand navbar-brand" href="<?= $href($route('dashboard')) ?>"><?= $e($view->shell->brand) ?></a>
 
