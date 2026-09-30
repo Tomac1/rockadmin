@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
+use RockAdmin\Db\MigrationConflictException;
 use RockAdmin\Db\Migrator;
 use RockAdmin\Db\MySqlDialect;
 use RockAdmin\Db\PgDialect;
@@ -26,6 +27,7 @@ use RockAdmin\Tests\Support\DatabaseTestCase;
  * test rather than in `migrations/`, so the shipped set stays the shipped set.
  */
 #[CoversClass(Migrator::class)]
+#[CoversClass(MigrationConflictException::class)]
 #[CoversClass(MySqlDialect::class)]
 #[CoversClass(PgDialect::class)]
 final class MigratorTest extends DatabaseTestCase
@@ -198,9 +200,13 @@ final class MigratorTest extends DatabaseTestCase
             (new Migrator($connection, $this->scratch))->migrate();
             $this->fail('An edited migration was passed over in silence.');
         } catch (DbException $e) {
+            // The type is the assertion a deploy script would make: it has to
+            // tell "stop, somebody edited these" from "the database is
+            // unreachable, retry", and both arrive as a DbException. The
+            // message is checked only for the one thing a person reading it
+            // needs first, which is which file.
+            self::assertInstanceOf(MigrationConflictException::class, $e);
             self::assertStringContainsString('001_a.sql', $e->getMessage());
-            self::assertStringContainsString('edited since it was applied', $e->getMessage());
-            self::assertStringContainsString('new migration', $e->getMessage());
         }
 
         // The pending migration behind it is not applied either: a run that has

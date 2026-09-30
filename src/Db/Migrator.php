@@ -42,9 +42,17 @@ use Throwable;
  * and two installations from the same commit end up holding different schemas
  * — the exact failure that shipping the DDL with the SDK exists to prevent.
  * The fix for an edited migration is a new migration, never a change to an old
- * one, and the exception says so. Nothing is repaired automatically and
- * nothing continues with a warning, because a schema that quietly disagrees
- * with its ledger is the thing being prevented.
+ * one, and the exception — `MigrationConflictException`, a type rather than a
+ * sentence to match — says so. Nothing is repaired automatically and nothing
+ * continues with a warning, because a schema that quietly disagrees with its
+ * ledger is the thing being prevented.
+ *
+ * The guarantee is narrower than it reads, and worth stating precisely: the
+ * check can only fire where the file has already been applied. An installation
+ * that has never applied it receives the edited version and applies it, which
+ * is correct — there is nothing to compare against. The invariant is the rule
+ * that an applied migration is never edited; the checksum enforces that rule
+ * only where somebody already ran it.
  *
  * There is no installation whose `ra_migrations` predates the checksum column,
  * because nothing has shipped yet — so there is no compatibility path here,
@@ -132,6 +140,10 @@ final class Migrator
      * is what a downgrade of the SDK looks like — and refusing it here would
      * describe a downgrade as an edit, sending whoever read the message to look
      * for a change nobody made.
+     *
+     * @throws MigrationConflictException a type rather than a message to match,
+     *     so that a deploy script can tell "stop, somebody edited these" from
+     *     "the database is unreachable, retry"
      */
     public function verifyChecksums(): void
     {
@@ -144,15 +156,7 @@ final class Migrator
                 continue;
             }
 
-            throw new DbException(\sprintf(
-                "Migration '%s' has been edited since it was applied: the file no longer matches the "
-                    . 'checksum recorded in %s. An applied migration must never be changed, because an '
-                    . 'installation that has already run it will never read it again -- the two would '
-                    . 'hold different schemas from the same commit. Put the change in a new migration '
-                    . 'and restore this file.',
-                $name,
-                self::LEDGER,
-            ));
+            throw MigrationConflictException::edited($name, self::LEDGER);
         }
     }
 
