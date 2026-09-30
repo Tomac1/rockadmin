@@ -108,12 +108,21 @@ final class Gate
         'region' => '{page}.view',
         'page.create' => '{page}.create',
 
-        // Copy renders a form prefilled from an existing row, so opening it is
-        // reading that row plus the right to change rows of this page. Saving
-        // it goes to `a/{page}/create` and needs `{page}.create` there, which
-        // is the permission that actually governs the new row.
         'page.edit' => '{page}.update',
-        'page.copy' => '{page}.update',
+
+        // Copy prefills a form from an existing row and saves it as a NEW one:
+        // its submit posts to `a/{page}/create`. Asking for `{page}.update` to
+        // open it meant somebody with update and not create could reach a form
+        // whose only button answers 403 -- the visible-button-that-403s this
+        // whole task exists to remove, arriving through the permission table
+        // rather than through the templates. So it asks for the permission its
+        // own save needs.
+        //
+        // The narrower reading, that copying also reads the source row and so
+        // should want `{page}.view` too, is already covered: nothing reaches a
+        // copy form without a link or a typed URL, and both come from a page
+        // the viewer had to be allowed to open.
+        'page.copy' => '{page}.create',
 
         'action' => '{page}.{action}',
     ];

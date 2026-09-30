@@ -96,7 +96,10 @@ final class GateTest extends TestCase
         yield 'region wants view' => [new Route('region', ['page' => 'ads', 'region' => 'grid']), 'ads.view'];
         yield 'create wants create' => [new Route('page.create', ['page' => 'ads']), 'ads.create'];
         yield 'edit wants update' => [new Route('page.edit', ['page' => 'ads', 'id' => '1']), 'ads.update'];
-        yield 'copy wants update' => [new Route('page.copy', ['page' => 'ads', 'id' => '1']), 'ads.update'];
+        // Copy saves as a new row, so it asks for the permission its own
+        // submit needs -- otherwise update-without-create opens a form whose
+        // only button answers 403.
+        yield 'copy wants create' => [new Route('page.copy', ['page' => 'ads', 'id' => '1']), 'ads.create'];
         yield 'action create' => [new Route('action', ['page' => 'ads', 'action' => 'create']), 'ads.create'];
         yield 'action update' => [new Route('action', ['page' => 'ads', 'action' => 'update']), 'ads.update'];
         yield 'action delete' => [new Route('action', ['page' => 'ads', 'action' => 'delete']), 'ads.delete'];
