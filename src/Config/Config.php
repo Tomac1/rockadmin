@@ -7,10 +7,18 @@ namespace RockAdmin\Config;
 /** A loaded, validated configuration. */
 final class Config
 {
-    /** @param array<string, mixed> $data */
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $roles the contents of roles.php, expanded and resolved but not
+     *                                    yet interpreted — `Roles::fromConfig()` needs the catalogue
+     *                                    of permissions the pages generated, and the loader has no
+     *                                    page repository. Rule 4: the loader does not reach into
+     *                                    the pages to build something it does not itself use.
+     */
     public function __construct(
         private readonly array $data,
         private readonly Enums $enums,
+        private readonly array $roles = [],
     ) {
     }
 
@@ -55,9 +63,18 @@ final class Config
         return $this->enums;
     }
 
-    /** @param array{data: array<string, mixed>, enums: Enums} $state written by var_export() */
+    /** @return array<string, mixed> */
+    public function roles(): array
+    {
+        return $this->roles;
+    }
+
+    /**
+     * @param array{data: array<string, mixed>, enums: Enums, roles?: array<string, mixed>} $state
+     *        written by var_export()
+     */
     public static function __set_state(array $state): self
     {
-        return new self($state['data'], $state['enums']);
+        return new self($state['data'], $state['enums'], $state['roles'] ?? []);
     }
 }

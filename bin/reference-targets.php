@@ -13,6 +13,7 @@ declare(strict_types=1);
  * @return list<array{file: string, schema: \RockAdmin\Config\Schema, title: string, intro: string}>
  */
 
+use RockAdmin\Auth\RoleSchema;
 use RockAdmin\Config\RootSchema;
 use RockAdmin\Page\PageSchema;
 
@@ -70,6 +71,46 @@ filter does not expect, is dropped rather than raised — a stale or hand-
 written link must still show a grid, not an error page.
 TEXT;
 
+$rolesIntro = <<<'TEXT'
+Every key a role accepts. Roles live in `config/roles.php`, next to
+`enums.php`, and that file's top level is a map of role key to the keys below:
+
+```php
+<?php return [
+    'superadmin' => ['permissions' => ['*']],
+    'editor' => [
+        'label' => 'Editor',
+        'permissions' => ['ads.*', 'users.view', 'media.*', '!ads.delete'],
+    ],
+    'viewer' => ['permissions' => ['*.view']],
+];
+```
+
+**Roles are configuration; assignment is data.** This file says what a role
+may do and lives in git; which roles a person holds is a column of `ra_users`
+and lives in the database.
+
+**Permission names are generated from the pages**, so adding a page file adds
+its permissions and there is no second list to keep in step. A page generates
+`{page}.view`, and — only if it declares a form region, the same fact that
+decides whether its grid draws an edit link — `{page}.create`,
+`{page}.update` and `{page}.delete`.
+
+**`*` widens, `!` subtracts, and the order does not matter.** Every widening
+is applied first and every subtraction afterwards, so `['ads.*',
+'!ads.delete']` and `['!ads.delete', 'ads.*']` mean the same thing. A role
+whose meaning depended on the order its author happened to type is not one
+anybody can reason about.
+
+Four things are refused when the roles load, rather than quietly denying a
+request months later: a pattern naming a page that does not exist (the nearest
+page is suggested), a pattern naming an action that is not one of the four, a
+role with no `permissions` key, and `!*`, which subtracts everything and is
+never what somebody meant. A pattern that names both a page and an action must
+name a permission that exists; a pattern with a `*` in it may match nothing,
+because a widening over an admin of read-only pages legitimately does.
+TEXT;
+
 return [
     [
         'file' => 'configuration.md',
@@ -82,5 +123,11 @@ return [
         'schema' => PageSchema::create(),
         'title' => 'Page reference',
         'intro' => $pagesIntro,
+    ],
+    [
+        'file' => 'roles.md',
+        'schema' => RoleSchema::create(),
+        'title' => 'Role reference',
+        'intro' => $rolesIntro,
     ],
 ];
