@@ -19,6 +19,7 @@ use RockAdmin\Http\Request;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 use RockAdmin\View\Assets;
 use RockAdmin\View\Escaper;
@@ -131,6 +132,8 @@ final class FormHandlerTest extends TestCase
                 new FakeRowSource([new Result($rows, null, [new Sql('SELECT 1')])]),
                 $urls,
                 new Csrf(new ArraySessionStore()),
+                Access::gateFor($this->repository()),
+                Access::identity(),
             ),
             new Renderer(new TemplateResolver([]), new Escaper(), $urls),
             new Assets($urls),
@@ -138,7 +141,7 @@ final class FormHandlerTest extends TestCase
             $urls,
             'RockAdmin Demo',
             'auto',
-            [new MenuItemView('Ads', '/admin/p/ads', key: 'ads')],
+            Access::menu($this->repository(), new MenuItemView('Ads', '/admin/p/ads', key: 'ads')),
         );
     }
 

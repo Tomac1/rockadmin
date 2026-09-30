@@ -25,6 +25,7 @@ use RockAdmin\Http\Route;
 use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 use RockAdmin\Tests\Support\RecordingWriteHandler;
 use RockAdmin\View\Assets;
@@ -181,7 +182,7 @@ final class ActionHandlerTest extends TestCase
         $rows = new FakeRowSource([
             new Result([['id' => 1, 'title' => 'Horské kolo', 'price' => 900]], null, [new Sql('SELECT 1')]),
         ]);
-        $region = new FormRegion($rows, $urls, $csrf);
+        $region = new FormRegion($rows, $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
         $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
         $flashes = new FlashBag($this->session);
 

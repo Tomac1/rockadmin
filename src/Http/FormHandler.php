@@ -12,6 +12,7 @@ use RockAdmin\Page\PageRepository;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\View\Assets;
 use RockAdmin\View\FlashBag;
+use RockAdmin\View\Menu;
 use RockAdmin\View\MenuItemView;
 use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
@@ -40,7 +41,6 @@ use RockAdmin\View\ShellView;
  */
 final class FormHandler implements Handler
 {
-    /** @param list<MenuItemView> $menu */
     public function __construct(
         private readonly PageRepository $pages,
         private readonly FormRegion $region,
@@ -50,7 +50,15 @@ final class FormHandler implements Handler
         private readonly UrlGenerator $urls,
         private readonly string $brand,
         private readonly string $darkMode,
-        private readonly array $menu = [],
+        /**
+         * The navigation, or null for an admin that draws none. `Menu` decides
+         * both what this reader may see (spec 9.2: never a link that answers
+         * 403) and which item is active. It used to be a plain list, and each
+         * of the three document handlers carried its own copy of the active
+         * rule; a handler that filtered or highlighted items itself would be
+         * that duplication again, now over a permission check.
+         */
+        private readonly ?Menu $menu = null,
     ) {
     }
 
@@ -150,16 +158,6 @@ final class FormHandler implements Handler
     /** @return list<MenuItemView> */
     private function menuFor(string $currentPage): array
     {
-        return array_map(
-            static fn (MenuItemView $item): MenuItemView => new MenuItemView(
-                $item->label,
-                $item->url,
-                $item->icon,
-                active: $item->key === $currentPage,
-                children: $item->children,
-                key: $item->key,
-            ),
-            $this->menu,
-        );
+        return $this->menu?->forPage($currentPage) ?? [];
     }
 }

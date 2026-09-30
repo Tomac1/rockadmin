@@ -26,6 +26,7 @@ use RockAdmin\Page\Display;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\CountingRowSource;
 use RockAdmin\Tests\Support\DatabaseTestCase;
 
@@ -99,7 +100,14 @@ final class ListRegionTest extends DatabaseTestCase
         $this->createFixtures($connection);
 
         $rows = new CountingRowSource(new SqlRowSource($connection));
-        $region = new ListRegion($rows, new QueryFactory(), new CellFormatter(), new UrlGenerator('/admin'));
+        $region = new ListRegion(
+            $rows,
+            new QueryFactory(),
+            new CellFormatter(),
+            new UrlGenerator('/admin'),
+            Access::gate([$this->page()]),
+            Access::identity(),
+        );
 
         $view = $region->render($this->page(), $this->region(), GridState::fromQuery([], 'grid', $this->region()));
 
@@ -164,7 +172,14 @@ final class ListRegionTest extends DatabaseTestCase
             [new Sort('id', SortDirection::Asc)],
             [],
         );
-        $region = new ListRegion($rows, new QueryFactory(), new CellFormatter(), new UrlGenerator('/admin'));
+        $region = new ListRegion(
+            $rows,
+            new QueryFactory(),
+            new CellFormatter(),
+            new UrlGenerator('/admin'),
+            Access::gate([$this->page()]),
+            Access::identity(),
+        );
 
         $view = $region->render(
             $this->page(),

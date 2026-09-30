@@ -28,6 +28,7 @@ use RockAdmin\Http\Route;
 use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\DatabaseTestCase;
 use RockAdmin\View\Assets;
 use RockAdmin\View\Escaper;
@@ -317,7 +318,7 @@ final class AuditLogTest extends DatabaseTestCase
         $urls = new UrlGenerator('/admin');
         $csrf = new Csrf($this->session);
         $flashes = new FlashBag($this->session);
-        $region = new FormRegion(new SqlRowSource($connection), $urls, $csrf);
+        $region = new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
         $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
 
         return new ActionHandler(

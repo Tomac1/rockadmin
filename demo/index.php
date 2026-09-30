@@ -63,6 +63,7 @@ use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
 use RockAdmin\View\ButtonView;
 use RockAdmin\View\FlashBag;
+use RockAdmin\View\Menu;
 use RockAdmin\View\MenuItemView;
 use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
@@ -114,8 +115,12 @@ $brand = $views->brand();
 $darkMode = $views->darkMode();
 $flashes = new FlashBag($session);
 
-/** @return list<MenuItemView> */
-$menu = static fn (): array => [
+// The navigation as declared. What each reader actually sees is `Menu`'s
+// answer, built below once the gate and the identity exist: a page somebody
+// may not view is not drawn, because a visible link that answers 403 is a bug
+// rather than a safeguard (spec 9.2).
+/** @var list<MenuItemView> $menuItems */
+$menuItems = [
     new MenuItemView('Dashboard', $urls->route('dashboard'), key: 'dashboard'),
     new MenuItemView('Ads', $urls->to('p/ads'), key: 'ads'),
 ];
@@ -163,64 +168,116 @@ function demoConnection(Closure $env): ?Connection
 
 $connection = demoConnection($env);
 
+/**
+ * Steps 3, 4 and 7 of the lifecycle.
+ *
+ * `Gate::fromConfig()` is what actually reads `demo/config/roles.php`: the
+ * loader stores that file raw, because deciding which permissions exist needs
+ * the pages and the loader has no page repository. Building the gate here —
+ * eagerly, before a single request is handled — is therefore also what
+ * validates the file, so a role naming a page that does not exist stops this
+ * script with an explanation rather than granting nothing in silence.
+ *
+ * Without a database there is nobody to authenticate against, so the demo
+ * supplies an authenticator that refuses everything. Every page then redirects
+ * to the login form, which is the honest answer: an admin with no user store
+ * has no users. The assets route stays open, so the theme still serves.
+ */
+$authenticator = $connection !== null
+    ? new SqlAuthenticator($connection)
+    : new class () implements Authenticator {
+        public function attempt(string $email, string $password, string $ip): LoginResult
+        {
+            return LoginResult::refused();
+        }
+
+        public function byId(string $id): ?AuthUser
+        {
+            return null;
+        }
+
+        public function logout(AuthUser $user): void
+        {
+        }
+    };
+
+$identity = new Identity($session, $authenticator);
+$gate = Gate::fromConfig($config, $pages);
+
+// Wired before the handlers, not after them, because rendering asks the gate
+// too: a region draws a create button, an edit link or a delete button only
+// for somebody the gate would let press it, and the menu draws only the pages
+// they may view. One `Gate::allows()`, two callers -- the kernel at step 7 and
+// the templates at step 10.
+$menu = new Menu($menuItems, $gate, $identity, $pages);
+
 $handlers = new HandlerRegistry();
 $handlers->register('assets', new AssetHandler());
-$handlers->register('dashboard', new class ($renderer, $urls, $assets, $flashes, $brand, $darkMode, $menu) implements Handler {
-    /** @param Closure(): list<MenuItemView> $menu */
-    public function __construct(
-        private readonly Renderer $renderer,
-        private readonly UrlGenerator $urls,
-        private readonly Assets $assets,
-        private readonly FlashBag $flashes,
-        private readonly string $brand,
-        private readonly string $darkMode,
-        private readonly Closure $menu,
-    ) {
-    }
+$handlers->register(
+    'dashboard',
+    new class ($renderer, $urls, $assets, $flashes, $brand, $darkMode, $menu, $gate, $identity) implements Handler {
+        public function __construct(
+            private readonly Renderer $renderer,
+            private readonly UrlGenerator $urls,
+            private readonly Assets $assets,
+            private readonly FlashBag $flashes,
+            private readonly string $brand,
+            private readonly string $darkMode,
+            private readonly Menu $menu,
+            private readonly Gate $gate,
+            private readonly Identity $identity,
+        ) {
+        }
 
-    public function handle(Route $route, Request $request): Response
-    {
-        $this->flashes->success('This is the shell milestone 4 built — the ads page shows the grid milestone 6 built.');
+        public function handle(Route $route, Request $request): Response
+        {
+            $this->flashes->success('This is the shell milestone 4 built — the ads page shows the grid milestone 6 built.');
 
-        $items = ($this->menu)();
-        $items[0] = new MenuItemView($items[0]->label, $items[0]->url, active: true, key: $items[0]->key);
+            $shell = new ShellView(
+                $this->brand,
+                menu: $this->menu->forPage('dashboard'),
+                flashes: $this->flashes->take(),
+                styles: $this->assets->styles(),
+                scripts: $this->assets->scripts(),
+                darkMode: $this->darkMode,
+            );
 
-        $shell = new ShellView(
-            $this->brand,
-            menu: $items,
-            flashes: $this->flashes->take(),
-            styles: $this->assets->styles(),
-            scripts: $this->assets->scripts(),
-            darkMode: $this->darkMode,
-        );
+            $header = new PageView(
+                'dashboard',
+                'Dashboard',
+                $shell,
+                description: 'What this milestone built: the shell, the menu, a page header with '
+                    . 'buttons, and a flash message shown once as a toast.',
+                // A header button is a control like any other, so the gate
+                // decides it too: 'New ad' goes to `p/ads/create`, which the
+                // kernel refuses without `ads.create`, and a button that answers
+                // 403 is a bug rather than a safeguard (spec 9.2). 'Export' is
+                // milestone 4's placeholder and names no route at all, so it is
+                // shown to whoever may read the page it belongs to.
+                buttons: $this->gate->allows($this->identity->user(), 'ads.create')
+                    ? [
+                        new ButtonView('create', 'New ad', $this->urls->to('p/ads/create'), style: 'primary'),
+                        new ButtonView('export', 'Export', $this->urls->to('p/ads/export')),
+                    ]
+                    : [new ButtonView('export', 'Export', $this->urls->to('p/ads/export'))],
+            );
 
-        $header = new PageView(
-            'dashboard',
-            'Dashboard',
-            $shell,
-            description: 'What this milestone built: the shell, the menu, a page header with '
-                . 'buttons, and a flash message shown once as a toast.',
-            buttons: [
-                new ButtonView('create', 'New ad', $this->urls->to('p/ads/create'), style: 'primary'),
-                new ButtonView('export', 'Export', $this->urls->to('p/ads/export')),
-            ],
-        );
+            $main = $this->renderer->render('page/header', $header)
+                . '<p class="ra-placeholder">See the grid this milestone built at '
+                . '<a href="' . htmlspecialchars($this->urls->to('p/ads'), ENT_QUOTES) . '">Ads</a>.</p>';
 
-        $main = $this->renderer->render('page/header', $header)
-            . '<p class="ra-placeholder">See the grid this milestone built at '
-            . '<a href="' . htmlspecialchars($this->urls->to('p/ads'), ENT_QUOTES) . '">Ads</a>.</p>';
+            $single = $this->renderer->render('layout/single', new PageView('dashboard', 'Dashboard', $shell, slots: ['main' => $main]));
 
-        $single = $this->renderer->render('layout/single', new PageView('dashboard', 'Dashboard', $shell, slots: ['main' => $main]));
+            $html = $this->renderer->render('layout/base', new PageView('dashboard', 'Dashboard', $shell, slots: ['main' => $single]));
 
-        $html = $this->renderer->render('layout/base', new PageView('dashboard', 'Dashboard', $shell, slots: ['main' => $single]));
-
-        return Response::html($html);
-    }
-});
+            return Response::html($html);
+        }
+    },
+);
 
 if ($connection !== null) {
     $rows = new SqlRowSource($connection);
-    $listRegion = new ListRegion($rows, new QueryFactory(), new CellFormatter(), $urls);
+    $listRegion = new ListRegion($rows, new QueryFactory(), new CellFormatter(), $urls, $gate, $identity);
     $previewRegion = new PreviewRegion($rows, new CellFormatter());
 
     $handlers->register('page.index', new PageHandler(
@@ -231,7 +288,7 @@ if ($connection !== null) {
         $flashes,
         $brand,
         $darkMode,
-        ($menu)(),
+        $menu,
     ));
     $handlers->register('page.detail', new DetailHandler(
         $pages,
@@ -241,7 +298,7 @@ if ($connection !== null) {
         $flashes,
         $brand,
         $darkMode,
-        ($menu)(),
+        $menu,
     ));
     $handlers->register('region', new RegionHandler($pages, $listRegion, $previewRegion, $renderer));
 
@@ -252,7 +309,7 @@ if ($connection !== null) {
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
     $csrf = new Csrf($session);
-    $formRegion = new FormRegion($rows, $urls, $csrf);
+    $formRegion = new FormRegion($rows, $urls, $csrf, $gate, $identity);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -262,7 +319,7 @@ if ($connection !== null) {
         $urls,
         $brand,
         $darkMode,
-        ($menu)(),
+        $menu,
     );
 
     $handlers->register('page.create', $forms);
@@ -283,7 +340,6 @@ if ($connection !== null) {
     // every real page, so cloning the repository to look at the theme works
     // with nothing set up. Only the grid itself is replaced by a message.
     $handlers->register('page.index', new class ($pages, $renderer, $assets, $flashes, $brand, $darkMode, $menu) implements Handler {
-        /** @param Closure(): list<MenuItemView> $menu */
         public function __construct(
             private readonly PageRepository $pages,
             private readonly Renderer $renderer,
@@ -291,7 +347,7 @@ if ($connection !== null) {
             private readonly FlashBag $flashes,
             private readonly string $brand,
             private readonly string $darkMode,
-            private readonly Closure $menu,
+            private readonly Menu $menu,
         ) {
         }
 
@@ -305,19 +361,9 @@ if ($connection !== null) {
 
             $page = $this->pages->get($name);
 
-            $items = array_map(
-                fn (MenuItemView $item): MenuItemView => new MenuItemView(
-                    $item->label,
-                    $item->url,
-                    active: $item->key === $name,
-                    key: $item->key,
-                ),
-                ($this->menu)(),
-            );
-
             $shell = new ShellView(
                 $this->brand,
-                menu: $items,
+                menu: $this->menu->forPage($name),
                 flashes: $this->flashes->take(),
                 styles: $this->assets->styles(),
                 scripts: $this->assets->scripts(),
@@ -372,45 +418,12 @@ $errors = new ErrorHandler(
     page: new TemplateErrorPage($renderer),
 );
 
-/**
- * Steps 3, 4 and 7 of the lifecycle.
- *
- * `Gate::fromConfig()` is what actually reads `demo/config/roles.php`: the
- * loader stores that file raw, because deciding which permissions exist needs
- * the pages and the loader has no page repository. Building the gate here —
- * eagerly, before a single request is handled — is therefore also what
- * validates the file, so a role naming a page that does not exist stops this
- * script with an explanation rather than granting nothing in silence.
- *
- * Without a database there is nobody to authenticate against, so the demo
- * supplies an authenticator that refuses everything. Every page then redirects
- * to the login form, which is the honest answer: an admin with no user store
- * has no users. The assets route stays open, so the theme still serves.
- */
-$authenticator = $connection !== null
-    ? new SqlAuthenticator($connection)
-    : new class () implements Authenticator {
-        public function attempt(string $email, string $password, string $ip): LoginResult
-        {
-            return LoginResult::refused();
-        }
-
-        public function byId(string $id): ?AuthUser
-        {
-            return null;
-        }
-
-        public function logout(AuthUser $user): void
-        {
-        }
-    };
-
 $kernel = new Kernel(
     new Router(),
     $handlers,
     $errors,
-    new Identity($session, $authenticator),
-    Gate::fromConfig($config, $pages),
+    $identity,
+    $gate,
     $urls,
 );
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RockAdmin\Grid;
 
+use RockAdmin\Auth\Gate;
+use RockAdmin\Auth\Identity;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\SortDirection;
@@ -23,6 +25,18 @@ use RockAdmin\View\Classes;
  * past the end), and every header, row and pager link decided once so
  * nothing downstream has to ask a database or a configuration object
  * anything at render time.
+ *
+ * **What it may draw is the gate's answer, not a rule of its own** (spec
+ * 9.2). The create button needs `{page}.create` and a row's edit link needs
+ * `{page}.update`, asked of the same `Gate::allows()` the kernel calls at step
+ * 7 — so a control this grid draws is one the kernel will accept, and a
+ * control it refuses never appears. There is deliberately no second condition
+ * for writability beside the permission: a page with no form region generates
+ * no write permissions at all (`Permission::forPage()` reads
+ * `firstFormRegion()`), so the gate already answers no for a read-only page,
+ * even to a role holding `*`. Checking the form region here as well would be
+ * the same fact read twice, which is exactly how milestone 7 came to draw Edit
+ * links into a 404.
  */
 final class ListRegion
 {
@@ -31,6 +45,14 @@ final class ListRegion
         private readonly QueryFactory $queries,
         private readonly CellFormatter $cells,
         private readonly UrlGenerator $urls,
+        private readonly Gate $gate,
+        /**
+         * Who is asking, resolved at render time rather than at construction:
+         * the region is wired once and the user belongs to the request. The
+         * lookup is memoised inside `Identity`, so asking here costs no query
+         * the kernel has not already paid for.
+         */
+        private readonly Identity $identity,
     ) {
     }
 
@@ -38,14 +60,6 @@ final class ListRegion
     {
         $query = $this->queries->build($page, $region, $state);
         $result = $this->rows->fetch($query);
-
-        // Whether this page can be written at all: one form region is what
-        // gives the grid a create button and every row an edit link. The
-        // return address is this grid's own state URL, so saving or
-        // cancelling lands back on the page the person left -- filters, sort
-        // and page number intact, which is the whole point of spec 8.11
-        // keeping that state in the URL.
-        $writable = $page->firstFormRegion() !== null;
 
         $limit = $query->page === null ? max(1, $region->perPage) : $query->page->limit;
         $pageCount = $result->total !== null ? max(1, (int) ceil($result->total / $limit)) : null;
@@ -59,39 +73,49 @@ final class ListRegion
             $result = $this->rows->fetch($query);
         }
 
-        // Null when the page declares no form, which is what stops every row
-        // drawing an edit link into a route that does not exist. `$writable`
-        // has to decide both this and `createUrl` below: deciding them
-        // separately is how a page with no form came to show a create button
-        // (correctly) and an Edit link on every row (which 404'd), and how
-        // `hasRowActions()` came to say there is no actions column while
-        // every row rendered one -- a body one cell wider than its header.
-        $returnTo = $writable ? $this->pageStateUrl($page, $region, $state) : null;
+        // Where a write comes back to: this grid's own state URL, so saving or
+        // cancelling lands on the page the person left -- filters, sort and
+        // page number intact, which is the whole point of spec 8.11 keeping
+        // that state in the URL.
+        //
+        // One address, and two permissions over it. Creating and editing are
+        // genuinely different rights -- a role may hold one without the other
+        // -- so each gets its own nullable value, and each value decides
+        // everything downstream of it: `$editReturnTo` decides both whether a
+        // row carries an edit link and whether the table has an actions column
+        // at all. Deciding those two from different facts is how milestone 7
+        // came to render a body one cell wider than its header (fixed in
+        // 32105bb), and adding a permission to the decision does not make it
+        // safe to split again.
+        $user = $this->identity->user();
+        $stateUrl = $this->pageStateUrl($page, $region, $state);
+
+        $createReturnTo = $this->gate->allows($user, $page->name . '.create') ? $stateUrl : null;
+        $editReturnTo = $this->gate->allows($user, $page->name . '.update') ? $stateUrl : null;
 
         return new ListView(
             key: $region->key,
             pageName: $page->name,
             columns: $this->columnViews($page, $region, $state),
-            rows: $this->rowViews($page, $region, $result->rows, $returnTo),
+            rows: $this->rowViews($page, $region, $result->rows, $editReturnTo),
             filters: $this->filterViews($region, $state),
             pagination: $this->pagination($page, $region, $state, $limit, $result),
             search: $state->search,
             searchable: $region->searchable !== [],
             regionUrl: $this->urls->route('region', ['page' => $page->name, 'region' => $region->key]),
             pageUrl: $this->urls->route('page.index', ['page' => $page->name]),
-            // Branching on $returnTo rather than on $writable, though they
-            // now say the same thing: it makes the create button and the
-            // rows' edit links read from one value instead of two that have
-            // to be kept in agreement, and it is what lets the type be
-            // `string` here rather than `?string` narrowed by eye.
-            createUrl: $returnTo !== null
+            createUrl: $createReturnTo !== null
                 ? $this->urls->route(
                     'page.create',
                     ['page' => $page->name],
-                    [FormFields::RETURN_TO => $returnTo],
+                    [FormFields::RETURN_TO => $createReturnTo],
                 )
                 : null,
             searchPlaceholder: $region->searchPlaceholder,
+            // The same `$editReturnTo` the rows above were built from, so the
+            // header and the body cannot disagree about how many cells a row
+            // has. `hasRowActions()` reads this and nothing else.
+            rowActions: $editReturnTo !== null,
         );
     }
 
@@ -126,8 +150,9 @@ final class ListRegion
 
     /**
      * @param  list<array<string, mixed>> $rows
-     * @param  ?string                     $returnTo null when the page declares no
-     *                                              form, so no row draws an edit link
+     * @param  ?string                    $returnTo null when this user may not update
+     *                                              this page, so no row draws an edit
+     *                                              link and no row draws an actions cell
      * @return list<RowView>
      */
     private function rowViews(
@@ -159,10 +184,12 @@ final class ListRegion
     }
 
     /**
-     * One row's edit address: null when the page declares no form at all,
-     * `''` when it does but this row came back with no key to address, and
-     * the URL otherwise. See `RowView::$editUrl` for why the two empty cases
-     * are not the same one.
+     * One row's edit address: null when this user may not update this page —
+     * which includes a page that declares no form, because such a page
+     * generates no `update` permission for anybody to hold — `''` when they
+     * may but this row came back with no key to address, and the URL
+     * otherwise. See `RowView::$editUrl` for why the two empty cases are not
+     * the same one.
      */
     private function editUrl(PageDefinition $page, mixed $key, ?string $returnTo): ?string
     {

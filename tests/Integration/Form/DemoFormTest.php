@@ -24,6 +24,7 @@ use RockAdmin\Http\Route;
 use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\DatabaseTestCase;
 use RockAdmin\View\Assets;
 use RockAdmin\View\Escaper;
@@ -136,7 +137,13 @@ final class DemoFormTest extends DatabaseTestCase
 
         return new FormHandler(
             $this->repository(),
-            new FormRegion(new SqlRowSource($connection), $urls, new Csrf($this->session)),
+            new FormRegion(
+                new SqlRowSource($connection),
+                $urls,
+                new Csrf($this->session),
+                Access::gateFor($this->repository()),
+                Access::identity(),
+            ),
             new Renderer(new TemplateResolver([]), new Escaper(), $urls),
             new Assets($urls),
             new FlashBag($this->session),
@@ -153,7 +160,7 @@ final class DemoFormTest extends DatabaseTestCase
 
         return new ActionHandler(
             $this->repository(),
-            new FormRegion(new SqlRowSource($connection), $urls, $csrf),
+            new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
             new FieldValidator(),
             new SqlWriteHandler($connection),
             $this->forms($connection),

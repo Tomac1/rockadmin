@@ -51,10 +51,14 @@ final class ListView
         public readonly string $pageUrl,
         /**
          * '/p/{page}/create' with this grid's own state as the return
-         * address, or null when the page declares no form region and there
-         * is therefore nothing to create. The same fact decides whether each
-         * row carries an edit link, which is what `hasRowActions()` reads:
-         * a grid that can create can edit, because both are the one form.
+         * address, or null when this user may not create a row on this page —
+         * which includes a page with no form region, since such a page
+         * generates no `{page}.create` permission for anybody to hold.
+         *
+         * It says nothing about editing. Creating and updating are separate
+         * permissions, so a role may hold either without the other; whether a
+         * row carries an edit link is `$rowActions`, decided by `ListRegion`
+         * from the same value it gave each `RowView`.
          */
         public readonly ?string $createUrl = null,
         /**
@@ -65,6 +69,17 @@ final class ListView
          * columns the box actually looks in, which 'Search…' cannot.
          */
         public readonly ?string $searchPlaceholder = null,
+        /**
+         * Whether the rows carry an actions cell — set by `ListRegion` from
+         * the very value it used to build every `RowView`'s `$editUrl`, and
+         * false by default so a hand-built view draws no column it has no
+         * cells for.
+         *
+         * It is not derived from `$rows`: an empty grid still has to answer,
+         * and a view assembled row by row would answer differently depending
+         * on how many rows came back.
+         */
+        public readonly bool $rowActions = false,
     ) {
     }
 
@@ -73,10 +88,17 @@ final class ListView
      * `row.php` must agree about this or the header and the body disagree
      * about how many cells a row has, so it is answered here once rather
      * than inferred twice.
+     *
+     * It used to read `$createUrl`, which was true while creating and editing
+     * were the same fact — one form region gave a grid both. They are two
+     * permissions now, so a user holding `update` and not `create` would have
+     * had an actions cell in every row and no column in the header, which is
+     * the milestone 7 defect (32105bb) with a new cause. So it reads the one
+     * value that decides the rows' own edit links, and nothing else.
      */
     public function hasRowActions(): bool
     {
-        return $this->createUrl !== null;
+        return $this->rowActions;
     }
 
     public function isEmpty(): bool

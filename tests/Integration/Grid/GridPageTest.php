@@ -22,6 +22,7 @@ use RockAdmin\Http\Request;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\CountingRowSource;
 use RockAdmin\Tests\Support\DatabaseTestCase;
 use RockAdmin\View\Assets;
@@ -136,7 +137,14 @@ final class GridPageTest extends DatabaseTestCase
         $this->createFixtures($connection);
 
         $rows = new CountingRowSource(new SqlRowSource($connection));
-        $listRegion = new ListRegion($rows, new QueryFactory(), new CellFormatter(), new UrlGenerator('/admin'));
+        $listRegion = new ListRegion(
+            $rows,
+            new QueryFactory(),
+            new CellFormatter(),
+            new UrlGenerator('/admin'),
+            Access::gateFor($this->repository()),
+            Access::identity(),
+        );
         $pageHandler = new PageHandler(
             $this->repository(),
             $listRegion,
@@ -191,12 +199,16 @@ final class GridPageTest extends DatabaseTestCase
             new QueryFactory(),
             new CellFormatter(),
             new UrlGenerator('/admin'),
+            Access::gateFor($this->repository()),
+            Access::identity(),
         );
         $listRegionForFragment = new ListRegion(
             new SqlRowSource($connection),
             new QueryFactory(),
             new CellFormatter(),
             new UrlGenerator('/admin'),
+            Access::gateFor($this->repository()),
+            Access::identity(),
         );
 
         $pageHandler = new PageHandler(
@@ -273,7 +285,14 @@ final class GridPageTest extends DatabaseTestCase
         );
         $regionHandler = new RegionHandler(
             $this->repository(),
-            new ListRegion(new SqlRowSource($connection), new QueryFactory(), new CellFormatter(), new UrlGenerator('/admin')),
+            new ListRegion(
+                new SqlRowSource($connection),
+                new QueryFactory(),
+                new CellFormatter(),
+                new UrlGenerator('/admin'),
+                Access::gateFor($this->repository()),
+                Access::identity(),
+            ),
             $previewRegion,
             $this->renderer(),
         );

@@ -19,6 +19,7 @@ use RockAdmin\Http\Request;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 use RockAdmin\View\Assets;
 use RockAdmin\View\Escaper;
@@ -102,7 +103,14 @@ final class PageHandlerTest extends TestCase
 
     private function region(FakeRowSource $rows): ListRegion
     {
-        return new ListRegion($rows, new QueryFactory(), new CellFormatter(), new UrlGenerator('/'));
+        return new ListRegion(
+            $rows,
+            new QueryFactory(),
+            new CellFormatter(),
+            new UrlGenerator('/'),
+            Access::gateFor($this->repository()),
+            Access::identity(),
+        );
     }
 
     private function renderer(): Renderer
@@ -128,7 +136,7 @@ final class PageHandlerTest extends TestCase
             new FlashBag(new ArraySessionStore()),
             'RockAdmin Demo',
             'auto',
-            [new MenuItemView('Ads', '/p/ads', key: 'ads')],
+            Access::menu($this->repository(), new MenuItemView('Ads', '/p/ads', key: 'ads')),
         );
     }
 

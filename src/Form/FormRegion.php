@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RockAdmin\Form;
 
+use RockAdmin\Auth\Gate;
+use RockAdmin\Auth\Identity;
 use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\CountStrategy;
 use RockAdmin\Db\DbException;
@@ -39,6 +41,13 @@ use RockAdmin\Page\RegionDefinition;
  * handed to the same `RowSource` a grid reads from. No `QueryFactory` — that
  * builds a query out of a `GridState`, the filters, search, sort and page
  * number read out of a URL, and a form of one known row has no state at all.
+ *
+ * **The delete button is the gate's answer, not this class's** (spec 9.2): it
+ * is drawn only for somebody holding `{page}.delete`, asked of the same
+ * `Gate::allows()` the kernel calls before `POST /a/{page}/delete` runs. The
+ * form's own submit needs no such check — the kernel already refused anybody
+ * without `{page}.create` or `{page}.update` before this form was drawn at
+ * all, so a form that exists is a form its reader may save.
  */
 final class FormRegion
 {
@@ -46,6 +55,14 @@ final class FormRegion
         private readonly RowSource $rows,
         private readonly UrlGenerator $urls,
         private readonly Csrf $csrf,
+        private readonly Gate $gate,
+        /**
+         * Who is asking, resolved at render time rather than at construction:
+         * the region is wired once and the user belongs to the request. The
+         * lookup is memoised inside `Identity`, so asking here costs no query
+         * the kernel has not already paid for.
+         */
+        private readonly Identity $identity,
     ) {
     }
 
@@ -317,10 +334,19 @@ final class FormRegion
             fields: $fields,
             errors: $formErrors,
             id: $id,
-            deleteAction: $isCreate ? null : $this->urls->route('action', [
-                'page' => $page->name,
-                'action' => 'delete',
-            ]),
+            // Two reasons there may be no delete button, and they are not the
+            // same reason: a create has no row to delete yet, and a person
+            // without `{page}.delete` may not delete the row that does exist.
+            // The second is the gate's answer, asked with the same
+            // `Gate::allows()` the kernel asks before `POST /a/{page}/delete`
+            // runs -- so the button is drawn exactly when pressing it would be
+            // accepted (spec 9.2).
+            deleteAction: $isCreate || !$this->gate->allows($this->identity->user(), $page->name . '.delete')
+                ? null
+                : $this->urls->route('action', [
+                    'page' => $page->name,
+                    'action' => 'delete',
+                ]),
         );
     }
 
