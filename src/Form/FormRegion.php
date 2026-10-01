@@ -6,6 +6,7 @@ namespace RockAdmin\Form;
 
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\RowReader;
 use RockAdmin\Http\Csrf;
@@ -60,6 +61,12 @@ final class FormRegion
          * the kernel has not already paid for.
          */
         private readonly Identity $identity,
+        /**
+         * The workspace boundary this form reads inside. Optional for the
+         * same reason it is everywhere else: an admin with no workspaces has
+         * no boundary, and null answers [].
+         */
+        private readonly ?RequestScope $scope = null,
     ) {
     }
 
@@ -220,7 +227,13 @@ final class FormRegion
             $page->entity,
             $id,
             array_map(static fn ($field): string => $field->key, array_values($form->fields)),
-            $page->scope,
+            // Bound, not carried: `$page->scope` still holds Placeholder
+            // objects. A form that loaded a row outside the workspace would
+            // offer to edit it, and the write behind it would then be refused
+            // -- a form that cannot save is worse than a row that is not
+            // there, because it looks like a bug in the admin rather than a
+            // row somebody may not touch.
+            $this->scope?->forPage($page) ?? $page->scope,
         );
     }
 

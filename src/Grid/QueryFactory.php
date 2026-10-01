@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Grid;
 
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Db\CountStrategy;
 use RockAdmin\Db\Filter;
 use RockAdmin\Db\FilterOperator;
@@ -47,6 +48,19 @@ final class QueryFactory
         // table scan. GridState never lets per_page arrive from the URL at
         // all, so this only ever protects against the region's own config.
         private readonly int $maxPerPage = 200,
+        /**
+         * The workspace boundary this request reads inside.
+         *
+         * Specification 9.3 applies the scope "to update, delete and preview
+         * as well as list", and it is applied here rather than left on the
+         * page definition because `$page->scope` still holds unbound
+         * `Placeholder` objects -- which `QueryBuilder` refuses outright, by
+         * design, so that no query can ever carry one as text.
+         *
+         * Optional because an admin with no workspaces has no boundary and a
+         * great many tests build this without one; null answers `[]`.
+         */
+        private readonly ?RequestScope $scope = null,
     ) {
     }
 
@@ -65,11 +79,19 @@ final class QueryFactory
         return new Query(
             entity: $page->entity,
             columns: $columns,
-            // The entity's scope is carried through untouched, including an
-            // unresolved Placeholder — Query::$scope is applied unconditionally
+            // The scope is bound here, not carried through: `$page->scope`
+            // still holds `Placeholder` objects, and `QueryBuilder` refuses
+            // one outright rather than letting it reach SQL as text. Query's
+            // own scope is applied unconditionally
             // by the builder, never filtered against the selected columns, so
             // it is the one condition a URL can never discard.
-            scope: $page->scope,
+            // Unwired, the page's own scope goes through untouched rather
+            // than being dropped. That matters: a literal scope still
+            // applies, and an unbound `Placeholder` reaches `QueryBuilder`
+            // and is refused there. Dropping it instead would turn a missing
+            // collaborator into a silently unscoped query, which is the exact
+            // failure this whole subsystem exists to prevent.
+            scope: $this->scope?->forPage($page) ?? $page->scope,
             filters: $this->filters($region, $state),
             search: $this->search($region, $state),
             sort: $this->sortWithTiebreaker($region, $state, $page->entity->key),

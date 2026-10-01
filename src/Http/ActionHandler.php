@@ -232,7 +232,12 @@ final class ActionHandler implements Handler
      */
     private function scopeFor(PageDefinition $page): array
     {
-        return $this->scope?->forPage($page) ?? [];
+        // Unwired, the page's own scope goes through untouched rather than
+        // being dropped. A literal scope still applies, and an unbound
+        // `Placeholder` reaching a write is refused rather than ignored --
+        // because a missing collaborator turning into an unscoped UPDATE is
+        // the exact failure this subsystem exists to prevent.
+        return $this->scope?->forPage($page) ?? $page->scope;
     }
 
     /**
