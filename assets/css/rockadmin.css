@@ -891,7 +891,10 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     display: block;
     max-width: 46rem;
     margin: 1rem;
-    background-color: var(--bs-body-bg);
+    /* The surface, not the page. These read --bs-body-bg back when the page
+       was white and the two were the same colour; once the page gained a tint
+       a form and a sign-in box went grey while every other card stayed white. */
+    background-color: var(--ra-surface);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1rem 1.25rem 1.25rem;
@@ -1029,7 +1032,12 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  */
 .ra-login {
     min-height: 100vh;
-    background-color: var(--bs-tertiary-bg, var(--bs-light));
+    /* The same tint as every other page. It used to reach for Bootstrap's
+       tertiary background to get a shade off white, which was right while the
+       admin's own pages were white and is a second, slightly different grey
+       now that they are not -- and the sign-in page is the first thing anyone
+       sees of this product. */
+    background-color: var(--bs-body-bg);
 }
 
 .ra-login-main {
@@ -1048,7 +1056,10 @@ th[aria-sort="descending"] .ra-grid-sort::after {
        admin where being small is what makes it look deliberate. */
     width: 100%;
     max-width: 23rem;
-    background-color: var(--bs-body-bg);
+    /* The surface, not the page. These read --bs-body-bg back when the page
+       was white and the two were the same colour; once the page gained a tint
+       a form and a sign-in box went grey while every other card stayed white. */
+    background-color: var(--ra-surface);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1.5rem;
