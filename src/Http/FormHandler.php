@@ -16,6 +16,7 @@ use RockAdmin\View\Menu;
 use RockAdmin\View\MenuItemView;
 use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
+use RockAdmin\View\ShellAccount;
 use RockAdmin\View\ShellView;
 
 /**
@@ -59,6 +60,12 @@ final class FormHandler implements Handler
          * that duplication again, now over a permission check.
          */
         private readonly ?Menu $menu = null,
+        /**
+         * The navbar's account area: who is signed in, and the Log out button
+         * with the token it has to carry. Null draws no account area, which is
+         * what a shell without one looks like.
+         */
+        private readonly ?ShellAccount $account = null,
     ) {
     }
 
@@ -134,7 +141,10 @@ final class FormHandler implements Handler
             flashes: $this->flashes->take(),
             styles: $this->assets->styles(),
             scripts: $this->assets->scripts(),
+            userName: $this->account?->userName(),
+            logoutUrl: $this->account?->logoutUrl(),
             darkMode: $this->darkMode,
+            csrfToken: $this->account?->csrfToken(),
         );
 
         $header = new PageView($page->name, $view->title, $shell, description: $page->description);

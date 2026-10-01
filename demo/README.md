@@ -6,6 +6,21 @@ php -S localhost:8080 -t demo demo/index.php
 
 Open <http://localhost:8080/>.
 
+**Everything is behind a sign-in.** With no database configured you get the
+login page and nothing else, which is the honest answer — an admin with no user
+store has no users. To get in, configure a database and run `php demo/seed.php`
+(below); it seeds three administrators, all with the password `rockadmin`:
+
+| Address | Role | What they see |
+|---|---|---|
+| `super@example.com` | superadmin | everything, Delete included |
+| `editor@example.com` | editor | New, Edit — and no Delete anywhere |
+| `viewer@example.com` | viewer | the grid, with no actions column at all |
+
+The password is in a file that ships because this is a demo against a throwaway
+fixture database. A real installation creates its first administrator through
+`_setup` and never has one written down.
+
 This is the design surface the default theme is tuned against — a themed
 admin shell with a navbar, a menu, a page header with buttons, and a flash
 message shown once as a toast. It is kept honest to the general case: it
@@ -44,10 +59,44 @@ php demo/seed.php
 php -S localhost:8080 -t demo demo/index.php
 ```
 
+`demo/seed.php` also runs `Migrator` over the same database, so the SDK's own
+`ra_users`, `ra_login_attempts`, `ra_password_resets`, `ra_activity_log` and
+`ra_migrations` exist without a second command. It is re-runnable: the three
+administrators are replaced rather than inserted again, and their rows in
+`ra_login_attempts` are cleared with them, because the throttle is a table and
+a run of failed attempts from an earlier session would otherwise refuse a
+correct password on a freshly seeded database.
+
 With no database configured, `/p/ads` still renders — the shell, the menu,
 the page header — and says on the page that no database is configured,
 rather than throwing a connection error at whoever only came to look at the
-theme.
+theme. You reach it by signing in, which without a database you cannot, so
+this is the one thing you have to configure a database to look at.
+
+## Identity and permission
+
+Things worth doing once, in a browser:
+
+- Sign in as each of the three and compare `/p/ads`. The viewer's grid has
+  eight columns and no ninth; the editor's has an Actions column with Edit and
+  nothing else; the superadmin's edit form has a Delete button and the
+  editor's does not. A control the gate would refuse is never drawn, because
+  a visible button that answers 403 is a bug rather than a safeguard.
+- Type a forbidden URL by hand as the viewer — `/p/ads/create`,
+  `/p/ads/1/edit`, `POST /a/ads/update`. Every one is a 403, and a 403 rather
+  than a redirect.
+- Deep-link to `/p/ads?grid[page]=2&grid[f][state][]=active` while signed out.
+  You land on the login form and, once you sign in, on that page with that
+  filter still applied. `/r/...` and `/a/...` answer 401 instead of
+  redirecting, because a grid refreshed into a login form is how session
+  expiry usually looks in admin tools.
+- Get the password wrong, then use an address that does not exist. The
+  sentence is the same either way, and so is the work the server does.
+- Save something, then look at `ra_activity_log`: one row per write, naming
+  the person who made it and carrying the diff. `audit.enabled` turns it off;
+  it defaults to on.
+- Log out, then press the browser's back button. You get the login page, not
+  the admin.
 
 ## The form
 

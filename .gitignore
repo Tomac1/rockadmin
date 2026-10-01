@@ -23,3 +23,6 @@ composer.lock
 /.zed/
 .DS_Store
 Thumbs.db
+
+# Playwright MCP writes session artefacts here when a browser check runs.
+.playwright-mcp/

@@ -179,6 +179,14 @@ Every write is a plain `POST` with a CSRF token and runs inside a transaction,
 so it works with JavaScript switched off, and an invalid submission comes back
 with every error at once and what was typed still in the inputs.
 
+All of it is behind a sign-in. `demo/seed.php` seeds three administrators — a
+superadmin, an editor and a viewer, with Argon2id hashes — so the difference a
+role makes is something you can look at rather than read about: the viewer's
+grid has no actions column at all, the editor sees Edit and never Delete, and a
+forbidden URL typed by hand is a 403 whether it addresses a page, a fragment or
+a write. Every write leaves one row in `ra_activity_log` naming the person who
+made it and carrying its diff.
+
 ## Documentation
 
 - [Design specification][spec] — the complete architecture and the reasoning

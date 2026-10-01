@@ -114,6 +114,21 @@ final class RootSchema
                 performance: 'A large value makes every grid render slower for everyone; '
                     . 'set it per region where a particular page needs more.',
             ),
+            'audit' => new SchemaKey(
+                ValueType::Array,
+                description: 'The record of what happened: one row in ra_activity_log per write.',
+                children: new Schema([
+                    'enabled' => new SchemaKey(
+                        ValueType::Bool,
+                        default: true,
+                        description: 'Records every create, update and delete with who did it and a '
+                            . 'diff of what changed. On by default, because history that was not '
+                            . 'collected cannot be recovered afterwards; turn it off only where '
+                            . 'another system already keeps the same record.',
+                        example: false,
+                    ),
+                ]),
+            ),
             'theme' => new SchemaKey(
                 ValueType::Array,
                 description: 'The default look. Replace it wholesale with a stylesheet in assets.css.',

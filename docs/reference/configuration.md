@@ -51,6 +51,14 @@ Project CSS and JS, loaded after the SDK’s so they override it.
 | `css` | array | `[]` | `['/css/admin.css']` | Stylesheet URLs a project adds on top of the SDK’s own, for branding or overriding the default look. |
 | `js` | array | `[]` | `['/js/admin.js']` | Script URLs a project adds on top of the SDK’s own, for custom widgets or page behaviour. |
 
+## `audit`
+
+The record of what happened: one row in ra_activity_log per write.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `enabled` | bool | `true` | `false` | Records every create, update and delete with who did it and a diff of what changed. On by default, because history that was not collected cannot be recovered afterwards; turn it off only where another system already keeps the same record. |
+
 ## `theme`
 
 The default look. Replace it wholesale with a stylesheet in assets.css.
