@@ -24,18 +24,31 @@
     --bs-body-font-size: 0.9rem;
     --bs-body-line-height: 1.4;
 
-    /* Shape: restrained radius and no default shadow. Bootstrap's own
-       defaults are exactly what makes a page read as "stock Bootstrap". */
-    --bs-border-radius: 0.25rem;
-    --bs-border-radius-sm: 0.2rem;
-    --bs-border-radius-lg: 0.3rem;
+    /* Shape: almost no radius, and no shadow by default. A radius large
+       enough to notice is a decision about every corner on the page at once,
+       and Bootstrap's own defaults are exactly what makes a page read as
+       stock. 2px is enough to stop a corner looking cut, and not enough to
+       soften a dense table into a stack of pills. */
+    --bs-border-radius: 0.125rem;
+    --bs-border-radius-sm: 0.125rem;
+    --bs-border-radius-lg: 0.1875rem;
     --bs-box-shadow: none;
     --bs-box-shadow-sm: none;
 
-    /* Palette: RockAdmin's own, not Bootstrap's blue. Desaturated slate for
-       primary actions, a neutral gray scale for the shell. */
-    --bs-primary: #3a5470;
-    --bs-primary-rgb: 58, 84, 112;
+    /* The only shadow in the theme, and it is for one job: saying that a
+       surface sits above the page. Cards and modals, nothing else -- a shadow
+       under every element is the SaaS-card default and reads as decoration
+       rather than as depth. */
+    --ra-shadow-raised: 0 1px 2px rgba(16, 24, 28, 0.08);
+
+    /* Palette: one dominant colour, and it is deliberately not blue. Blue is
+       the default state of the administrative world, which makes it a poor
+       choice for the one colour that has to be recognisably this product's.
+       Teal-ink is dark enough to carry white text at 7:1, desaturated enough
+       to sit on screen all day, and cold enough that the warm state colours
+       (amber for pending, rust for danger) read as exceptions beside it. */
+    --bs-primary: #0e5a66;
+    --bs-primary-rgb: 14, 90, 102;
     --bs-secondary: #6c757d;
     --bs-secondary-rgb: 108, 117, 125;
     --bs-success: #2e7d5b;
@@ -51,8 +64,13 @@
     --bs-dark: #22262b;
     --bs-dark-rgb: 34, 38, 43;
 
-    --bs-body-color: #22262b;
-    --bs-body-bg: #ffffff;
+    --bs-body-color: #1a1f22;
+    /* The page is a tinted neutral and a card is white, so a card reads as a
+       surface laid on the page rather than as an outlined region of it. The
+       tint is barely there -- enough that white has something to be white
+       against, not enough to look like a colour choice. */
+    --bs-body-bg: #f1f3f4;
+    --ra-surface: #ffffff;
     --bs-border-color: #dee1e4;
     /* The boundary of a control you can type in, which is a different
        requirement from the boundary of a card. WCAG 1.4.11 asks 3:1 of
@@ -66,7 +84,7 @@
        are decoration, and darkening them would make every page look caged. */
     --ra-input-border: #767c84;
     --bs-link-color: var(--bs-primary);
-    --bs-link-hover-color: #2c405a;
+    --bs-link-hover-color: #0a454e;
     /* `a` and `a:hover` are written in Bootstrap's own CSS as
        rgba(var(--bs-link-color-rgb), …) and rgba(var(--bs-link-hover-color-rgb), …),
        never as var(--bs-link-color) directly, so the hex tokens above are not
@@ -110,8 +128,35 @@
        to name. Templates and this stylesheet are the only readers. */
     --ra-sidebar-width: 15rem;
     --ra-header-height: 3rem;
-    --ra-grid-row-padding: 0.35rem;
+    --ra-grid-row-padding: 0.25rem;
+    --ra-grid-cell-inline-padding: 0.5rem;
     --ra-grid-gap: 0.5rem;
+
+    /*
+     * A table's two kinds of line do two different jobs, so they are not the
+     * same line. The horizontal rule separates records: it has to be followed
+     * across twenty columns, so it is the solid one. The vertical rule
+     * separates fields within one record, which the eye already groups by
+     * alignment and by the gap -- drawing it at the same weight produces a
+     * grid of boxes, and the row stops reading as one thing. So it is the
+     * same hue at roughly a third of the strength: present enough to stop two
+     * numeric columns running together, faint enough to disappear when
+     * reading down.
+     */
+    --ra-rule: var(--bs-border-color);
+    --ra-rule-faint: #eaedef;
+
+    /*
+     * Three row states, and they must not be confusable. Hover is the
+     * lightest and is a neutral tint, because it follows the mouse and means
+     * nothing. Active is the primary at low strength -- the row you chose.
+     * Edited is deliberately warm rather than a lighter primary: "this row
+     * has unsaved changes" is a different kind of fact from "this row is
+     * selected", and two tints of one hue would make them a matter of degree.
+     */
+    --ra-row-hover: #eef0f1;
+    --ra-row-active: color-mix(in srgb, var(--bs-primary) 9%, transparent);
+    --ra-row-edited: color-mix(in srgb, var(--bs-warning) 14%, transparent);
 
     /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
        those flip with the page theme, and the navbar does not. It is the
@@ -119,7 +164,7 @@
        background are stated once here and never redefined in a theme block.
        Tying them to --bs-light was how the menu came to render near-black
        text on a near-black bar the moment dark mode arrived. */
-    --ra-shell-bg: #22262b;
+    --ra-shell-bg: #161b1d;
     --ra-shell-fg: #f5f6f7;
     --ra-shell-fg-rgb: 245, 246, 247;
 }
@@ -131,13 +176,131 @@
  */
 .ra-grid-cell,
 .table > :not(caption) > * > * {
-    padding-top: var(--ra-grid-row-padding);
-    padding-bottom: var(--ra-grid-row-padding);
+    padding: var(--ra-grid-row-padding) var(--ra-grid-cell-inline-padding);
 }
 
 .table {
     --bs-table-color: var(--bs-body-color);
     font-size: 0.85rem;
+
+    /*
+     * Digits of equal width, so a column of prices or counts lines up on its
+     * own without being told to. Applied to the whole table rather than to
+     * the numeric columns: it changes nothing but digits, and keying it to a
+     * column type would mean a second place that has to agree about which
+     * types are numbers.
+     */
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The grid proper. Everything below is about reading many rows at once, which
+ * is what this admin is for -- 47,000 of them in the first real project.
+ */
+.ra-grid-table {
+    --bs-table-border-color: var(--ra-rule);
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* The vertical rule, drawn on the cell rather than between rows, and never
+   after the last column where it would box the table in. */
+.ra-grid-table > thead > tr > *:not(:last-child),
+.ra-grid-table > tbody > tr > *:not(:last-child) {
+    border-inline-end: 1px solid var(--ra-rule-faint);
+}
+
+/*
+ * The header stays while the body scrolls. At fifty rows this is a
+ * convenience; at a filtered page of several hundred it is the difference
+ * between a readable table and one you have to scroll back up to interpret.
+ * The background is the surface rather than transparent, or rows show
+ * through it as they pass underneath.
+ */
+.ra-grid-table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--ra-surface);
+    border-bottom: 1px solid var(--ra-rule);
+    font-weight: 600;
+}
+
+/*
+ * Row states, highlighted across the whole row rather than per cell.
+ * Bootstrap's own striping is off: a tint on every other row spends the one
+ * device that could mean something on a thing that means nothing.
+ */
+.ra-grid-row:hover > * {
+    background-color: var(--ra-row-hover);
+}
+
+.ra-grid-row-active > *,
+.ra-grid-row[aria-selected="true"] > * {
+    background-color: var(--ra-row-active);
+}
+
+.ra-grid-row-edited > * {
+    background-color: var(--ra-row-edited);
+}
+
+/*
+ * A card is the white surface the tinted page is there to set off, and the
+ * only thing in the theme that casts a shadow. The border stays as well as
+ * the shadow: at this strength the shadow alone is not enough to define an
+ * edge on a light page, and a card whose edge you have to look for is worse
+ * than a card with a visible line around it.
+ */
+.card {
+    --bs-card-bg: var(--ra-surface);
+    --bs-card-border-color: var(--bs-border-color);
+    box-shadow: var(--ra-shadow-raised);
+}
+
+/*
+ * A region is the card here. Nothing in the templates carries Bootstrap's
+ * .card class -- styling that alone left every grid transparent on the tinted
+ * page while its own sticky header was white, which is the join that made the
+ * tint look like a mistake rather than a choice. The surface is the region,
+ * so the page tint is only ever visible around content and never behind it.
+ */
+.ra-region {
+    background-color: var(--ra-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: var(--ra-shadow-raised);
+    /* Deliberately not clipped. A 2px radius gains almost nothing from
+       clipping, and a grid wider than its column -- twenty-two columns over a
+       domain table, in the first real project -- would be cut off inside the
+       card with no way to reach the rest. The page scrolls instead, which is
+       the behaviour that was already there. */
+}
+
+/* The toolbar belongs to the surface it filters, so it loses the gap that
+   made it look like a separate floating strip. */
+.ra-region-list {
+    gap: 0;
+}
+
+.ra-grid-toolbar,
+.ra-grid-header {
+    padding: var(--ra-grid-gap);
+    border-bottom: 1px solid var(--ra-rule);
+}
+
+.ra-grid-pagination {
+    padding: var(--ra-grid-gap);
+    border-top: 1px solid var(--ra-rule);
+}
+
+/* The last row's rule would otherwise sit directly on the region's own
+   border, drawing the same line twice. */
+.ra-grid-table > tbody > tr:last-child > * {
+    border-bottom: 0;
+}
+
+.modal-content {
+    box-shadow: var(--ra-shadow-raised);
 }
 
 .form-control,
@@ -431,6 +594,14 @@
     flex: 0 0 var(--ra-sidebar-width);
 }
 
+/*
+ * The main column fills what is left, in every layout. It was declared only
+ * for the two-column layouts, so a single-layout page sized itself to its
+ * content: a grid measured 968px of an 1885px window and the rest of the
+ * screen stayed empty. On a table of twenty-two columns that is the
+ * difference between reading it and scrolling it.
+ */
+.ra-layout-main,
 .ra-layout-two-column .ra-layout-main,
 .ra-layout-sidebar-detail .ra-layout-detail {
     flex: 1 1 auto;
@@ -604,7 +775,7 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  */
 .ra-region-preview,
 .ra-preview {
-    background-color: var(--bs-body-bg);
+    background-color: var(--ra-surface);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1rem 1.25rem;
@@ -964,6 +1135,11 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  */
 @media (prefers-color-scheme: dark) {
     :root:not([data-bs-theme]) {
+    --ra-surface: #1d2023;
+        --ra-rule-faint: #292e33;
+        --ra-row-hover: #212529;
+        --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+
         color-scheme: dark;
         --bs-body-color: #dfe3e6;
         --bs-body-color-rgb: 223, 227, 230;
@@ -1027,6 +1203,10 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 
 [data-bs-theme="dark"] {
     color-scheme: dark;
+    --ra-surface: #1d2023;
+    --ra-rule-faint: #292e33;
+    --ra-row-hover: #212529;
+    --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
     --bs-body-color: #dfe3e6;
     --bs-body-color-rgb: 223, 227, 230;
     --bs-body-bg: #16181b;
