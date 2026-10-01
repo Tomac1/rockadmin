@@ -26,4 +26,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view, disableWhenReadonly
     'checked' => $view->value === true,
 ];
 ?>
-<input class="ra-form-control ra-form-control-checkbox form-check-input"<?= $attrs($attributes) ?>>
+<input class="ra-form-control ra-form-control-checkbox ra-checkbox-input"<?= $attrs($attributes) ?>>

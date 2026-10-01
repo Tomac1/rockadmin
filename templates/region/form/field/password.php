@@ -28,4 +28,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'autocomplete' => 'new-password',
 ];
 ?>
-<input class="ra-form-control ra-form-control-password form-control"<?= $attrs($attributes) ?>>
+<input class="ra-ra-input ra-form-control-password form-control"<?= $attrs($attributes) ?>>

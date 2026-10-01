@@ -33,11 +33,11 @@
  */
 ?>
 <div class="ra-form-actions">
-    <button class="ra-form-submit btn btn-primary" type="submit"><?= $e($view->isCreate ? 'Create' : 'Save changes') ?></button>
-    <a class="ra-form-cancel btn btn-outline-secondary" href="<?= $href($view->returnTo) ?>">Cancel</a>
+    <button class="ra-btn ra-btn--primary ra-form-submit" type="submit"><?= $e($view->isCreate ? 'Create' : 'Save changes') ?></button>
+    <a class="ra-btn ra-btn--ghost ra-form-cancel" href="<?= $href($view->returnTo) ?>">Cancel</a>
     <?php if ($view->deleteAction !== null) { ?>
         <button
-            class="ra-form-delete btn btn-outline-danger"
+            class="ra-btn ra-btn--danger-ghost ra-form-delete"
             type="submit"
             formaction="<?= $href($view->deleteAction) ?>"
             formnovalidate

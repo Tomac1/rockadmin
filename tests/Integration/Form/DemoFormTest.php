@@ -376,7 +376,24 @@ final class DemoFormTest extends DatabaseTestCase
         $this->assertSame([], $this->ads($connection), 'a refused submission writes nothing');
 
         // Every failure at once, not just the first: three fields were wrong.
-        $this->assertSame(3, substr_count($response->body, 'class="ra-form-error"'));
+        //
+        // Counted through the DOM rather than by matching text. The first
+        // version matched `class="ra-form-error"` exactly and broke the
+        // moment a second class joined it; the obvious repair -- counting
+        // the substring -- reported 18, because `ra-form-error` is also
+        // inside `ra-form-errors`, the summary block. A class is a token in
+        // a list, and only a parser knows that.
+        $document = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $document->loadHTML($response->body);
+        libxml_clear_errors();
+
+        $errors = (new \DOMXPath($document))->query(
+            '//*[contains(concat(" ", normalize-space(@class), " "), " ra-form-error ")]',
+        );
+
+        $this->assertNotFalse($errors);
+        $this->assertSame(3, $errors->length, 'one error per wrong field, not just the first');
     }
 
     #[DataProvider('connections')]

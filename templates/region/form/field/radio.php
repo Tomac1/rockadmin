@@ -39,7 +39,7 @@ $group = [
         <?php $optionId = \RockAdmin\Form\FormControl::optionId($view, $index); ?>
         <div class="ra-form-radio form-check">
             <input
-                class="ra-form-radio-input form-check-input"
+                class="ra-form-radio-input ra-checkbox-input"
                 type="radio"
                 <?= $attrs([
                     'id' => $optionId,

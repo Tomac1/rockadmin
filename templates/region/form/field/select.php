@@ -20,7 +20,7 @@
 $value = \is_string($view->value) ? $view->value : '';
 $attributes = \RockAdmin\Form\FormControl::attributes($view, disableWhenReadonly: true);
 ?>
-<select class="ra-form-control ra-form-control-select form-select"<?= $attrs($attributes) ?>>
+<select class="ra-form-control ra-form-control-select ra-select"<?= $attrs($attributes) ?>>
     <?php if (!$view->required) { ?>
         <option value=""><?= $e($view->placeholder === '' ? '—' : $view->placeholder) ?></option>
     <?php } ?>

@@ -34,4 +34,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'step' => $view->step,
 ];
 ?>
-<input class="ra-form-control ra-form-control-datetime form-control"<?= $attrs($attributes) ?>>
+<input class="ra-ra-input ra-form-control-datetime form-control"<?= $attrs($attributes) ?>>

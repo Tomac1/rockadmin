@@ -68,6 +68,35 @@
     document.addEventListener('submit', confirmFirst, true);
 
     /**
+     * Dismissing a thing that announces itself — a toast, an alert.
+     *
+     * Bootstrap did this through data-bs-dismiss, and it goes with Bootstrap.
+     * Delegated rather than bound, because a toast arrives after a write and
+     * an alert can arrive inside a region fetched over AJAX: anything bound
+     * at load would miss both.
+     *
+     * The element removed is the closest ancestor matching what the attribute
+     * names, so one handler serves every dismissible thing and the markup
+     * says which. A button naming something that is not an ancestor removes
+     * nothing rather than guessing.
+     */
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var trigger = target && target.closest ? target.closest('[data-ra-dismiss]') : null;
+
+        if (!trigger) {
+            return;
+        }
+
+        var what = trigger.getAttribute('data-ra-dismiss');
+        var doomed = trigger.closest('.ra-' + what);
+
+        if (doomed && doomed.parentNode) {
+            doomed.parentNode.removeChild(doomed);
+        }
+    });
+
+    /**
      * The one delegated listener every action relies on. It never binds to
      * an individual element, so an element inserted after this runs behaves
      * exactly like one that was here from the start.

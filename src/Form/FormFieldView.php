@@ -75,6 +75,8 @@ final class FormFieldView
      */
     public function classes(): string
     {
-        return Classes::of('form-field', $this->key, ['ra-form-field-' . $this->type->value]);
+        // `ra-field` is the design system's; the rest is this project's own
+        // identity, which is the override path and what the tests hang on.
+        return 'ra-field ' . Classes::of('form-field', $this->key, ['ra-form-field-' . $this->type->value]);
     }
 }

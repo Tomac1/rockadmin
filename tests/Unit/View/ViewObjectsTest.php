@@ -120,10 +120,14 @@ final class ViewObjectsTest extends TestCase
     public static function flashLevels(): array
     {
         return [
-            'success' => ['success', 'ra-flash ra-flash-success text-bg-success'],
-            'info' => ['info', 'ra-flash ra-flash-info text-bg-info'],
-            'warning' => ['warning', 'ra-flash ra-flash-warning text-bg-warning'],
-            'danger' => ['danger', 'ra-flash ra-flash-danger text-bg-danger'],
+            // Both vocabularies, and `danger` maps to the design system's
+            // `error`: the level is what a handler asks for, and
+            // `$flashes->danger(...)` reads better beside an exception that
+            // is not one.
+            'success' => ['success', 'ra-flash ra-flash-success ra-toast ra-toast--success'],
+            'info' => ['info', 'ra-flash ra-flash-info ra-toast ra-toast--info'],
+            'warning' => ['warning', 'ra-flash ra-flash-warning ra-toast ra-toast--warning'],
+            'danger' => ['danger', 'ra-flash ra-flash-danger ra-toast ra-toast--error'],
         ];
     }
 

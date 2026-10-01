@@ -130,16 +130,25 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertStringContainsString('ra-flash ra-flash-success', $html);
         $this->assertStringContainsString('Saved.', $html);
 
-        // Bootstrap 5.3 ships `.toast:not(.show){display:none}`. Without the
-        // `show` class the flash is in the DOM but invisible; asserting the
-        // classes and the message text alone, as this test did before, is
-        // also true of markup nobody can see.
+        // This test exists because a flash once rendered with the right
+        // classes and the right text and was invisible for a whole milestone:
+        // Bootstrap ships `.toast:not(.show){display:none}`, so a toast
+        // needed a second class to be seen, and the assertions above are
+        // equally true of markup nobody can see.
+        //
+        // The design system has no such state — `.ra-toast` is visible
+        // because it exists — so what is asserted now is that the toast does
+        // not depend on one. A `show`/`hide` pair reappearing here is the
+        // shape of the original bug, whoever reintroduces it.
         if (preg_match('/class="([^"]*)"\s+role="status"[^>]*data-ra-toast/', $html, $match) !== 1) {
             $this->fail('No element carrying the toast class was rendered.');
         }
 
         $classes = explode(' ', $match[1]);
-        $this->assertContains('show', $classes, 'The toast is missing the "show" class and is therefore invisible.');
+
+        $this->assertContains('ra-toast', $classes, 'The toast does not carry the class that makes it visible.');
+        $this->assertNotContains('toast', $classes, 'A Bootstrap toast hides itself without a second class.');
+        $this->assertNotContains('hide', $classes);
     }
 
     public function testNoFlashesLeaveTheToastContainerEmptyRatherThanAbsent(): void

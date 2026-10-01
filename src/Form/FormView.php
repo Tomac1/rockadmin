@@ -97,6 +97,8 @@ final class FormView
 
     public function classes(): string
     {
-        return Classes::of('form', $this->page, [$this->isCreate ? 'ra-form-create' : 'ra-form-edit']);
+        // A form is a card, which is what the design system calls a white
+        // surface laid on the page -- the same thing a region is.
+        return 'ra-card ' . Classes::of('form', $this->page, [$this->isCreate ? 'ra-form-create' : 'ra-form-edit']);
     }
 }

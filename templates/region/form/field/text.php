@@ -23,4 +23,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'pattern' => $view->pattern,
 ];
 ?>
-<input class="ra-form-control ra-form-control-text form-control"<?= $attrs($attributes) ?>>
+<input class="ra-ra-input ra-form-control-text form-control"<?= $attrs($attributes) ?>>

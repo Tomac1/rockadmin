@@ -18,4 +18,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'value' => \is_string($view->value) ? $view->value : '',
 ];
 ?>
-<input class="ra-form-control ra-form-control-date form-control"<?= $attrs($attributes) ?>>
+<input class="ra-ra-input ra-form-control-date form-control"<?= $attrs($attributes) ?>>
