@@ -1,0 +1,54 @@
+/* Rock Admin — Border, Radius, Z-Index & Animation Tokens */
+:root {
+  /* Border Radii */
+  --radius-none: 0;
+  --radius-xs:   1px;
+  --radius-sm:   2px;
+  --radius-md:   3px;
+  --radius-lg:   4px;
+  --radius-xl:   6px;
+  --radius-2xl:  8px;
+  --radius-3xl:  12px;
+  --radius-full: 9999px;
+
+  /* Component radii */
+  --radius-btn:      var(--radius-md);
+  --radius-input:    var(--radius-md);
+  --radius-card:     var(--radius-lg);
+  --radius-modal:    var(--radius-xl);
+  --radius-badge:    var(--radius-full);
+  --radius-dropdown: var(--radius-lg);
+  --radius-tooltip:  var(--radius-sm);
+
+  /* Durations */
+  --duration-instant: 50ms; /* @kind other */
+  --duration-fast:    100ms; /* @kind other */
+  --duration-normal:  150ms; /* @kind other */
+  --duration-slow:    250ms; /* @kind other */
+  --duration-slower:  400ms; /* @kind other */
+
+  /* Easings */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-in:      cubic-bezier(0.4, 0, 1, 1); /* @kind other */
+  --ease-out:     cubic-bezier(0, 0, 0.2, 1); /* @kind other */
+  --ease-bounce:  cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+  --ease-spring:  cubic-bezier(0.175, 0.885, 0.32, 1.275); /* @kind other */
+
+  /* Composite transitions */
+  --transition-colors: background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default); /* @kind other */
+  --transition-transform: transform var(--duration-normal) var(--ease-default); /* @kind other */
+  --transition-opacity: opacity var(--duration-normal) var(--ease-default); /* @kind other */
+  --transition-all: all var(--duration-normal) var(--ease-default); /* @kind other */
+
+  /* Z-index scale */
+  --z-base:           0; /* @kind other */
+  --z-raised:         10; /* @kind other */
+  --z-dropdown:       100; /* @kind other */
+  --z-sticky:         200; /* @kind other */
+  --z-fixed:          300; /* @kind other */
+  --z-modal-backdrop: 400; /* @kind other */
+  --z-modal:          500; /* @kind other */
+  --z-popover:        600; /* @kind other */
+  --z-toast:          700; /* @kind other */
+  --z-tooltip:        800; /* @kind other */
+}

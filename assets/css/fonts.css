@@ -1,0 +1,37 @@
+/*
+ * The typefaces the design system is drawn in.
+ *
+ * It names Inter and JetBrains Mono and fetches them from a CDN; this project
+ * may not, so the faces are declared here instead and the family tokens fall
+ * back until the files exist.
+ *
+ * **There are no font files in this repository yet.** Until somebody adds
+ * them, every rule below is inert and the stacks in
+ * ds/tokens/typography.css resolve to the system's own faces -- the layout is
+ * correct and the typography is not the design system's. Inter's metrics are
+ * not Segoe UI's, so headings wrap differently and a dense table sits a little
+ * taller.
+ *
+ * To finish it: put Inter and JetBrains Mono woff2 files in assets/fonts/,
+ * uncomment the faces, and add their SIL Open Font License alongside -- both
+ * are OFL, so redistributing them with this package is allowed and the licence
+ * file is the condition.
+ */
+
+/*
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../fonts/inter-variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400 500;
+    font-display: swap;
+    src: url('../fonts/jetbrains-mono-variable.woff2') format('woff2-variations');
+}
+*/

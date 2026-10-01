@@ -21,7 +21,10 @@ final class AssetsTest extends TestCase
         mkdir($this->root . '/css', 0o777, true);
         mkdir($this->root . '/js', 0o777, true);
         mkdir($this->root . '/vendor/bootstrap', 0o777, true);
+        mkdir($this->root . '/css/ds', 0o777, true);
         file_put_contents($this->root . '/css/rockadmin.css', ':root{}');
+        file_put_contents($this->root . '/css/fonts.css', '/* faces */');
+        file_put_contents($this->root . '/css/ds/styles.css', ':root{}');
         file_put_contents($this->root . '/js/core.js', '// core');
         file_put_contents($this->root . '/vendor/bootstrap/bootstrap.min.css', '.btn{}');
         file_put_contents($this->root . '/vendor/bootstrap/bootstrap.bundle.min.js', '// bs');
@@ -29,11 +32,11 @@ final class AssetsTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['css/rockadmin.css', 'js/core.js', 'vendor/bootstrap/bootstrap.min.css', 'vendor/bootstrap/bootstrap.bundle.min.js'] as $file) {
+        foreach (['css/rockadmin.css', 'css/fonts.css', 'css/ds/styles.css', 'js/core.js', 'vendor/bootstrap/bootstrap.min.css', 'vendor/bootstrap/bootstrap.bundle.min.js'] as $file) {
             @unlink($this->root . '/' . $file);
         }
 
-        foreach (['vendor/bootstrap', 'vendor', 'css', 'js', ''] as $directory) {
+        foreach (['vendor/bootstrap', 'vendor', 'css/ds', 'css', 'js', ''] as $directory) {
             @rmdir(rtrim($this->root . '/' . $directory, '/'));
         }
     }
@@ -47,21 +50,51 @@ final class AssetsTest extends TestCase
         return new Assets(new UrlGenerator('/admin'), $css, $js, $this->root);
     }
 
-    public function testBootstrapComesBeforeTheThemeSoTheThemeOverridesIt(): void
+    public function testTheSheetsLoadInTheOrderThatDecidesWhoWins(): void
     {
+        // Bootstrap first, because it is leaving and must not override what
+        // replaces it; then the design system, which is the authority on how
+        // the admin looks; then the faces it names, declared locally because
+        // this package fetches nothing; then this project's own additions.
         $styles = $this->assets()->styles();
 
-        $this->assertCount(2, $styles);
+        $this->assertCount(4, $styles);
         $this->assertStringContainsString('bootstrap.min.css', $styles[0]);
-        $this->assertStringContainsString('rockadmin.css', $styles[1]);
+        $this->assertStringContainsString('css/ds/styles.css', $styles[1]);
+        $this->assertStringContainsString('css/fonts.css', $styles[2]);
+        $this->assertStringContainsString('css/rockadmin.css', $styles[3]);
+    }
+
+    public function testNoStylesheetIsFetchedFromAnywhereElse(): void
+    {
+        // Rule: assets/ carries no CDN. The design system's own
+        // typography.css imports Inter from Google Fonts upstream, and that
+        // one line is the single edit made to the vendored copy -- a font
+        // fetched at page load is a third-party request on every
+        // installation, including ones behind a firewall where it fails and
+        // the layout shifts.
+        foreach ($this->assets()->styles() as $url) {
+            $this->assertStringStartsNotWith('http', $url);
+        }
+
+        $vendored = \dirname(__DIR__, 3) . '/assets/css/ds';
+
+        foreach ((array) glob($vendored . '/{,tokens/}*.css', \GLOB_BRACE) as $file) {
+            $this->assertStringNotContainsString(
+                'https://',
+                (string) file_get_contents((string) $file),
+                basename((string) $file) . ' fetches something from the network.',
+            );
+        }
     }
 
     public function testProjectStylesComeLastSoTheyOverrideWithoutImportant(): void
     {
         $styles = $this->assets(['/css/admin-theme.css'])->styles();
 
-        $this->assertCount(3, $styles);
-        $this->assertSame('/css/admin-theme.css', $styles[2]);
+        // The index rather than a count, so adding a sheet to the SDK's own
+        // list does not make this test about how many there are.
+        $this->assertSame('/css/admin-theme.css', end($styles));
     }
 
     public function testBootstrapsBundleComesBeforeCoreJs(): void
