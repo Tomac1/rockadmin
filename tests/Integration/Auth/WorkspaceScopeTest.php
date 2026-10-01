@@ -185,6 +185,44 @@ final class WorkspaceScopeTest extends DatabaseTestCase
         );
     }
 
+    // --- creating into a workspace, and not out of one ---
+
+    #[DataProvider('connections')]
+    public function testACreateLandsInTheActiveWorkspaceWhateverWasSubmitted(?Connection $connection): void
+    {
+        // Milestone 7 recorded this as a hole and called it "safe until a row
+        // scope check exists". A form in a browser is editable, so a hidden
+        // input carrying `tenant_id` is a suggestion -- and submitting
+        // somebody else's is the first thing anybody tries.
+        $connection = $this->require($connection);
+
+        $this->post($connection, 'create', ['title' => 'new one', 'tenant_id' => 1]);
+
+        $this->assertSame(
+            [1, 2, 2],
+            $this->tenants($connection),
+            'A create was placed in a workspace from the submitted body rather than the active one.',
+        );
+    }
+
+    #[DataProvider('connections')]
+    public function testAnUpdateCannotMoveARowToAnotherWorkspace(?Connection $connection): void
+    {
+        // Moving a row between workspaces is a real operation and this is not
+        // it. If it is ever wanted it is an action with its own permission,
+        // not a side effect of editing a title.
+        $connection = $this->require($connection);
+
+        $this->post($connection, 'update', [
+            FormFields::ID => self::OURS,
+            'title' => 'edited',
+            'tenant_id' => 1,
+        ]);
+
+        $this->assertSame([1, 2], $this->tenants($connection), 'An update moved a row out of its workspace.');
+        $this->assertSame(['Cyklobazar ad', 'edited'], $this->titles($connection), 'The edit itself was lost.');
+    }
+
     #[DataProvider('connections')]
     public function testEveryWriteOnOurOwnRowStillWorks(?Connection $connection): void
     {
@@ -274,13 +312,25 @@ final class WorkspaceScopeTest extends DatabaseTestCase
 
         $connection->execute(new Sql(
             "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL, "
-            . 'title VARCHAR(200) NOT NULL, state VARCHAR(20) NOT NULL)',
+            . "title VARCHAR(200) NOT NULL, state VARCHAR(20) NOT NULL DEFAULT 'active')",
         ));
 
         foreach ([[1, 1, 'Cyklobazar ad'], [2, 2, 'Motobazar ad']] as [$id, $tenant, $title]) {
             $connection->execute(new Sql(
                 'INSERT INTO ra_test_ads (id, tenant_id, title, state) VALUES (?, ?, ?, ?)',
                 [$id, $tenant, $title, 'active'],
+            ));
+        }
+
+        if ($connection->dialect()->name() !== 'mysql') {
+            // The rows above were inserted with explicit ids, and PostgreSQL's
+            // identity sequence does not notice: it still hands out 1 next, so
+            // the create below collides with row 1 and is refused as a
+            // duplicate. MySQL's AUTO_INCREMENT moves itself, which is why
+            // this only ever failed on one driver -- and why the fixture says
+            // so out loud rather than being quietly different.
+            $connection->execute(new Sql(
+                "SELECT setval(pg_get_serial_sequence('ra_test_ads', 'id'), 2)",
             ));
         }
     }
@@ -436,6 +486,15 @@ final class WorkspaceScopeTest extends DatabaseTestCase
         return array_map(
             static fn (array $row): string => \is_scalar($row['title']) ? (string) $row['title'] : '',
             $connection->select(new Sql('SELECT title FROM ra_test_ads ORDER BY id')),
+        );
+    }
+
+    /** @return list<int> which workspace each row is in, read with plain SQL */
+    private function tenants(Connection $connection): array
+    {
+        return array_map(
+            static fn (array $row): int => \is_scalar($row['tenant_id']) ? (int) $row['tenant_id'] : 0,
+            $connection->select(new Sql('SELECT tenant_id FROM ra_test_ads ORDER BY id')),
         );
     }
 

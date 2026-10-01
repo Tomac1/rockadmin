@@ -706,6 +706,25 @@ final class ActionHandler implements Handler
             $values = $this->withUnofferedDefaults($form, $values);
         }
 
+        // The workspace a row is placed in, or kept in. Milestone 7 recorded
+        // this as a hole and called it "safe until a row scope check exists";
+        // it exists now.
+        //
+        // On a create the scope's columns are written from the active
+        // workspace, *over* anything submitted. A form in a browser is
+        // editable and a hidden input carrying `tenant_id` is a suggestion,
+        // so the first thing anybody tries is a create into somebody else's
+        // workspace.
+        //
+        // On an update they are stripped rather than overwritten. Moving a
+        // row between workspaces is a real operation and this is not it: if
+        // it is ever wanted it is an action with its own permission, not a
+        // side effect of editing a title. And the `WHERE` the update already
+        // carries means the row was in this workspace to begin with.
+        $values = $isCreate
+            ? [...$values, ...$this->scopeFor($page)]
+            : array_diff_key($values, $this->scopeFor($page));
+
         try {
             $write = $isCreate
                 ? $this->writes->insert($page->entity, $values)
