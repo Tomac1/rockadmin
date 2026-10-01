@@ -118,12 +118,24 @@ $theme = $view->shell->themeAttribute();
 
     <?= $partial('ui/modal') ?>
 
-    <div class="ra-offcanvas ra-offcanvas--right" tabindex="-1" id="ra-offcanvas" hidden data-ra-offcanvas>
-        <div class="ra-offcanvas__header ra-offcanvas-header">
-            <h5 class="ra-offcanvas__title ra-offcanvas-title"></h5>
-            <button type="button" class="ra-offcanvas__close" data-ra-dismiss="offcanvas" aria-label="Close"></button>
+    <?php
+    /*
+     * The shared offcanvas, in the same two parts as the modal: the dark
+     * sheet carries the id and the panel sits inside it. `data-ra-close`
+     * rather than `data-ra-dismiss` -- dismiss removes its target, and a
+     * container removed is one the next action cannot fill.
+     */
+    ?>
+    <div class="ra-offcanvas-overlay ra-offcanvas-backdrop" id="ra-offcanvas" hidden data-ra-offcanvas data-ra-close="offcanvas">
+        <div class="ra-offcanvas ra-offcanvas--right" role="dialog" aria-modal="true" aria-labelledby="ra-offcanvas-title" tabindex="-1">
+            <div class="ra-offcanvas__header ra-offcanvas-header">
+                <h2 class="ra-offcanvas__title ra-offcanvas-title" id="ra-offcanvas-title"></h2>
+                <button class="ra-offcanvas__close ra-offcanvas-close" type="button" data-ra-close="offcanvas" aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                </button>
+            </div>
+            <div class="ra-offcanvas__body ra-offcanvas-body"></div>
         </div>
-        <div class="ra-offcanvas__body ra-offcanvas-body"></div>
     </div>
 
     <div class="ra-toast-container" aria-live="polite" aria-atomic="true">

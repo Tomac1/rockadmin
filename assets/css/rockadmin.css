@@ -278,7 +278,9 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 
 /*
  * The shared modal and offcanvas are in every page and empty until something
- * opens them, which is a later milestone.
+ * opens them, which is a later milestone. The element that carries the id,
+ * and so the element that is shown and hidden, is the backdrop -- the dialog
+ * lives inside it.
  *
  * Bootstrap hid them until a `.show` class arrived; the design system shows
  * them unless something hides them. So removing Bootstrap put a 420px panel
@@ -291,8 +293,8 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  * attribute means and because `display: flex` in a component rule beats the
  * browser's own `[hidden] { display: none }`.
  */
-.ra-modal[hidden],
-.ra-offcanvas[hidden] {
+.ra-modal-overlay[hidden],
+.ra-offcanvas-overlay[hidden] {
     display: none !important;
 }
 
@@ -476,4 +478,27 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-preview-empty {
     margin: 0;
     color: var(--text-muted, #64748b);
+}
+
+/*
+ * The second navigation's submenu.
+ *
+ * The design system renders it only while it is open, because React can do
+ * that; here it is in the markup always, and `.ra-snav-dd` is
+ * `position: absolute`, so every parent item with children hung its submenu
+ * open under it permanently. The same shape as the offcanvas that covered
+ * every page: a component the design system shows because it exists, in a
+ * document that keeps it.
+ *
+ * Hover and focus-within rather than a script, so it works with JavaScript
+ * off and for a keyboard — tabbing into the item opens it, tabbing past it
+ * closes it, and nothing has to stay in sync with anything.
+ */
+.ra-snav-dd {
+    display: none;
+}
+
+.ra-snav-item:hover > .ra-snav-dd,
+.ra-snav-item:focus-within > .ra-snav-dd {
+    display: block;
 }

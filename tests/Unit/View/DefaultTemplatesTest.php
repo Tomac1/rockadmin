@@ -321,4 +321,52 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertStringContainsString('ra-modal-content"></div>', $html);
         $this->assertStringContainsString('ra-offcanvas-body"></div>', $html);
     }
+
+    public function testTheSharedOverlaysCloseRatherThanDismiss(): void
+    {
+        // `data-ra-dismiss` removes its target from the document, which is
+        // right for a toast and wrong for these two: there is one of each for
+        // the whole page, and an action that opens one after another action
+        // closed it would find nothing to fill and report nothing.
+        //
+        // The offcanvas shipped with `data-ra-dismiss="offcanvas"` on its
+        // close button, so the first close was also the last.
+        $html = $this->renderer()->render('layout/base', $this->page());
+
+        $this->assertStringContainsString('data-ra-close="modal"', $html);
+        $this->assertStringContainsString('data-ra-close="offcanvas"', $html);
+        $this->assertStringNotContainsString('data-ra-dismiss="modal"', $html);
+        $this->assertStringNotContainsString('data-ra-dismiss="offcanvas"', $html);
+    }
+
+    public function testTheModalNamesAWidthTheDesignSystemDefines(): void
+    {
+        // `.ra-modal` is `width: 100%`; the max-width is a size modifier, so
+        // a dialog without one is as wide as the window. Same shape as the
+        // button that had no height, in the same stylesheet.
+        $html = $this->renderer()->render('layout/base', $this->page());
+
+        if (preg_match('/<div class="([^"]*ra-modal-dialog[^"]*)"/', $html, $match) !== 1) {
+            $this->fail('No element carrying the modal dialog class was rendered.');
+        }
+
+        $css = (string) file_get_contents(\dirname(__DIR__, 3) . '/assets/css/ds/components.css');
+
+        preg_match_all('/^\.ra-modal--([a-z]+)/m', $css, $defined);
+
+        $sizes = array_values(array_intersect(['sm', 'md', 'lg', 'xl'], $defined[1]));
+        $named = [];
+
+        foreach (preg_split('/\s+/', trim($match[1])) ?: [] as $token) {
+            if (str_starts_with($token, 'ra-modal--')) {
+                $named[] = substr($token, 10);
+            }
+        }
+
+        $this->assertNotEmpty($sizes, 'The design system stopped defining modal sizes.');
+        $this->assertNotEmpty(
+            array_intersect($named, $sizes),
+            'The modal dialog names no size, so it is as wide as the window.',
+        );
+    }
 }

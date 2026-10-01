@@ -97,6 +97,100 @@
     });
 
     /**
+     * The shared modal and offcanvas: opening and closing them.
+     *
+     * Bootstrap's bundle used to do this, and it went with Bootstrap. The
+     * design system has no behaviour of its own -- it is CSS, and its React
+     * decides when each one is in the document at all -- so the two
+     * containers in the shell are shown and hidden here instead.
+     *
+     * Hidden, never removed. There is one of each for the whole page and a
+     * later action has to be able to fill it again, which is why none of this
+     * goes through `data-ra-dismiss`: that removes its target, correctly, for
+     * a toast that will never be wanted again.
+     *
+     * The element that carries the id is the backdrop, and the dialog is
+     * inside it. So a click lands on the backdrop only when it misses the
+     * dialog, which is what makes "click outside to close" a test of where
+     * the click landed rather than a measurement of coordinates.
+     */
+    function overlay(name) {
+        return document.getElementById('ra-' + name);
+    }
+
+    function openOverlay(name, title) {
+        var el = overlay(name);
+
+        if (!el) {
+            return null;
+        }
+
+        var heading = el.querySelector('.ra-' + name + '-title');
+
+        if (heading) {
+            heading.textContent = title || '';
+        }
+
+        el.hidden = false;
+
+        var dialog = el.querySelector('[role="dialog"]');
+
+        if (dialog && dialog.focus) {
+            dialog.focus();
+        }
+
+        return el;
+    }
+
+    function closeOverlay(name) {
+        var el = overlay(name);
+
+        if (el) {
+            el.hidden = true;
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var trigger = target && target.closest ? target.closest('[data-ra-close]') : null;
+
+        if (!trigger) {
+            return;
+        }
+
+        // The backdrop carries the attribute as well as the close button
+        // does, so every click inside the dialog finds it by walking up and
+        // would close the thing being used. A backdrop counts only when it
+        // is what was clicked; a close button counts wherever in it the
+        // click landed, which for a button wrapping an icon is usually the
+        // icon.
+        var isBackdrop = trigger.hasAttribute('data-ra-modal') || trigger.hasAttribute('data-ra-offcanvas');
+
+        if (!isBackdrop || trigger === target) {
+            closeOverlay(trigger.getAttribute('data-ra-close'));
+        }
+    });
+
+    /**
+     * Escape closes the topmost thing that is open. Only one of the two is
+     * ever open at a time today; checking both means that stays true by
+     * accident rather than by assumption.
+     */
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        ['modal', 'offcanvas'].forEach(function (name) {
+            var el = overlay(name);
+
+            if (el && !el.hidden) {
+                closeOverlay(name);
+            }
+        });
+    });
+
+    /**
      * The one delegated listener every action relies on. It never binds to
      * an individual element, so an element inserted after this runs behaves
      * exactly like one that was here from the start.
@@ -465,6 +559,8 @@
         attach: attach,
         detach: detach,
         load: load,
+        openOverlay: openOverlay,
+        closeOverlay: closeOverlay,
     };
 
     document.addEventListener('DOMContentLoaded', function () {
