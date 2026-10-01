@@ -263,3 +263,48 @@ row action in the admin.
   this.
 - **Inline cell editing** (8.12), reserved for v1.1 by the specification
   itself.
+
+---
+
+## Where it ended up (2026-10-01)
+
+All six tasks done. Two things the plan got wrong and one defect it found.
+
+**The plan was wrong about the title.** It said the fragment's own
+`data-ra-title` wins over the action's, because by then the answer knows
+which row it turned out to be about. Driving it showed the opposite: a
+preview region's own title *is* the row key, so a control the page author
+labelled `Ad #{id}` opened a panel headed `2`. One of the two is a generic
+name a region gives itself, the other is what somebody wrote for that
+control, and the specific one wins. Size and class still go the plan's way,
+because a fragment asking to be wide is asking about its own content, which
+the action cannot know.
+
+**The plan assumed `refresh` would want its own fetch per region.** It does
+not. A background post that follows its own redirect gets back the page the
+browser would have landed on, and the named regions come out of it along with
+the toasts — one request, no new route, no second rendering path, and the
+flash problem the plan flagged turns out not to exist. "A background post is
+a reload whose result is applied selectively" is the sentence the task was
+missing.
+
+**`/p/ads/{id}` had been answering 500 on every row since milestone 8.** A
+preview inheriting a grid's columns inherited the `actions` column too, and
+asked the database for a column called `tools`. 2304 tests green over it.
+Found by clicking Preview, which is the seventh time in this project that
+opening the page has been the thing that found it.
+
+### Still open
+
+**Nobody has switched JavaScript off.** The markup needs none by construction
+— the control is an anchor with a real `href`, the form is a form — and that
+`href` answers 200, and a ctrl-click is left alone. But the actual no-script
+run has not been done, here or in milestone 8.
+
+**Narrow viewports are still unverified**, carried from the interlude: window
+resizing does not reach the page viewport through the tooling available.
+
+**The bulk bar does not refresh.** Its controls are `ActionView`s like any
+other, but `region/list/bulk.php` does not emit `data-ra-refresh` and a bulk
+action reloads. That is correct rather than broken — it is what every action
+did before this milestone — but it is an inconsistency somebody will notice.
