@@ -60,9 +60,17 @@ final class Loader
         // catalogue by whoever has one.
         $roles = $resolver->resolve($definitions->expand($this->read('roles.php')));
 
+        // Workspaces load the same way and for the same reason: which pages
+        // exist is decided by the pages, and the loader has no page
+        // repository. `Workspaces::fromConfig()` is given the catalogue by
+        // whoever has one. A missing file is an empty array, which is the
+        // single-tenant case -- no workspaces, nothing scoped, nothing to pay
+        // for.
+        $workspaces = $resolver->resolve($definitions->expand($this->read('workspaces.php')));
+
         $this->warnings = $resolver->warnings();
 
-        return new Config($resolved, Enums::fromConfig($resolvedEnums), $roles);
+        return new Config($resolved, Enums::fromConfig($resolvedEnums), $roles, $workspaces);
     }
 
     /** @return list<string> */

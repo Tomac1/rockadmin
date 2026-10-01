@@ -80,13 +80,28 @@ final class Access
     }
 
     /**
+     * A user, for tests that need one without an `Identity` around it.
+     *
+     * @param list<string> $roles
+     * @param list<string> $workspaces
+     */
+    public static function user(
+        array $roles = [self::ROLE],
+        array $workspaces = [],
+        string $id = '7',
+    ): AuthUser {
+        return new AuthUser($id, 'tester@example.test', 'Tester', $roles, $workspaces);
+    }
+
+    /**
      * A signed-in identity holding these roles.
      *
      * @param list<string> $roles
+     * @param list<string> $workspaces
      */
-    public static function identity(array $roles = [self::ROLE]): Identity
+    public static function identity(array $roles = [self::ROLE], array $workspaces = []): Identity
     {
-        return self::identityFor(new AuthUser('7', 'tester@example.test', 'Tester', $roles));
+        return self::identityFor(self::user($roles, $workspaces));
     }
 
     /** An identity resolving to this user, or to nobody when it is null. */
