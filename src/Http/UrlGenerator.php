@@ -7,6 +7,7 @@ namespace RockAdmin\Http;
 use InvalidArgumentException;
 use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RuntimeException;
 
 /**
@@ -73,21 +74,21 @@ final class UrlGenerator
      * @param array<string, string|int> $query
      */
     public function reference(
-        PageReference|ActionReference $reference,
+        PageReference|ActionReference|RegionReference $reference,
         ?string $currentPage = null,
         array $query = [],
     ): string {
         if ($reference instanceof PageReference) {
             $path = 'p/' . $reference->page . ($reference->suffix === '' ? '' : '/' . $reference->suffix);
+        } elseif ($reference instanceof RegionReference) {
+            // `@region:detail` is this page's; `@region:users.detail` names
+            // its own, and then the current page is not consulted at all --
+            // which is what makes a region of another page load under that
+            // page's permissions rather than under this one's.
+            $path = 'r/' . ($reference->page ?? $this->onCurrentPage($reference, $currentPage))
+                . '/' . $reference->region;
         } else {
-            if ($currentPage === null || $currentPage === '') {
-                throw new InvalidArgumentException(
-                    "{$reference} is addressed on the current page, so building its URL needs that page's "
-                    . 'name. Pass it as the second argument.',
-                );
-            }
-
-            $path = 'a/' . $currentPage . '/' . $reference->action;
+            $path = 'a/' . $this->onCurrentPage($reference, $currentPage) . '/' . $reference->action;
         }
 
         if (preg_match('/\{[^}]*}/', $path, $match) === 1) {
@@ -99,6 +100,28 @@ final class UrlGenerator
         }
 
         return $this->to($path, $query);
+    }
+
+    /**
+     * The page a reference that names none is addressed on.
+     *
+     * Both `@action:` and `@region:` have a current-page form, for the same
+     * reason: most references are to the page you are already on, and
+     * repeating its name in every action of every page file is how a page
+     * rename becomes a day of search-and-replace.
+     */
+    private function onCurrentPage(
+        ActionReference|RegionReference $reference,
+        ?string $currentPage,
+    ): string {
+        if ($currentPage === null || $currentPage === '') {
+            throw new InvalidArgumentException(
+                "{$reference} is addressed on the current page, so building its URL needs that page's "
+                . 'name. Pass it as the second argument.',
+            );
+        }
+
+        return $currentPage;
     }
 
     /**

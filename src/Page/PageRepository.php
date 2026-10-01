@@ -13,6 +13,7 @@ use RockAdmin\Config\EnumOption;
 use RockAdmin\Config\EnumReference;
 use RockAdmin\Config\Enums;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RockAdmin\Config\Resolver;
 use RockAdmin\Config\Schema;
 use RockAdmin\Config\ValidationError;
@@ -49,6 +50,27 @@ use RockAdmin\Form\FormFields;
  */
 final class PageRepository
 {
+    /**
+     * The widths each overlay actually has a rule for.
+     *
+     * Read from `assets/css/ds/components.css`, where `.ra-modal--sm`
+     * through `--xl` and `.ra-offcanvas--sm`/`--lg` are defined. A size
+     * outside this list styles no element and does nothing while reading as
+     * though it had been set — which is the `ra-btn--xs` mistake, found by
+     * somebody looking at a flat button rather than by any test.
+     *
+     * `left` and `right` are offcanvas modifiers too and are deliberately not
+     * here: which side a panel comes from is the template's business, not a
+     * per-action choice, and offering it would mean two controls opening the
+     * same region from opposite sides.
+     *
+     * @var array<string, list<string>>
+     */
+    private const array OVERLAY_SIZES = [
+        'modal' => ['sm', 'md', 'lg', 'xl'],
+        'offcanvas' => ['sm', 'lg'],
+    ];
+
     private const FILTER_DEFAULT_OPERATORS = [
         'text' => 'contains',
         'select' => 'equals',
@@ -150,6 +172,60 @@ final class PageRepository
             (string) $reference,
             $this->directory,
             $suffix,
+        ));
+    }
+
+    /**
+     * That `@region:users.detail` names a region of a page that has one.
+     *
+     * Only the cross-page form reaches here. `@region:detail` addresses the
+     * page being built, whose regions may not exist yet — an action inside a
+     * column is built while that column's own region still is — and loading
+     * the page to ask would be a recursion into the load that is running.
+     *
+     * The page is loaded, which means a reference to another page pulls that
+     * page in at load time. That is the same cost `@page:` already pays
+     * through `assertPageExists()`, and it is the price of refusing a dead
+     * reference at load rather than at click time, where it is an empty
+     * overlay with nothing to read.
+     */
+    public function assertRegionExists(RegionReference $reference, string $where): void
+    {
+        $page = $reference->page;
+
+        if ($page === null) {
+            return;
+        }
+
+        if (!$this->has($page)) {
+            $nearest = Schema::nearestOf($this->names(), $page);
+
+            throw new PageException(\sprintf(
+                "%s points at '%s', and '%s' is not a page in %s.%s",
+                $where,
+                (string) $reference,
+                $page,
+                $this->directory,
+                $nearest === null ? '' : " Did you mean '{$nearest}'?",
+            ));
+        }
+
+        $definition = $this->get($page);
+
+        if ($definition->hasRegion($reference->region)) {
+            return;
+        }
+
+        $nearest = Schema::nearestOf(array_keys($definition->regions), $reference->region);
+
+        throw new PageException(\sprintf(
+            "%s points at '%s', and page '%s' has no region '%s'. It has: '%s'.%s",
+            $where,
+            (string) $reference,
+            $page,
+            $reference->region,
+            implode("', '", array_keys($definition->regions)),
+            $nearest === null ? '' : " Did you mean '{$nearest}'?",
         ));
     }
 
@@ -587,11 +663,13 @@ final class PageRepository
         }
 
         if (!$type->isWrite() && $confirm !== '') {
-            throw new PageException(
-                "{$where} is a 'link' with a 'confirm'. It only navigates, and a confirmation in front of "
+            throw new PageException(\sprintf(
+                "%s is a '%s' with a 'confirm'. It changes nothing, and a confirmation in front of "
                 . 'something that changes nothing teaches people to dismiss confirmations — including the '
                 . "ones in front of a 'post'. Remove it, or make the action a 'post'.",
-            );
+                $where,
+                $type->value,
+            ));
         }
 
         $label = \is_string($actionConfig['label'] ?? null) && $actionConfig['label'] !== ''
@@ -599,6 +677,7 @@ final class PageRepository
             : $this->labelFromKey($actionKey);
 
         $set = $this->actionSet($where, $type, $to, $actionConfig);
+        [$in, $size] = $this->actionOverlay($where, $type, $actionConfig);
 
         return new ActionDefinition(
             key: $actionKey,
@@ -611,7 +690,161 @@ final class PageRepository
             when: $this->actionConditions($where, $actionConfig, $context, $rowless),
             set: $set,
             refresh: $this->actionRefresh($where, $actionConfig, $context),
+            in: $in,
+            size: $size,
+            title: \is_string($actionConfig['title'] ?? null) ? $actionConfig['title'] : '',
+            params: $this->actionParams($where, $type, $actionConfig, $rowless),
         );
+    }
+
+    /**
+     * Where an `open` puts what it loads, and how wide.
+     *
+     * The sizes are checked against what the stylesheet actually defines,
+     * because a modifier nothing styles does nothing while reading like it
+     * works — the `ra-btn--xs` mistake, which shipped and was found by
+     * somebody looking at a flat button rather than by any of 2179 tests.
+     * They differ per overlay: a modal has four widths and an offcanvas two.
+     *
+     * @param  array<string, mixed>     $actionConfig
+     * @return array{0: string, 1: string} in, size
+     */
+    private function actionOverlay(string $where, ActionType $type, array $actionConfig): array
+    {
+        $in = \is_string($actionConfig['in'] ?? null) ? $actionConfig['in'] : '';
+        $size = \is_string($actionConfig['size'] ?? null) ? $actionConfig['size'] : '';
+
+        if (!$type->isOpen()) {
+            foreach (['in', 'size'] as $key) {
+                if (($actionConfig[$key] ?? null) !== null) {
+                    throw new PageException(\sprintf(
+                        "%s is a '%s' with an '%s'. Only an 'open' puts something in an overlay; a '%s' "
+                        . '%s.',
+                        $where,
+                        $type->value,
+                        $key,
+                        $type->value,
+                        $type->isWrite() ? 'submits and comes back' : 'navigates',
+                    ));
+                }
+            }
+
+            return ['', ''];
+        }
+
+        if ($in === '') {
+            throw new PageException(
+                "{$where} is an 'open' with no 'in'. It has to say where what it loads appears: "
+                . "'in' => 'modal' for a dialog over the page, or 'in' => 'offcanvas' for a panel from "
+                . 'the side. There is no default, because guessing one means finding out which you got '
+                . 'by clicking.',
+            );
+        }
+
+        if (!isset(self::OVERLAY_SIZES[$in])) {
+            $nearest = Schema::nearestOf(array_keys(self::OVERLAY_SIZES), $in);
+
+            throw new PageException(\sprintf(
+                "%s has 'in' => '%s'. An overlay is '%s'.%s",
+                $where,
+                $in,
+                implode("' or '", array_keys(self::OVERLAY_SIZES)),
+                $nearest === null ? '' : " Did you mean '{$nearest}'?",
+            ));
+        }
+
+        if ($size !== '' && !\in_array($size, self::OVERLAY_SIZES[$in], true)) {
+            throw new PageException(\sprintf(
+                "%s asks for a '%s' of size '%s', which the stylesheet does not define, so it would draw "
+                . "the default width while reading as though it had been set. A %s is '%s'.",
+                $where,
+                $in,
+                $size,
+                $in,
+                implode("', '", self::OVERLAY_SIZES[$in]),
+            ));
+        }
+
+        return [$in, $size];
+    }
+
+    /**
+     * The query an `open` fetches its fragment with.
+     *
+     * Values stay as written, placeholders and all: a `{column}` is
+     * substituted per row while the region renders, by the same
+     * `RowPlaceholders` that guards a `to`, and substituting it here would
+     * mean doing it once for every row at load time against no row at all.
+     *
+     * A rowless control — a header button — may not carry one, for the reason
+     * it may not carry a `when`: there is no row to read a `{column}` from,
+     * and the literal braces would reach the URL.
+     *
+     * @param  array<string, mixed>  $actionConfig
+     * @return array<string, string>
+     */
+    private function actionParams(
+        string $where,
+        ActionType $type,
+        array $actionConfig,
+        bool $rowless,
+    ): array {
+        $raw = $actionConfig['params'] ?? null;
+
+        if ($raw === null) {
+            return [];
+        }
+
+        if (!$type->isOpen()) {
+            throw new PageException(\sprintf(
+                "%s is a '%s' with 'params'. Only an 'open' fetches a fragment to put in an overlay, and "
+                . "'params' is the query it fetches it with. A '%s' carries what it needs in its own "
+                . "reference: '@page:ads/{id}/edit'.",
+                $where,
+                $type->value,
+                $type->value,
+            ));
+        }
+
+        if (!\is_array($raw)) {
+            throw new PageException(\sprintf(
+                "%s has 'params' => %s. It is a map of query parameter to value, such as "
+                . "['id' => '{id}'].",
+                $where,
+                get_debug_type($raw),
+            ));
+        }
+
+        $params = [];
+
+        foreach ($raw as $name => $value) {
+            if (!\is_scalar($value)) {
+                throw new PageException(\sprintf(
+                    "%s passes '%s' as a %s. A parameter is a string, a number, or a {column} of the row "
+                    . 'the control was drawn on.',
+                    $where,
+                    (string) $name,
+                    get_debug_type($value),
+                ));
+            }
+
+            $text = \is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+
+            if ($rowless && preg_match('/\{[a-z][a-z0-9_]*}/', $text) === 1) {
+                throw new PageException(\sprintf(
+                    "%s passes '%s' => '%s', and there is no row here to read it from. A {column} is "
+                    . 'substituted from the row a control was drawn on, and this control is not drawn on '
+                    . 'one.',
+                    $where,
+                    (string) $name,
+                    $text,
+                ));
+            }
+
+            $params[(string) $name] = $text;
+        }
+
+        return $params;
     }
 
     /**
@@ -642,7 +875,7 @@ final class PageRepository
     private function actionSet(
         string $where,
         ActionType $type,
-        PageReference|ActionReference $to,
+        PageReference|ActionReference|RegionReference $to,
         array $actionConfig,
     ): array {
         $raw = $actionConfig['set'] ?? null;
@@ -650,10 +883,12 @@ final class PageRepository
 
         if (!$type->isWrite()) {
             if ($raw !== null) {
-                throw new PageException(
-                    "{$where} is a 'link' with a 'set'. A link navigates and writes nothing, so the columns "
-                    . "it names would never be stored. Remove it, or make the action a 'post'.",
-                );
+                throw new PageException(\sprintf(
+                    "%s is a '%s' with a 'set'. It writes nothing, so the columns it names would never be "
+                    . "stored. Remove it, or make the action a 'post'.",
+                    $where,
+                    $type->value,
+                ));
             }
 
             return [];
@@ -720,9 +955,12 @@ final class PageRepository
      * a pattern applied here: `Resolver` turns a well-formed reference into a
      * `PageReference` or an `ActionReference` the way it already turns
      * `@enum:` into an `EnumReference`, and anything that arrives as a plain
-     * string is, by that fact alone, not a reference. A `@region:` never
-     * arrives at all — the resolver refuses it, with the news that `open`
-     * actions come later — which is why there is no branch for it here.
+     * string is, by that fact alone, not a reference.
+     *
+     * **An `open` writes `target`, not `to`**, and the specification names it
+     * that way on purpose: it does not go anywhere. The page stays where it
+     * is and a region appears over it. `ActionType::destination()` owns which
+     * key each type reads, so the two can never be crossed here.
      *
      * The reference is kept as the object, not flattened back to its text. A
      * row's URL is built from it by a renderer, and handing that renderer a
@@ -736,35 +974,64 @@ final class PageRepository
         ActionType $type,
         array $actionConfig,
         bool $rowless = false,
-    ): PageReference|ActionReference {
-        $to = $actionConfig['to'] ?? null;
+    ): PageReference|ActionReference|RegionReference {
+        [$key, $expected] = $type->destination();
+        $wrongKey = $key === 'to' ? 'target' : 'to';
 
-        if ($to === null || $to === '') {
-            throw new PageException(
-                "{$where} has no 'to'. An action must say where it goes, as a '@page:' or '@action:' "
-                . "reference — 'to' => '@page:ads/{id}/edit'.",
-            );
+        if (($actionConfig[$wrongKey] ?? null) !== null) {
+            throw new PageException(\sprintf(
+                "%s is a '%s' with a '%s'. A '%s' says where it goes with '%s'; '%s' belongs to an "
+                . "'open', which does not go anywhere — the page stays where it is and a region appears "
+                . 'over it.',
+                $where,
+                $type->value,
+                $wrongKey,
+                $type->value,
+                $key,
+                $wrongKey,
+            ));
         }
 
-        if (!$to instanceof PageReference && !$to instanceof ActionReference) {
+        $to = $actionConfig[$key] ?? null;
+
+        if ($to === null || $to === '') {
             throw new PageException(\sprintf(
-                "%s has 'to' => %s, which is not a reference. An action points at a page or at an action "
-                . "handler — '@page:ads/{id}/edit', '@action:archive' — never at a bare URL: a raw URL "
-                . 'cannot be permission-checked against a page, and would become the obvious way to smuggle '
-                . 'content into the admin frame.',
+                "%s has no '%s'. %s",
                 $where,
+                $key,
+                $type->isOpen()
+                    ? "An 'open' must say which region it shows, as a '@region:' reference — "
+                        . "'target' => '@region:detail'."
+                    : "An action must say where it goes, as a '@page:' or '@action:' reference — "
+                        . "'to' => '@page:ads/{id}/edit'.",
+            ));
+        }
+
+        $namespace = match (true) {
+            $to instanceof PageReference => 'page',
+            $to instanceof ActionReference => 'action',
+            $to instanceof RegionReference => 'region',
+            default => null,
+        };
+
+        if ($namespace === null) {
+            throw new PageException(\sprintf(
+                "%s has '%s' => %s, which is not a reference. An action points at a page, an action "
+                . "handler or a region — '@page:ads/{id}/edit', '@action:archive', '@region:detail' — "
+                . 'never at a bare URL: a raw URL cannot be permission-checked against a page, and would '
+                . 'become the obvious way to smuggle content into the admin frame.',
+                $where,
+                $key,
                 \is_string($to) ? "'{$to}'" : get_debug_type($to),
             ));
         }
 
-        $namespace = $to instanceof PageReference ? 'page' : 'action';
-
-        if ($namespace !== $type->referenceNamespace()) {
+        if ($namespace !== $expected) {
             throw new PageException(\sprintf(
                 "%s is a '%s' pointing at '%s'. A 'link' navigates, so it points at '@page:...'; a 'post' "
-                . "submits, so it points at '@action:...'. The other way round is a GET to something that "
-                . 'only answers POST, or a POST to a page with no handler — invisible at load and a 404 when '
-                . 'somebody clicks it.',
+                . "submits, so it points at '@action:...'; an 'open' shows a region, so its 'target' is "
+                . "'@region:...'. The wrong one is a GET to something that only answers POST, or a POST "
+                . 'to a page with no handler — invisible at load and a 404 when somebody clicks it.',
                 $where,
                 $type->value,
                 (string) $to,
@@ -773,6 +1040,14 @@ final class PageRepository
 
         if ($to instanceof PageReference) {
             $this->assertPageExists($to, $where);
+        }
+
+        if ($to instanceof RegionReference && $to->page !== null) {
+            // Only the cross-page form can be checked here. `@region:detail`
+            // names a region of the page currently being built, whose own
+            // regions are not finished yet -- the actions block is built
+            // after them, but a column's inline action is built during them.
+            $this->assertRegionExists($to, $where);
         }
 
         // A row placeholder is substituted while a region renders, from the

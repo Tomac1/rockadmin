@@ -14,10 +14,12 @@ use RockAdmin\Config\ConfigException;
 use RockAdmin\Config\Enums;
 use RockAdmin\Config\Loader;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RockAdmin\Config\ValueType;
 use RockAdmin\Page\ActionDefinition;
 use RockAdmin\Page\ActionSchema;
 use RockAdmin\Page\ActionType;
+use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\Page\PageSchema;
@@ -63,7 +65,7 @@ final class ActionSchemaTest extends TestCase
     /** @return array<string, array{string}> */
     public static function buildableTypes(): array
     {
-        return ['link' => ['link'], 'post' => ['post']];
+        return ['link' => ['link'], 'post' => ['post'], 'open' => ['open']];
     }
 
     #[DataProvider('buildableTypes')]
@@ -73,20 +75,26 @@ final class ActionSchemaTest extends TestCase
     }
 
     /**
-     * A silent "unknown type" for something the reference manual describes at
-     * length is worse than saying "not yet": the person wrote a documented
-     * thing, and the admin should tell them when it works.
+     * `open` was declared and refused for two milestones, with a message
+     * naming the one that would build it — a silent "unknown type" for
+     * something the reference manual describes at length is worse than saying
+     * "not yet". Milestone 9 is that milestone, so it parses now, and what is
+     * pinned here is that all three types are buildable rather than two.
      */
-    public function testOpenIsDeclaredAndRefusedWithTheNewsThatItArrivesLater(): void
+    public function testEveryTypeTheSpecificationNamesIsBuildable(): void
     {
-        try {
-            ActionType::parse('open');
-            $this->fail("The action type 'open' was accepted.");
-        } catch (PageException $e) {
-            $this->assertStringContainsString('open', $e->getMessage());
-            $this->assertStringContainsString('later milestone', $e->getMessage());
-            $this->assertStringNotContainsString('Unknown', $e->getMessage());
-        }
+        $this->assertSame(['link', 'post', 'open'], ActionType::buildableNames());
+        $this->assertSame(ActionType::Open, ActionType::parse('open'));
+    }
+
+    public function testEachTypeNamesTheKeyItsDestinationIsWrittenUnder(): void
+    {
+        // An `open` carries a `target`, not a `to`, and the specification
+        // names it differently on purpose: it does not go anywhere. The page
+        // stays where it is and a region appears over it.
+        $this->assertSame('to', ActionType::Link->destinationKey());
+        $this->assertSame('to', ActionType::Post->destinationKey());
+        $this->assertSame('target', ActionType::Open->destinationKey());
     }
 
     public function testATypeOneEditAwayNamesTheNearest(): void
@@ -121,7 +129,10 @@ final class ActionSchemaTest extends TestCase
     /** @return array<string, array{string}> */
     public static function actionKeys(): array
     {
-        $keys = ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'set', 'refresh'];
+        $keys = [
+                'type', 'label', 'icon', 'to', 'target', 'in', 'size', 'title', 'params',
+                'permission', 'confirm', 'when', 'set', 'refresh',
+            ];
 
         return array_combine($keys, array_map(static fn (string $key): array => [$key], $keys));
     }
@@ -139,7 +150,10 @@ final class ActionSchemaTest extends TestCase
     public function testTheActionSchemaDeclaresNothingElse(): void
     {
         $this->assertSame(
-            ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'set', 'refresh'],
+            [
+                'type', 'label', 'icon', 'to', 'target', 'in', 'size', 'title', 'params',
+                'permission', 'confirm', 'when', 'set', 'refresh',
+            ],
             ActionSchema::create()->names(),
         );
     }
@@ -266,20 +280,151 @@ final class ActionSchemaTest extends TestCase
         $this->assertStringContainsString("'to'", $message);
     }
 
-    /**
-     * Asserted on the page and the news, not on the action: `@region:` is
-     * refused by whichever layer sees it first, and once `Resolver` parses
-     * references that is the resolver, which is looking at a string and does
-     * not know which key it came from. Both refusals say the same thing.
-     */
-    public function testARegionReferenceSaysThatOpeningArrivesLater(): void
+    public function testALinkPointingAtARegionIsRefused(): void
     {
+        // A region is not somewhere to navigate to -- it is a fragment, and
+        // landing on one is an unstyled page with no navigation. The refusal
+        // comes from the namespace check, which is the same one that stops a
+        // `post` pointing at a page.
         $message = $this->refusal(<<<'PHP'
             'peek' => ['type' => 'link', 'to' => '@region:detail'],
             PHP);
 
-        $this->assertStringContainsString("Page 'ads'", $message);
-        $this->assertStringContainsString('later milestone', $message);
+        $this->assertStringContainsString("action 'peek'", $message);
+        $this->assertStringContainsString('@region:', $message);
+    }
+
+    public function testAnOpenWritingToRatherThanTargetIsRefused(): void
+    {
+        // The two keys are one word apart and mean different things. Reading
+        // `to` for an `open` would make the destination silently absent.
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'modal', 'to' => '@region:detail'],
+            PHP);
+
+        $this->assertStringContainsString("'to'", $message);
+        $this->assertStringContainsString("'target'", $message);
+    }
+
+    public function testALinkWritingTargetRatherThanToIsRefused(): void
+    {
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'link', 'target' => '@region:detail'],
+            PHP);
+
+        $this->assertStringContainsString("'target'", $message);
+        $this->assertStringContainsString("'to'", $message);
+    }
+
+    public function testAnOpenWithNoPlaceToPutItIsRefused(): void
+    {
+        // There is no default `in`, and guessing one means finding out which
+        // you got by clicking.
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'target' => '@region:detail'],
+            PHP);
+
+        $this->assertStringContainsString("action 'peek'", $message);
+        $this->assertStringContainsString("'in'", $message);
+    }
+
+    public function testAnOverlayNobodyDefinedNamesTheNearest(): void
+    {
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'modl', 'target' => '@region:detail'],
+            PHP);
+
+        $this->assertStringContainsString("Did you mean 'modal'", $message);
+    }
+
+    public function testASizeTheStylesheetDoesNotDefineIsRefused(): void
+    {
+        // `ra-btn--xs` with a different prefix: a modifier nothing styles
+        // does nothing while reading as though it had been set, and that one
+        // shipped and was found by somebody looking at a flat button.
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'offcanvas', 'size' => 'xl', 'target' => '@region:detail'],
+            PHP);
+
+        $this->assertStringContainsString("'xl'", $message);
+        $this->assertStringContainsString('does not define', $message);
+    }
+
+    public function testASizeTheOtherOverlayDefinesIsStillRefused(): void
+    {
+        // `xl` is a real modal width and not an offcanvas one. The sizes are
+        // per overlay, so a list shared between them would accept this.
+        $modal = $this->build(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'modal', 'size' => 'xl', 'target' => '@region:detail'],
+            PHP);
+
+        $this->assertSame('xl', $modal->actions['peek']->size);
+    }
+
+    public function testALinkWithAnOverlayKeyIsRefused(): void
+    {
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'link', 'to' => '@page:ads', 'in' => 'modal'],
+            PHP);
+
+        $this->assertStringContainsString("'in'", $message);
+        $this->assertStringContainsString("'link'", $message);
+    }
+
+    public function testAnOpenCarriesWhatItWasGiven(): void
+    {
+        $page = $this->build(<<<'PHP'
+            'peek' => [
+                'type' => 'open',
+                'in' => 'offcanvas',
+                'size' => 'lg',
+                'title' => 'Ad #{id}',
+                'target' => '@region:detail',
+                'params' => ['id' => '{id}'],
+                'permission' => 'ads.view',
+            ],
+            PHP);
+
+        $action = $page->actions['peek'];
+
+        $this->assertSame(ActionType::Open, $action->type);
+        $this->assertSame('offcanvas', $action->in);
+        $this->assertSame('lg', $action->size);
+        $this->assertSame('Ad #{id}', $action->title);
+        $this->assertSame(['id' => '{id}'], $action->params);
+        $this->assertInstanceOf(RegionReference::class, $action->to);
+        $this->assertSame('detail', $action->to->region);
+        $this->assertNull($action->to->page, 'A region of this page carries no page name.');
+    }
+
+    public function testAnOpenWithAConfirmationIsRefused(): void
+    {
+        // It opens something and changes nothing. A confirmation in front of
+        // that teaches people to dismiss confirmations, including the ones in
+        // front of a `post`.
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'modal', 'target' => '@region:detail', 'confirm' => 'Sure?'],
+            PHP);
+
+        $this->assertStringContainsString("'confirm'", $message);
+    }
+
+    public function testAnOpenWithASetIsRefused(): void
+    {
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'open', 'in' => 'modal', 'target' => '@region:detail', 'set' => ['a' => 'b']],
+            PHP);
+
+        $this->assertStringContainsString("'set'", $message);
+    }
+
+    public function testAParamsOnSomethingThatFetchesNothingIsRefused(): void
+    {
+        $message = $this->refusal(<<<'PHP'
+            'peek' => ['type' => 'link', 'to' => '@page:ads', 'params' => ['id' => '{id}']],
+            PHP);
+
+        $this->assertStringContainsString("'params'", $message);
     }
 
     public function testAPostWithNoConfirmationIsRefused(): void
@@ -473,6 +618,14 @@ final class ActionSchemaTest extends TestCase
         }
 
         $this->fail('The page loaded.');
+    }
+
+    /** The page, built, for the cases that are about what was accepted. */
+    private function build(string $actions): PageDefinition
+    {
+        $this->writePageWithActions($actions);
+
+        return $this->repository()->get('ads');
     }
 
     private function writePageWithActions(string $actions): void

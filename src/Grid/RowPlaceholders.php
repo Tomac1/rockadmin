@@ -7,6 +7,7 @@ namespace RockAdmin\Grid;
 use InvalidArgumentException;
 use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RuntimeException;
 
 /**
@@ -72,17 +73,22 @@ final class RowPlaceholders
     /**
      * Substitutes every row placeholder a reference carries.
      *
-     * An `ActionReference` carries none by construction — it is one verb — and
-     * is returned as it came, so a caller drawing a mixed list of actions does
-     * not have to ask which kind it is holding.
+     * An `ActionReference` carries none by construction — it is one verb. Nor
+     * does a `RegionReference`: a region is addressed by page and key, both
+     * fixed at load, and which *row* it shows travels as `params`, which is
+     * where the placeholders are. Both are returned as they came, so a caller
+     * drawing a mixed list of actions does not have to ask which kind it is
+     * holding.
      *
      * @param array<string, mixed> $row the row being rendered, as the RowSource gave it
      *
-     * @return ($reference is PageReference ? PageReference : ActionReference)
+     * @return ($reference is PageReference ? PageReference : ($reference is ActionReference ? ActionReference : RegionReference))
      */
-    public static function reference(PageReference|ActionReference $reference, array $row): PageReference|ActionReference
-    {
-        if ($reference instanceof ActionReference || !str_contains($reference->suffix, '{')) {
+    public static function reference(
+        PageReference|ActionReference|RegionReference $reference,
+        array $row,
+    ): PageReference|ActionReference|RegionReference {
+        if (!$reference instanceof PageReference || !str_contains($reference->suffix, '{')) {
             return $reference;
         }
 
@@ -90,6 +96,34 @@ final class RowPlaceholders
             $reference->page,
             self::substitute($reference->suffix, $row, (string) $reference),
         );
+    }
+
+    /**
+     * The same substitution, for the query an `open` fetches its fragment
+     * with.
+     *
+     * `params` is the only place a row placeholder reaches a query rather
+     * than a path, and it goes through the same code: the encoding, the
+     * refusal of a column the row has not got, and the `{{` check that
+     * catches somebody writing a configuration placeholder where a row one
+     * was meant. Two spellings of "substitute a row placeholder" is how one
+     * of them comes to miss the guard the other has.
+     *
+     * @param  array<string, string> $params
+     * @param  array<string, mixed>  $row
+     * @return array<string, string>
+     */
+    public static function params(array $params, array $row, string $subject): array
+    {
+        $resolved = [];
+
+        foreach ($params as $name => $value) {
+            $resolved[$name] = str_contains($value, '{')
+                ? self::substitute($value, $row, $subject)
+                : $value;
+        }
+
+        return $resolved;
     }
 
     /**

@@ -6,6 +6,7 @@ namespace RockAdmin\Page;
 
 use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 
 /**
  * One action of a page, built from its configuration.
@@ -30,13 +31,32 @@ final class ActionDefinition
         public readonly string $key,
         public readonly string $label,
         public readonly ActionType $type,
-        public readonly PageReference|ActionReference $to,
+        /**
+         * Where it goes, or what it shows. A `link` carries a
+         * `PageReference`, a `post` an `ActionReference`, an `open` a
+         * `RegionReference` — which `ActionType::destination()` decides and
+         * `PageRepository` enforces, so the three can never be crossed.
+         */
+        public readonly PageReference|ActionReference|RegionReference $to,
         public readonly string $icon = '',
         public readonly string $permission = '',
         public readonly string $confirm = '',
         public readonly array $when = [],
         public readonly array $set = [],
         public readonly array $refresh = [],
+        /** Where an `open` puts what it loads: `modal` or `offcanvas`, empty for anything else. */
+        public readonly string $in = '',
+        /** The overlay's width modifier, empty for the overlay's own default. */
+        public readonly string $size = '',
+        /** The overlay's heading, which may carry row placeholders. */
+        public readonly string $title = '',
+        /**
+         * The query the fragment is fetched with, values possibly `{column}`
+         * placeholders substituted per row.
+         *
+         * @var array<string, string>
+         */
+        public readonly array $params = [],
     ) {
     }
 
