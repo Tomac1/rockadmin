@@ -49,6 +49,44 @@ final class ThemeTest extends TestCase
         $this->assertNotSame('', trim($this->css), 'The stylesheets are missing or empty.');
     }
 
+    public function testEveryStylesheetParsesToTheEnd(): void
+    {
+        // An unbalanced brace or an unterminated comment raises nothing: the
+        // browser's parser swallows everything after it and the page renders
+        // with part of its stylesheet silently missing. That is exactly what
+        // happened here -- a rule cut in half left 143 lines of this file
+        // dead, the login page lost its layout entirely, and it read as
+        // "Bootstrap is leaking" rather than as a syntax error, because there
+        // is no error to see.
+        //
+        // The first version of this test counted `/*` against `*\/` and
+        // reported the vendored sheet as broken, because a `/*` inside a
+        // comment is text to CSS and a delimiter to a counter. So it scans
+        // the way CSS reads: one pass, no nesting, comments stripped before
+        // the braces are counted at all.
+        $root = \dirname(__DIR__, 3) . '/assets/css/';
+
+        foreach (['rockadmin.css', 'fonts.css', 'ds/components.css', 'ds/tokens/colors.css'] as $file) {
+            $css = file_get_contents($root . $file) ?: '';
+
+            $this->assertNotSame('', $css, "{$file} is missing or empty.");
+
+            $stripped = preg_replace('~/\*.*?\*/~s', '', $css);
+
+            $this->assertIsString($stripped);
+            $this->assertStringNotContainsString(
+                '/*',
+                $stripped,
+                "{$file} has an unterminated comment; everything after it is ignored.",
+            );
+            $this->assertSame(
+                substr_count($stripped, '{'),
+                substr_count($stripped, '}'),
+                "{$file} has an unclosed rule; everything after it is ignored.",
+            );
+        }
+    }
+
     public function testTheNavigationsOwnColoursAreNotRedefinedByAnyThemeBlock(): void
     {
         $themed = $this->propertiesRedefinedInDarkMode();
