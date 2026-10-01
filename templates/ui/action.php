@@ -27,7 +27,20 @@
  */
 ?>
 <?php if ($view->isPost) { ?>
-    <form class="ra-action-form ra-action-form-<?= $e($view->key) ?>" method="post" action="<?= $href($view->url) ?>">
+    <?php
+    /*
+     * `data-ra-refresh` names the regions that re-render once this completes,
+     * and its absence is what every action did before: a redirect, and the
+     * whole page comes back. With no script that is what happens either way —
+     * the attribute is a signal, never a requirement.
+     */
+    ?>
+    <form
+        class="ra-action-form ra-action-form-<?= $e($view->key) ?>"
+        method="post"
+        action="<?= $href($view->url) ?>"
+        <?php if ($view->refresh !== []) { ?>data-ra-refresh="<?= $e(implode(' ', $view->refresh)) ?>"<?php } ?>
+    >
         <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->token) ?>">
         <?php
         /*

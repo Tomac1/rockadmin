@@ -794,6 +794,119 @@
         return box;
     }
 
+    /**
+     * An action declaring `refresh`: post it in the background and put the
+     * named regions back without reloading the page.
+     *
+     * **A background post is a reload whose result is applied selectively**,
+     * and that is the whole design. The server does not change what it does:
+     * it writes, it flashes, it redirects, exactly as it does for a form
+     * submitted the ordinary way. `fetch` follows the redirect for us, so
+     * what comes back is the page the browser would have landed on — and the
+     * named regions are lifted out of it along with its toasts.
+     *
+     * The alternative was asking for each region's own fragment afterwards,
+     * which is more requests and leaves the flashes nowhere: the flash bag is
+     * read on the next render, and a region fragment is not that render. A
+     * write that succeeds and says nothing is worse than a reload.
+     *
+     * There is no second implementation to keep in step either. The regions
+     * that come back are rendered by the same request a reload would have
+     * made, with the same filters, the same page and the same sort.
+     */
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+
+        // The confirmation listener is registered first and cancels the
+        // submit when somebody declines. Posting it in the background anyway
+        // would make Cancel mean nothing -- and mean it silently, since
+        // nothing would navigate to show that it had.
+        if (event.defaultPrevented) {
+            return;
+        }
+
+        if (!form || !form.getAttribute || !form.getAttribute('data-ra-refresh')) {
+            return;
+        }
+
+        var keys = form.getAttribute('data-ra-refresh').split(/\s+/).filter(Boolean);
+
+        if (keys.length === 0) {
+            return;
+        }
+
+        event.preventDefault();
+
+        fetch(form.getAttribute('action') || window.location.href, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(response.status + ' from ' + response.url);
+                }
+
+                return response.text();
+            })
+            .then(function (html) {
+                var page = document.createElement('html');
+                page.innerHTML = html;
+
+                keys.forEach(function (key) {
+                    var fresh = page.querySelector('[data-ra-region="' + key + '"]');
+                    var live = document.querySelector('[data-ra-region="' + key + '"]');
+
+                    // A region named in `refresh` that the answer does not
+                    // carry is left alone rather than blanked. `PageRepository`
+                    // refuses a `refresh` naming a region the page has not
+                    // got, so reaching this means the answer was not the page
+                    // -- a login screen after a session expired, most likely,
+                    // and replacing a grid with half of one is worse than
+                    // leaving it.
+                    if (fresh && live) {
+                        detach(live);
+                        live.replaceWith(fresh);
+                        attach(fresh);
+                    }
+                });
+
+                showToastsFrom(page);
+            })
+            .catch(function (error) {
+                // The write may well have happened; what failed was reading
+                // the answer. Reloading is the honest recovery -- it shows
+                // whatever actually became true, including the flash.
+                // eslint-disable-next-line no-console
+                console.warn('RockAdmin: ' + error.message + '; reloading.');
+                window.location.reload();
+            });
+    }, true);
+
+    /**
+     * Moves the toasts out of a fetched page into this one.
+     *
+     * The flash bag is read once per render and consumed, so these are the
+     * only copy there will ever be: dropping them means a write that
+     * succeeded and said nothing.
+     *
+     * @param {Element} page
+     */
+    function showToastsFrom(page) {
+        var source = page.querySelector('.ra-toast-container');
+        var target = document.querySelector('.ra-toast-container');
+
+        if (!source || !target) {
+            return;
+        }
+
+        Array.prototype.forEach.call(source.children, function (toast) {
+            var copy = toast.cloneNode(true);
+            target.appendChild(copy);
+            attach(copy);
+        });
+    }
+
     action('sort', followRegionLink);
     action('paginate', followRegionLink);
 

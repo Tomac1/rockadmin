@@ -64,6 +64,10 @@ return [
             'permission' => 'ads.update',
             'when' => ['state' => 'active'],
             'set' => ['state' => 'archived'],
+            // The grid re-renders where it stands rather than the page
+            // reloading. Without JavaScript this attribute does nothing and
+            // the redirect happens, which is what it did before.
+            'refresh' => ['grid'],
         ],
         'bin' => [
             'type' => 'post',

@@ -202,6 +202,7 @@ final class ActionBuilder
             confirm: $action->confirm,
             icon: $action->icon === '' ? null : $action->icon,
             token: $action->type->isWrite() ? $this->token($action) : '',
+            refresh: $action->refresh,
         );
     }
 

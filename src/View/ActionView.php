@@ -85,6 +85,14 @@ final class ActionView
         public readonly string $size = '',
         /** The heading shown while the fragment is in flight. */
         public readonly string $title = '',
+        /**
+         * The region keys that re-render once a `post` completes, instead of
+         * the page reloading. Empty means reload, which is what every action
+         * did before and what every action still does with no script.
+         *
+         * @var list<string>
+         */
+        public readonly array $refresh = [],
     ) {
     }
 
