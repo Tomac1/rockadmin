@@ -17,5 +17,6 @@ return [
         'active' => ['label' => 'Active', 'color' => 'success'],
         'draft' => ['label' => 'Draft', 'color' => 'secondary'],
         'sold' => ['label' => 'Sold', 'color' => 'primary'],
+        'archived' => ['label' => 'Archived', 'color' => 'secondary'],
     ],
 ];

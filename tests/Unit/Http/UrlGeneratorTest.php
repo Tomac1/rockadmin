@@ -7,6 +7,8 @@ namespace RockAdmin\Tests\Unit\Http;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Config\ActionReference;
+use RockAdmin\Config\PageReference;
 use RockAdmin\Http\Request;
 use RockAdmin\Http\Router;
 use RockAdmin\Http\UrlGenerator;
@@ -199,5 +201,67 @@ final class UrlGeneratorTest extends TestCase
         // would be /admin/detail. Compare testDotSegmentsInParametersAreRefused(),
         // where route() refuses a ".." parameter outright.
         $this->assertSame('/admin/p/ads/detail', $urls->to('p/ads/../.././detail'));
+    }
+
+    public function testAPageReferenceBecomesThePageUrl(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame('/admin/p/users', $urls->reference(new PageReference('users')));
+        $this->assertSame('/admin/p/users/create', $urls->reference(new PageReference('users', 'create')));
+        $this->assertSame('/admin/p/users/42/edit', $urls->reference(new PageReference('users', '42/edit')));
+    }
+
+    public function testAnActionReferenceBecomesTheActionUrlOfTheCurrentPage(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame('/admin/a/ads/archive', $urls->reference(new ActionReference('archive'), 'ads'));
+    }
+
+    public function testAnActionReferenceWithoutACurrentPageIsRefused(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('@action:archive is addressed on the current page');
+
+        $urls->reference(new ActionReference('archive'));
+    }
+
+    public function testAReferenceStillObeysQueryMode(): void
+    {
+        $urls = new UrlGenerator('/admin/index.php', 'query');
+
+        $this->assertSame(
+            '/admin/index.php?ra=p%2Fusers%2F42%2Fedit',
+            $urls->reference(new PageReference('users', '42/edit')),
+        );
+    }
+
+    public function testAReferenceTakesAQueryString(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        $this->assertSame(
+            '/admin/p/users/42/edit?return=p%2Fusers',
+            $urls->reference(new PageReference('users', '42/edit'), null, ['return' => 'p/users']),
+        );
+    }
+
+    public function testAnUnsubstitutedRowPlaceholderIsRefusedRatherThanEncoded(): void
+    {
+        $urls = new UrlGenerator('/admin');
+
+        // Encoding it would produce /admin/p/users/%7Bid%7D/edit: a 404 whose
+        // cause is a missing substitution three layers away.
+        try {
+            $urls->reference(new PageReference('users', '{id}/edit'));
+            $this->fail('Expected an unsubstituted row placeholder to be refused.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('{id}', $e->getMessage());
+            $this->assertStringContainsString('@page:users/{id}/edit', $e->getMessage());
+            $this->assertStringContainsString('substituted per row', $e->getMessage());
+        }
     }
 }

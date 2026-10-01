@@ -22,6 +22,13 @@ final class MenuItemView
         public readonly bool $active = false,
         public readonly array $children = [],
         public readonly ?string $key = null,
+        /**
+         * A count drawn beside the label — 14 orders waiting, 3 products
+         * unpublished. Null draws nothing, which is different from zero:
+         * zero is a fact worth showing on a queue that is usually not empty,
+         * and a menu that cannot tell them apart would hide it.
+         */
+        public readonly ?int $count = null,
     ) {
     }
 
@@ -39,12 +46,12 @@ final class MenuItemView
             $names[] = Classes::identity('menu-item', 'active');
         }
 
-        $names[] = 'nav-link';
-
-        if ($this->active) {
-            $names[] = 'active';
-        }
-
+        // No appearance class: the design system names a navigation link by
+        // where it sits -- `ra-snav-btn` in the bar, `ra-snav-dd__item` in a
+        // dropdown -- and only the template knows which. Bootstrap's
+        // `nav-link` used to be appended here and is not replaced by anything,
+        // because there is nothing to replace it with that would be right in
+        // both places.
         return implode(' ', $names);
     }
 }

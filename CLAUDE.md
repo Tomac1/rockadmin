@@ -9,6 +9,26 @@ before making any structural change.** It is the agreed design and records why
 each decision was made. When code and specification disagree, say so rather
 than silently following one of them.
 
+**[`docs/design-system/`](docs/design-system/readme.md) is how the admin
+looks**, and it is the authority on that — colours, type, spacing, and the
+markup of every component. Read its `readme.md` before touching a template or
+a stylesheet.
+
+Three things about it worth knowing before you open it:
+
+- **Its CSS is plain and complete.** `components/components.css` defines 426
+  rules across 33 `ra-` blocks (`ra-table`, `ra-btn`, `ra-field`, `ra-card`,
+  `ra-modal`…) in BEM — `ra-badge--green`, `ra-alert__title`. Nothing in it
+  needs a build step.
+- **The React is not used.** `components/*.jsx`, `_ds_bundle.js` and
+  `rock-admin-standalone.html` exist to preview the system; this project takes
+  the CSS and the markup shapes, never the components. Rule 1 has not moved.
+- **Its own vocabulary and this project's are both `ra-`, and they are not the
+  same.** The design system names *what a thing looks like* (`ra-table`,
+  `ra-td`); rule 6 below requires every element to also carry *what a thing
+  is* (`ra-grid-cell-price`), which is the override path and the test hook. An
+  element carries both.
+
 Status: design agreed, implementation not started.
 
 ## Rules that are not negotiable
@@ -96,5 +116,6 @@ src/Auth/     Authenticator, Gate, Roles, Workspaces, AuditLog
 src/Mail/     Mailer + drivers
 src/Console/  CLI commands
 templates/    default templates, overridable by a project via a path cascade
-assets/       vendored Bootstrap, core.js — no build step, no CDN
+assets/       vendored CSS and core.js — no build step, no CDN
+docs/design-system/  the visual authority: tokens, component CSS, UI kit
 ```

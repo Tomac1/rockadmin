@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace RockAdmin\Http;
 
+use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
+use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\WriteHandler;
 use RockAdmin\Db\WriteResult;
 use RockAdmin\Form\DefaultValue;
@@ -16,6 +19,7 @@ use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Form\Submission;
 use RockAdmin\Form\ValidationError;
+use RockAdmin\Page\ActionDefinition;
 use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageRepository;
@@ -68,11 +72,42 @@ final class ActionHandler implements Handler
     /** @var list<string> the verbs this route accepts */
     private const array VERBS = ['create', 'update', 'delete'];
 
+    /**
+     * How many skipped rows a flash message names before it stops.
+     *
+     * Naming them is the point — "3 were skipped" says something is wrong and
+     * not which rows, and a skipped row is precisely one that needs attention
+     * of its own. But a selection can be a whole page, so there is a limit,
+     * and past it the message says how many more there were.
+     */
+    private const int SKIPPED_NAMED = 5;
+
     public function __construct(
         private readonly PageRepository $pages,
         private readonly FormRegion $region,
         private readonly FieldValidator $validator,
         private readonly WriteHandler $writes,
+        /**
+         * Reading the row an action is about to change, which happens only
+         * when the action carries `when` conditions to re-check. The write
+         * itself goes through `WriteHandler` as every write does; this never
+         * writes anything.
+         */
+        private readonly RowReader $reader,
+        /**
+         * The seam milestone 7 recorded and declined to open.
+         *
+         * A bulk action wraps its loop in one `Connection::transaction()`, so
+         * forty rows succeed or none do. It is depth-counted and joins
+         * whatever transaction the caller already has, which is why this does
+         * not fight a host that wraps the whole request in one.
+         *
+         * Optional, because everything but a bulk action works without it and
+         * a great many tests build this handler to exercise one write. A bulk
+         * request reaching a handler with no connection fails loudly rather
+         * than quietly applying forty rows one at a time.
+         */
+        private readonly ?Connection $connection,
         private readonly FormHandler $forms,
         private readonly Csrf $csrf,
         private readonly FlashBag $flashes,
@@ -92,30 +127,422 @@ final class ActionHandler implements Handler
             throw new NotFoundException("Page '{$name}' not found.");
         }
 
-        $action = $route->param('action');
-
-        if (!\in_array($action, self::VERBS, true)) {
-            throw new NotFoundException(
-                "Page '{$name}' has no action '{$action}'. This route accepts "
-                . implode(', ', self::VERBS) . '.',
-            );
-        }
-
         $page = $this->pages->get($name);
+        $verb = $route->param('action');
+        $performed = $this->resolve($page, $verb);
 
-        // Read once and passed down. `ActionHandler` must redraw a rejection
-        // from the region the submission came from -- a rejection drawn from
-        // another of the page's form regions would silently change the form
-        // under the person filling it in.
-        $region = FormHandler::formRegionOf($page);
         $returnTo = FormHandler::returnTo($request->input(FormFields::RETURN_TO), $this->urls)
             ?? $this->urls->route('page.index', ['page' => $page->name]);
 
-        if ($action === 'delete') {
-            return $this->delete($page, $returnTo, $this->requireKey($request, $page));
+        if ($performed->isSubmission()) {
+            // Resolved here rather than above, because only a submission has
+            // one. `formRegionOf()` refuses a page with no form region, and a
+            // page of a grid and some actions is an ordinary page that has
+            // none -- resolving it for every verb made a delete on such a page
+            // answer "no form region" when nothing had asked for a form.
+            //
+            // Read once and passed down. `ActionHandler` must redraw a
+            // rejection from the region the submission came from; a rejection
+            // drawn from another of the page's form regions would silently
+            // change the form under the person filling it in.
+            return $this->save($page, FormHandler::formRegionOf($page), $request, $performed->verb, $returnTo);
         }
 
-        return $this->save($page, $region, $request, $action, $returnTo);
+        // A selection, if the body carries one. It is read before the single
+        // key, because the two are different requests and only one of them
+        // names `_id` -- a bulk form submits `_ids[]` and nothing else.
+        $selection = $this->selection($request);
+
+        if ($selection !== null) {
+            return $this->performBulk($page, $performed->verb, $selection, $returnTo);
+        }
+
+        $key = $this->requireKey($request, $page);
+
+        if ($performed->action !== null) {
+            return $this->perform($performed, $performed->action, $key, $returnTo);
+        }
+
+        return $this->delete($page, $returnTo, $key);
+    }
+
+    /**
+     * The selected keys, or null when this is not a bulk request at all.
+     *
+     * An empty array and a missing key are different things and both arrive
+     * here: a bulk form submitted with nothing ticked sends no `_ids` at all,
+     * because an unchecked checkbox sends nothing. So "a bulk request with an
+     * empty selection" cannot be told from "not a bulk request" by the body
+     * alone — which is why the form carries a marker the browser always
+     * sends, and why that marker is what this reads.
+     *
+     * @return list<string>|null
+     */
+    private function selection(Request $request): ?array
+    {
+        $raw = $request->input(FormFields::IDS);
+
+        if ($raw === null) {
+            return $request->input(FormFields::BULK) === null ? null : [];
+        }
+
+        if (!\is_array($raw)) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ($raw as $value) {
+            if (\is_scalar($value) && (string) $value !== '') {
+                $keys[] = (string) $value;
+            }
+        }
+
+        // Duplicates are dropped rather than applied twice. A selection is a
+        // set of rows, and a body can repeat a key -- by a script, by a form
+        // submitted twice into one request, or by somebody editing it. Two
+        // audit rows for one row's one change would make the log lie about
+        // what happened.
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * Which of the three kinds of thing this POST is.
+     *
+     * A verb that is neither built in nor declared by one of the page's own
+     * `post` actions is a 404, and the message lists both sets rather than
+     * only the three literals -- a page that declares `archive` and is posted
+     * `archvie` should say so, not imply that `archive` was never an option.
+     */
+    private function resolve(PageDefinition $page, string $verb): ActionRequest
+    {
+        if (\in_array($verb, self::VERBS, true)) {
+            return ActionRequest::builtIn($page, $verb);
+        }
+
+        $declared = ActionRequest::declaredBy($page, $verb);
+
+        if ($declared !== null) {
+            return ActionRequest::configured($page, $declared);
+        }
+
+        $offered = self::VERBS;
+
+        foreach ($page->actions as $action) {
+            $own = $action->type->isWrite() ? $action->verb() : null;
+
+            if ($own !== null && !\in_array($own, $offered, true)) {
+                $offered[] = $own;
+            }
+        }
+
+        throw new NotFoundException(
+            "Page '{$page->name}' has no action '{$verb}'. This route accepts "
+            . implode(', ', $offered) . '.',
+        );
+    }
+
+    /**
+     * A configured `post`: re-check what it is offered on, then write it.
+     *
+     * **`when` is re-checked here and that is the point of this method.** It
+     * decides whether an action is *offered*, which is a statement about a
+     * control that was drawn minutes ago on a row that may have changed since
+     * -- or was never drawn at all, by a client that posted the URL anyway. A
+     * condition enforced only where the button is drawn is not enforced.
+     *
+     * The row is read before the write for that check alone. It is the row the
+     * audit log would record as `before` in any case, so this costs a read
+     * that was already happening one layer down, and it is what lets the
+     * refusal say which column disagreed.
+     */
+    /**
+     * The same action, over a selection, in one transaction.
+     *
+     * **Atomic, and this is the decision the plan asked to have argued rather
+     * than assumed.** Forty rows succeed or none do. The alternative — apply
+     * what works, report what did not — leaves somebody looking at a grid
+     * with no way to tell which thirty-nine of forty went through, and no way
+     * to retry without re-applying the ones that did. A refusal at row forty
+     * rolling everything back is a thing you can act on: fix row forty, press
+     * the button again. A half-applied bulk action is not.
+     *
+     * It costs the other thirty-nine, and that is the real price. It is paid
+     * because the failure here is almost always one of two things — a row
+     * that stopped qualifying, or a foreign key — and both are specific
+     * enough to name and fix. A bulk action is not a long-running import.
+     *
+     * **A row that does not qualify is not a failure.** `when` decides what
+     * is offered, and a selection is an argument rather than an authorisation:
+     * ticking forty boxes says "these ones", not "do it to these whatever
+     * they are". So a row the conditions refuse is skipped, counted, and
+     * reported — the transaction commits the ones that qualified. Rolling back
+     * over a row that was never eligible would make "select all, archive" fail
+     * on any page with one sold ad on it.
+     *
+     * **Every row writes its own audit row.** The log answers "what happened
+     * to this row", and a row whose change is recorded only in a summary
+     * cannot answer it. Forty rows, forty audit rows.
+     *
+     * @param list<string> $keys
+     */
+    private function performBulk(
+        PageDefinition $page,
+        string $verb,
+        array $keys,
+        string $returnTo,
+    ): Response {
+        $action = $page->bulkAction($verb);
+
+        if ($action === null) {
+            // Offered on a row and offered over a selection are two different
+            // permissions, and a page says which by what it lists in
+            // `bulk_actions`. A verb reachable one row at a time is not
+            // reachable forty at a time unless the page said so.
+            throw new NotFoundException(
+                "Page '{$page->name}' offers no bulk action '{$verb}'. Add it to the page's "
+                . "'bulk_actions' if a selection of rows should be able to run it.",
+            );
+        }
+
+        if ($keys === []) {
+            $this->flashes->danger('Nothing was selected, so nothing happened.');
+
+            return Response::redirect($returnTo);
+        }
+
+        if ($this->connection === null) {
+            throw new LogicException(
+                'A bulk action applies to several rows and must be one transaction, so ActionHandler '
+                . 'needs a Connection. It was built without one.',
+            );
+        }
+
+        $applied = 0;
+        $skipped = [];
+
+        try {
+            $this->connection->transaction(function () use ($page, $action, $keys, &$applied, &$skipped): void {
+                foreach ($keys as $key) {
+                    $refusal = $this->bulkRefusal($page, $action, $key);
+
+                    if ($refusal !== null) {
+                        $skipped[] = $refusal;
+
+                        continue;
+                    }
+
+                    $write = $action->isDelete()
+                        ? $this->writes->delete($page->entity, $key)
+                        : $this->writes->update($page->entity, $key, $action->set);
+
+                    $this->record($action->key, $page, $write);
+                    $applied++;
+                }
+            });
+        } catch (NoSuchRowException $e) {
+            // A row went away between the page being drawn and the button
+            // being pressed. Everything rolls back, including the rows that
+            // had already been written, because the selection was a set.
+            $this->flashes->danger(\sprintf(
+                '%s was applied to nothing: %s. No row was changed.',
+                $action->label,
+                $e->getMessage(),
+            ));
+
+            return Response::redirect($returnTo);
+        } catch (DbException $e) {
+            if ($e->sqlStateClass() !== '23') {
+                throw $e;
+            }
+
+            $this->flashes->danger(\sprintf(
+                '%s was applied to nothing: %s',
+                $action->label,
+                $this->integrityMessage($e, $action->isDelete() ? 'deleted' : 'saved'),
+            ));
+
+            return Response::redirect($returnTo);
+        }
+
+        $this->reportBulk($action, $applied, $skipped);
+
+        return Response::redirect($returnTo);
+    }
+
+    /**
+     * Why this selected row was skipped, or null when it qualifies.
+     *
+     * Each key is gated and condition-tested on its own. A selection is an
+     * argument, not an authorisation: forty keys in a body is forty claims
+     * about which rows, and none of them is a claim about what may be done to
+     * them.
+     */
+    private function bulkRefusal(PageDefinition $page, ActionDefinition $action, string $key): ?string
+    {
+        if ($action->when === []) {
+            return null;
+        }
+
+        $row = $this->reader->byKey(
+            $page->entity,
+            $key,
+            array_map(strval(...), array_keys($action->when)),
+            $page->scope,
+        );
+
+        if ($row === null) {
+            return "{$key} (no longer there)";
+        }
+
+        return $this->conditionRefusal($action, $row) === null ? null : $key;
+    }
+
+    /**
+     * What happened, in one sentence a person can act on.
+     *
+     * The skipped rows are named rather than counted, up to a point: "3 were
+     * skipped" tells somebody that something is wrong and not which rows, and
+     * the whole reason a row is skipped is that it needs attention of its own.
+     *
+     * @param list<string> $skipped
+     */
+    private function reportBulk(ActionDefinition $action, int $applied, array $skipped): void
+    {
+        if ($applied === 0) {
+            $this->flashes->danger(\sprintf(
+                '%s applied to no rows: none of the %d selected qualified (%s).',
+                $action->label,
+                \count($skipped),
+                $this->listOf($skipped),
+            ));
+
+            return;
+        }
+
+        if ($skipped === []) {
+            $this->flashes->success(\sprintf(
+                '%s applied to %d %s.',
+                $action->label,
+                $applied,
+                $applied === 1 ? 'row' : 'rows',
+            ));
+
+            return;
+        }
+
+        $this->flashes->warning(\sprintf(
+            '%s applied to %d of %d rows. Skipped: %s.',
+            $action->label,
+            $applied,
+            $applied + \count($skipped),
+            $this->listOf($skipped),
+        ));
+    }
+
+    /**
+     * A readable list, truncated so one bad filter cannot write a paragraph
+     * into a flash message.
+     *
+     * @param list<string> $items
+     */
+    private function listOf(array $items): string
+    {
+        $shown = \array_slice($items, 0, self::SKIPPED_NAMED);
+        $rest = \count($items) - \count($shown);
+
+        return implode(', ', $shown) . ($rest > 0 ? ", and {$rest} more" : '');
+    }
+
+    private function perform(
+        ActionRequest $performed,
+        ActionDefinition $action,
+        string $key,
+        string $returnTo,
+    ): Response {
+        $page = $performed->page;
+
+        if ($action->when !== []) {
+            $row = $this->reader->byKey(
+                $page->entity,
+                $key,
+                array_map(strval(...), array_keys($action->when)),
+                $page->scope,
+            );
+
+            if ($row === null) {
+                throw new NotFoundException(
+                    "No {$page->title} with key '{$key}' to {$action->key}.",
+                );
+            }
+
+            $refusal = $this->conditionRefusal($action, $row);
+
+            if ($refusal !== null) {
+                $this->flashes->danger($refusal);
+
+                return Response::redirect($returnTo);
+            }
+        }
+
+        if ($performed->isDelete()) {
+            return $this->delete($page, $returnTo, $key);
+        }
+
+        try {
+            $write = $this->writes->update($page->entity, $key, $action->set);
+        } catch (NoSuchRowException $e) {
+            throw new NotFoundException($e->getMessage(), previous: $e);
+        } catch (DbException $e) {
+            if ($e->sqlStateClass() !== '23') {
+                throw $e;
+            }
+
+            $this->flashes->danger($this->integrityMessage($e, 'saved'));
+
+            return Response::redirect($returnTo);
+        }
+
+        $this->record($action->key, $page, $write);
+
+        $this->flashes->success("{$action->label}: {$page->title} {$write->key}.");
+
+        return Response::redirect($returnTo);
+    }
+
+    /**
+     * Why this row does not qualify, or null when it does.
+     *
+     * Compared as text, the same way `ActionBuilder` compares them when it
+     * decides whether to draw the control. A page file writes `'state' =>
+     * 'active'` and a driver may hand back `1` where another hands back
+     * `'1'`; an action offered by the renderer and refused by the handler on a
+     * row nobody touched would be unexplainable from either side.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function conditionRefusal(ActionDefinition $action, array $row): ?string
+    {
+        foreach ($action->when as $column => $expected) {
+            $actual = $row[$column] ?? null;
+
+            if (\is_scalar($actual) || $actual === null) {
+                if ((string) $actual === (string) $expected) {
+                    continue;
+                }
+            }
+
+            return \sprintf(
+                '%s is only offered while %s is %s, and it is %s now. The row changed since the page '
+                . 'was drawn.',
+                $action->label,
+                $column,
+                var_export($expected, true),
+                \is_scalar($actual) || $actual === null ? var_export($actual, true) : get_debug_type($actual),
+            );
+        }
+
+        return null;
     }
 
     /**

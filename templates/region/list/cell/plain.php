@@ -24,6 +24,12 @@ $typeSlug = match ($view->type) {
     \RockAdmin\Page\ColumnType::Money,
     \RockAdmin\Page\ColumnType::Datetime,
     \RockAdmin\Page\ColumnType::Json => 'text',
+    // An actions column has `region/list/cell/actions.php` and never reaches
+    // this file through `CellPartial::templateFor()`. It is answered anyway,
+    // with its own slug rather than folded into 'text', because a project that
+    // renders this partial by hand should get an empty cell it can recognise
+    // instead of one claiming to hold text.
+    \RockAdmin\Page\ColumnType::Actions => 'actions',
 };
 ?>
 <span class="<?= $e(\RockAdmin\View\Classes::of('grid-cell-' . $typeSlug)) ?>"><?= $e($view->text) ?></span>

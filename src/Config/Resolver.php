@@ -28,6 +28,62 @@ final class Resolver
 
     private const SECRET_HINTS = ['KEY', 'SECRET', 'PASSWORD', 'TOKEN'];
 
+    /**
+     * The reference namespaces of specification 8.5, claimed by this class.
+     *
+     * A string beginning with one of these is either a reference or a mistake;
+     * it is never ordinary text. That is the whole point of the list: without
+     * it `@page:` with nothing after it would quietly stay a string and become
+     * a link to nowhere. `@enum:` is matched separately, above, because it
+     * predates this and its key pattern is wider.
+     */
+    private const array REFERENCE_NAMESPACES = ['page', 'action', 'region'];
+
+    /**
+     * Every `@namespace:` this class claims, including `@enum:`.
+     *
+     * Public because `Definitions` has to know it. A shared definition is
+     * referenced as `['use' => '@column:id']` and that mechanism runs before
+     * this one, over the whole file, claiming every `use` key it finds — so
+     * without this list `['use' => '@action:preview']`, which specification
+     * 8.5 documents as the way to adjust a named action where it is used,
+     * answers "Unknown definition namespace 'action'": a refusal about a
+     * mechanism the page file was not using. The namespaces here belong to
+     * references, `Definitions` owns the rest, and the two no longer have to
+     * agree by coincidence.
+     *
+     * @return list<string>
+     */
+    public static function referenceNamespaces(): array
+    {
+        return [...self::REFERENCE_NAMESPACES, 'enum'];
+    }
+
+    /**
+     * A page name, an action verb, a literal path segment.
+     *
+     * Deliberately the configuration-key convention (lower-case snake_case,
+     * spec 6.7) and nothing more. A page name is a file name, so refusing
+     * upper case here refuses a reference that loads on Windows and 404s on
+     * Linux; refusing everything else refuses, by construction rather than by
+     * a later check, every string that would mean something to a URL — `.`,
+     * `..`, `/` where no slash was expected, `?`, `#`, `%`, a space.
+     */
+    private const NAME = '/^[a-z][a-z0-9_]*$/';
+
+    /**
+     * A literal segment after the page, which may also be a number.
+     *
+     * The page itself may not be: it is a file name. A later segment may,
+     * because `@page:settings/1/edit` — a singleton row addressed from
+     * configuration — is a real thing somebody writes, and a digit costs
+     * nothing that `NAME` was protecting against.
+     */
+    private const SEGMENT = '/^[a-z0-9][a-z0-9_]*$/';
+
+    /** A row placeholder, `{id}` — substituted per row, not here (spec 8.5). */
+    private const ROW_PLACEHOLDER = '/^\{[a-z][a-z0-9_]*}$/';
+
     /** @var list<string> */
     private array $warnings = [];
 
@@ -90,7 +146,98 @@ final class Resolver
             return new EnumReference($match[1]);
         }
 
+        if (preg_match('/^@([A-Za-z]+):(.*)$/s', $value, $match) === 1
+            && \in_array(strtolower($match[1]), self::REFERENCE_NAMESPACES, true)
+        ) {
+            return $this->reference($match[1], $match[2], $value);
+        }
+
         return $this->string($value);
+    }
+
+    /**
+     * One of the three references specification 8.5 defines.
+     *
+     * Parsed here and validated elsewhere: the syntax lives in this class, the
+     * catalogue of pages does not. What this does decide is whether the string
+     * is *well formed*, because that is a property of the syntax, and because
+     * this is the string that becomes a URL.
+     */
+    private function reference(string $namespace, string $key, string $original): PageReference|ActionReference
+    {
+        // Case is not a spelling choice. The namespaces are three lower-case
+        // words, and a reference that works in two spellings is two things to
+        // remember -- so '@Page:ads' is refused by name rather than accepted
+        // or, worse, left as text because it matched nothing.
+        if ($namespace !== strtolower($namespace)) {
+            throw new ConfigException(
+                "'{$original}' spells the reference namespace '{$namespace}' with an upper-case letter. "
+                . "Reference namespaces are lower case: '@" . strtolower($namespace) . ":'.",
+            );
+        }
+
+        if ($namespace === 'region') {
+            throw new ConfigException(
+                "'{$original}' addresses a region, which only an 'open' action can display. 'open' actions "
+                . 'arrive in a later milestone, with the modal and offcanvas they need; until then an action '
+                . "is a 'link' or a 'post'.",
+            );
+        }
+
+        if ($key === '') {
+            throw new ConfigException($namespace === 'page'
+                ? "'{$original}' names no page. Write '@page:users', or '@page:users/{id}/edit' to address "
+                    . 'one of its rows.'
+                : "'{$original}' names no action. Write '@action:archive', naming an action of this page.");
+        }
+
+        return $namespace === 'page'
+            ? $this->pageReference($key, $original)
+            : $this->actionReference($key, $original);
+    }
+
+    private function pageReference(string $key, string $original): PageReference
+    {
+        $segments = explode('/', $key);
+        $page = array_shift($segments);
+
+        $valid = preg_match(self::NAME, $page) === 1;
+
+        foreach ($segments as $segment) {
+            $valid = $valid && (
+                preg_match(self::SEGMENT, $segment) === 1
+                || preg_match(self::ROW_PLACEHOLDER, $segment) === 1
+            );
+        }
+
+        if (!$valid) {
+            // A dotted key is not a near miss, it is the other namespace: 8.5
+            // writes a page and a region of another page as 'users' and
+            // 'users.detail', and the two are one character apart.
+            $hint = str_contains($key, '.') && !str_contains($key, '/')
+                ? " A dotted key addresses a region of a page, not a page, and that is '@region:'."
+                : '';
+
+            throw new ConfigException(
+                "'{$original}' is not a valid page reference. The page is a file in pages/, so it is "
+                . 'lower-case snake_case, and every further segment is either a lower-case name or a '
+                . "{row_placeholder}: '@page:users', '@page:users/create', '@page:users/{id}/edit'." . $hint,
+            );
+        }
+
+        return new PageReference($page, implode('/', $segments));
+    }
+
+    private function actionReference(string $key, string $original): ActionReference
+    {
+        if (preg_match(self::NAME, $key) !== 1) {
+            throw new ConfigException(
+                "'{$original}' is not a valid action reference. An action is addressed on the current page, "
+                . "so the reference is one lower-case snake_case verb and nothing else: '@action:archive'.",
+            );
+        }
+
+        return new ActionReference($key);
     }
 
     private function string(string $value): mixed

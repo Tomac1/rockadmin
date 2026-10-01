@@ -68,6 +68,129 @@
     document.addEventListener('submit', confirmFirst, true);
 
     /**
+     * Dismissing a thing that announces itself — a toast, an alert.
+     *
+     * Bootstrap did this through data-bs-dismiss, and it goes with Bootstrap.
+     * Delegated rather than bound, because a toast arrives after a write and
+     * an alert can arrive inside a region fetched over AJAX: anything bound
+     * at load would miss both.
+     *
+     * The element removed is the closest ancestor matching what the attribute
+     * names, so one handler serves every dismissible thing and the markup
+     * says which. A button naming something that is not an ancestor removes
+     * nothing rather than guessing.
+     */
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var trigger = target && target.closest ? target.closest('[data-ra-dismiss]') : null;
+
+        if (!trigger) {
+            return;
+        }
+
+        var what = trigger.getAttribute('data-ra-dismiss');
+        var doomed = trigger.closest('.ra-' + what);
+
+        if (doomed && doomed.parentNode) {
+            doomed.parentNode.removeChild(doomed);
+        }
+    });
+
+    /**
+     * The shared modal and offcanvas: opening and closing them.
+     *
+     * Bootstrap's bundle used to do this, and it went with Bootstrap. The
+     * design system has no behaviour of its own -- it is CSS, and its React
+     * decides when each one is in the document at all -- so the two
+     * containers in the shell are shown and hidden here instead.
+     *
+     * Hidden, never removed. There is one of each for the whole page and a
+     * later action has to be able to fill it again, which is why none of this
+     * goes through `data-ra-dismiss`: that removes its target, correctly, for
+     * a toast that will never be wanted again.
+     *
+     * The element that carries the id is the backdrop, and the dialog is
+     * inside it. So a click lands on the backdrop only when it misses the
+     * dialog, which is what makes "click outside to close" a test of where
+     * the click landed rather than a measurement of coordinates.
+     */
+    function overlay(name) {
+        return document.getElementById('ra-' + name);
+    }
+
+    function openOverlay(name, title) {
+        var el = overlay(name);
+
+        if (!el) {
+            return null;
+        }
+
+        var heading = el.querySelector('.ra-' + name + '-title');
+
+        if (heading) {
+            heading.textContent = title || '';
+        }
+
+        el.hidden = false;
+
+        var dialog = el.querySelector('[role="dialog"]');
+
+        if (dialog && dialog.focus) {
+            dialog.focus();
+        }
+
+        return el;
+    }
+
+    function closeOverlay(name) {
+        var el = overlay(name);
+
+        if (el) {
+            el.hidden = true;
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var trigger = target && target.closest ? target.closest('[data-ra-close]') : null;
+
+        if (!trigger) {
+            return;
+        }
+
+        // The backdrop carries the attribute as well as the close button
+        // does, so every click inside the dialog finds it by walking up and
+        // would close the thing being used. A backdrop counts only when it
+        // is what was clicked; a close button counts wherever in it the
+        // click landed, which for a button wrapping an icon is usually the
+        // icon.
+        var isBackdrop = trigger.hasAttribute('data-ra-modal') || trigger.hasAttribute('data-ra-offcanvas');
+
+        if (!isBackdrop || trigger === target) {
+            closeOverlay(trigger.getAttribute('data-ra-close'));
+        }
+    });
+
+    /**
+     * Escape closes the topmost thing that is open. Only one of the two is
+     * ever open at a time today; checking both means that stays true by
+     * accident rather than by assumption.
+     */
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        ['modal', 'offcanvas'].forEach(function (name) {
+            var el = overlay(name);
+
+            if (el && !el.hidden) {
+                closeOverlay(name);
+            }
+        });
+    });
+
+    /**
      * The one delegated listener every action relies on. It never binds to
      * an individual element, so an element inserted after this runs behaves
      * exactly like one that was here from the start.
@@ -380,6 +503,93 @@
     // the whole page. attach()/detach() rebind this on every fragment swap,
     // so a toolbar returned by a reload keeps working exactly like the one
     // that was there first.
+    /**
+     * The selection: a running count, buttons that are off while nothing is
+     * ticked, and a select-all that ticks the page.
+     *
+     * Everything here is a convenience over markup that already works. The
+     * checkboxes submit with the form by `form="..."`, the buttons choose
+     * their action with `formaction`, and the server refuses an empty
+     * selection by name. With no script at all the only thing lost is the
+     * count and the select-all box, which is why the select-all carries no
+     * `name` -- it is the one control here that does nothing without this,
+     * so it must never be part of what is submitted.
+     *
+     * The boxes are found by the form attribute rather than by walking the
+     * table, because that is the actual relationship: they are this form's
+     * controls regardless of where they sit in the document, and a selector
+     * over the table would quietly miss one the day a row is drawn elsewhere.
+     */
+    behavior('grid-bulk', {
+        attach: function (form) {
+            function boxes() {
+                return Array.prototype.slice.call(
+                    document.querySelectorAll('[form="' + form.id + '"][data-ra-select]')
+                );
+            }
+
+            function selected() {
+                return boxes().filter(function (box) {
+                    return box.checked;
+                });
+            }
+
+            function sync() {
+                var all = boxes();
+                var chosen = selected();
+                var count = form.querySelector('.ra-grid-bulk-count-number');
+                var toggle = document.querySelector('[form="' + form.id + '"][data-ra-select-all]')
+                    || (form.closest('[data-ra-region]') || document).querySelector('[data-ra-select-all]');
+
+                if (count) {
+                    count.textContent = String(chosen.length);
+                }
+
+                form.classList.toggle('ra-grid-bulk-empty', chosen.length === 0);
+
+                form.querySelectorAll('.ra-grid-bulk-action').forEach(function (button) {
+                    button.disabled = chosen.length === 0;
+                });
+
+                if (toggle) {
+                    toggle.checked = all.length > 0 && chosen.length === all.length;
+                    // Some but not all: the box says so rather than reading
+                    // as "none selected", which is what an unticked select-all
+                    // over a part-selected page would say.
+                    toggle.indeterminate = chosen.length > 0 && chosen.length < all.length;
+                }
+            }
+
+            function onChange(event) {
+                var target = event.target;
+
+                if (!target || !target.matches) {
+                    return;
+                }
+
+                if (target.matches('[data-ra-select-all]')) {
+                    boxes().forEach(function (box) {
+                        box.checked = target.checked;
+                    });
+                }
+
+                if (target.matches('[data-ra-select-all]') || target.matches('[data-ra-select]')) {
+                    sync();
+                }
+            }
+
+            document.addEventListener('change', onChange);
+            form._raBulkChange = onChange;
+            sync();
+        },
+        detach: function (form) {
+            if (form._raBulkChange) {
+                document.removeEventListener('change', form._raBulkChange);
+                delete form._raBulkChange;
+            }
+        },
+    });
+
     behavior('grid-toolbar', {
         attach: function (form) {
             function onSubmit(event) {
@@ -436,6 +646,8 @@
         attach: attach,
         detach: detach,
         load: load,
+        openOverlay: openOverlay,
+        closeOverlay: closeOverlay,
     };
 
     document.addEventListener('DOMContentLoaded', function () {

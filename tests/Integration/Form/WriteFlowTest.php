@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
@@ -162,7 +163,7 @@ final class WriteFlowTest extends DatabaseTestCase
         $urls = new UrlGenerator('/admin');
         $csrf = new Csrf($this->session);
         $flashes = new FlashBag($this->session);
-        $region = new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
+        $region = new FormRegion(new RowReader(new SqlRowSource($connection)), $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
         $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
 
         return new ActionHandler(
@@ -170,6 +171,8 @@ final class WriteFlowTest extends DatabaseTestCase
             $region,
             new FieldValidator(),
             new SqlWriteHandler($connection),
+            new RowReader(new SqlRowSource($connection)),
+            $connection,
             new FormHandler(
                 $this->repository(),
                 $region,
@@ -320,7 +323,7 @@ final class WriteFlowTest extends DatabaseTestCase
         $csrf = new Csrf($this->session);
         $forms = new FormHandler(
             $this->repository(),
-            new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
+            new FormRegion(new RowReader(new SqlRowSource($connection)), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
             new Renderer(new TemplateResolver([]), new Escaper(), $urls),
             new Assets($urls),
             new FlashBag($this->session),

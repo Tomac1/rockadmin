@@ -26,6 +26,18 @@ enum ColumnType: string
     case Enum = 'enum';
     case Json = 'json';
 
+    /**
+     * A column of controls rather than of data (spec 8.5).
+     *
+     * It names no database column, so it is excluded from the select list and
+     * every key that would narrow, order or search a value is refused on it.
+     * It is an ordinary column in every other respect: it sits where it was
+     * written among the others, and its key becomes its CSS class and its
+     * template override path, which is why 8.5 says to name it for what it
+     * holds -- `tools`, `activity` -- rather than `actions2`.
+     */
+    case Actions = 'actions';
+
     /** @throws PageException when the value names no type */
     public static function parse(string $value): self
     {
@@ -60,13 +72,19 @@ enum ColumnType: string
         );
     }
 
+    /** Whether this column holds controls rather than a value. */
+    public function isActions(): bool
+    {
+        return $this === self::Actions;
+    }
+
     /** How this type looks when the column does not say. */
     public function defaultDisplay(): Display
     {
         return match ($this) {
             self::Bool => Display::Check,
             self::Enum => Display::Badge,
-            self::Text, self::Int, self::Money, self::Datetime, self::Json => Display::Plain,
+            self::Text, self::Int, self::Money, self::Datetime, self::Json, self::Actions => Display::Plain,
         };
     }
 
@@ -88,7 +106,7 @@ enum ColumnType: string
             ),
             self::Bool => \in_array($display, [Display::Check, Display::YesNo, Display::Badge], true),
             self::Enum => \in_array($display, [Display::Badge, Display::Plain], true),
-            self::Money, self::Datetime, self::Json => $display === Display::Plain,
+            self::Money, self::Datetime, self::Json, self::Actions => $display === Display::Plain,
         };
     }
 
@@ -102,7 +120,10 @@ enum ColumnType: string
     public function defaultAlignment(): string
     {
         return match ($this) {
-            self::Money, self::Int => 'end',
+            // An actions column ends a row more often than it starts one, and
+            // a column of controls reads as a group when they line up against
+            // the edge they were drawn from.
+            self::Money, self::Int, self::Actions => 'end',
             self::Text, self::Datetime, self::Bool, self::Enum, self::Json => 'start',
         };
     }

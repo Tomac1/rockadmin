@@ -1,0 +1,53 @@
+<!-- @dsCard group="Components" viewport="700x440" name="Feedback" subtitle="Alert, Modal, Toast, Offcanvas, ConfirmModal" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:16px;background:var(--bg-page)} .label{font-size:11px;color:var(--text-muted);font-family:var(--font-sans);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px} .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const { Alert, Modal, ConfirmModal, Offcanvas, Button, Input, FormField } = window.RockAdminDesignSystem_fced52;
+function App() {
+  const [modal, setModal] = React.useState(false);
+  const [confirm, setConfirm] = React.useState(false);
+  const [offcanvas, setOffcanvas] = React.useState(false);
+  return (
+    <div style={{fontFamily:'var(--font-sans)'}}>
+      <div className="label">Alerts</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        <Alert type="info" title="Info" dismissible>System maintenance scheduled for Sunday 2:00–4:00 AM.</Alert>
+        <Alert type="success" title="Changes saved" dismissible>Your product has been updated successfully.</Alert>
+        <Alert type="warning" title="Low stock warning">3 products have fewer than 5 units remaining.</Alert>
+        <Alert type="error" title="Export failed">Could not generate the export file. Please try again.</Alert>
+      </div>
+      <div className="label" style={{marginTop:4}}>Overlays (click to open)</div>
+      <div className="row">
+        <Button variant="secondary" size="sm" onClick={()=>setModal(true)}>Open Modal</Button>
+        <Button variant="danger" size="sm" onClick={()=>setConfirm(true)}>Delete Confirm</Button>
+        <Button variant="secondary" size="sm" onClick={()=>setOffcanvas(true)}>Open Offcanvas</Button>
+      </div>
+      <Modal open={modal} onClose={()=>setModal(false)} title="Edit Product"
+        footer={<><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button>Save Changes</Button></>}>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <FormField label="Product Name"><Input defaultValue="AirMax Pro Sneakers" /></FormField>
+          <FormField label="Price"><Input type="number" defaultValue="149" /></FormField>
+          <FormField label="Status" hint="Controls visibility on storefront"><Input defaultValue="active" /></FormField>
+        </div>
+      </Modal>
+      <ConfirmModal open={confirm} onClose={()=>setConfirm(false)} onConfirm={()=>setConfirm(false)}
+        title="Delete Product?" message="This will permanently remove 'AirMax Pro Sneakers' and all associated data. This action cannot be undone." confirmLabel="Delete Product" />
+      <Offcanvas open={offcanvas} onClose={()=>setOffcanvas(false)} title="Filter Products"
+        footer={<><Button variant="secondary" onClick={()=>setOffcanvas(false)}>Reset</Button><Button>Apply Filters</Button></>}>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <FormField label="Category"><Input placeholder="All categories" /></FormField>
+          <FormField label="Price Range"><Input placeholder="Min–Max" /></FormField>
+          <FormField label="Status"><Input placeholder="All statuses" /></FormField>
+        </div>
+      </Offcanvas>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script></body></html>

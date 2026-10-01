@@ -10,6 +10,7 @@ use RockAdmin\Config\Enums;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
 use RockAdmin\Db\Result;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Form\FieldValidator;
 use RockAdmin\Form\FormFields;
@@ -182,7 +183,7 @@ final class ActionHandlerTest extends TestCase
         $rows = new FakeRowSource([
             new Result([['id' => 1, 'title' => 'Horské kolo', 'price' => 900]], null, [new Sql('SELECT 1')]),
         ]);
-        $region = new FormRegion($rows, $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
+        $region = new FormRegion(new RowReader($rows), $urls, $csrf, Access::gateFor($this->repository()), Access::identity());
         $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
         $flashes = new FlashBag($this->session);
 
@@ -193,6 +194,8 @@ final class ActionHandlerTest extends TestCase
             $region,
             new FieldValidator(),
             $this->writes,
+            new RowReader($rows),
+            null,
             new FormHandler(
                 $this->repository(),
                 $region,

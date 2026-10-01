@@ -34,10 +34,12 @@ use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Form\FieldValidator;
 use RockAdmin\Form\FormRegion;
+use RockAdmin\Grid\ActionBuilder;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
 use RockAdmin\Grid\PreviewRegion;
@@ -373,8 +375,21 @@ $handlers->register(
 
 if ($connection !== null) {
     $rows = new SqlRowSource($connection);
-    $listRegion = new ListRegion($rows, new QueryFactory(), new CellFormatter(), $urls, $gate, $identity);
+    $listRegion = new ListRegion(
+        $rows,
+        new QueryFactory(),
+        new CellFormatter(),
+        $urls,
+        $gate,
+        $identity,
+        $csrf,
+    );
     $previewRegion = new PreviewRegion($rows, new CellFormatter());
+
+    // The page header's own configured controls (spec 8.5). The same three
+    // decisions a grid's action cell makes -- the gate, the URL from the
+    // reference, the token a POST carries -- so it is the same builder.
+    $actionBuilder = new ActionBuilder($gate, $identity, $urls, $csrf);
 
     $handlers->register('page.index', new PageHandler(
         $pages,
@@ -386,6 +401,7 @@ if ($connection !== null) {
         $darkMode,
         $menu,
         $account,
+        $actionBuilder,
     ));
     $handlers->register('page.detail', new DetailHandler(
         $pages,
@@ -406,7 +422,8 @@ if ($connection !== null) {
     // it accepts arrives as a POST to `a/{page}/{action}` carrying the token
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
-    $formRegion = new FormRegion($rows, $urls, $csrf, $gate, $identity);
+    $reader = new RowReader($rows);
+    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -428,6 +445,8 @@ if ($connection !== null) {
         $formRegion,
         new FieldValidator(),
         new SqlWriteHandler($connection),
+        $reader,
+        $connection,
         $forms,
         $csrf,
         $flashes,

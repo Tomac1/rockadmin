@@ -34,6 +34,22 @@ final class RowView
          * and a body that sometimes omitted the cell would shift every row.
          */
         public readonly ?string $editUrl = null,
+        /**
+         * The id of the selection form this row's checkbox belongs to, or
+         * null when the grid has no bulk actions and so no selection column.
+         *
+         * The id travels on the row rather than being looked up, because the
+         * checkbox sits outside the form it submits with — `<input form="…">`
+         * — and the only reason it does is that a selection form wrapping the
+         * table would contain the `<form>` a row action draws in its `<td>`.
+         * Nested forms are dropped silently by the browser, which would make
+         * every row action a button that does nothing with JavaScript off.
+         *
+         * Null and not a boolean, so the row cannot draw a checkbox that
+         * belongs to no form: the thing that decides the cell exists is the
+         * same thing that makes it work.
+         */
+        public readonly ?string $selectionFormId = null,
     ) {
     }
 }

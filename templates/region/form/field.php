@@ -46,18 +46,18 @@ $labelAttributes = $view->type === \RockAdmin\Page\FieldType::Radio
     <?= $partial(\RockAdmin\Form\FormControl::templateFor($view), $view) ?>
 <?php } else { ?>
     <div class="<?= $e($view->classes()) ?>" data-ra-field="<?= $e($view->key) ?>">
-        <label class="ra-form-label form-label"<?= $attrs($labelAttributes) ?>>
-            <?= $e($view->label) ?><?php if ($view->required) { ?><span class="ra-form-required" aria-hidden="true">*</span><?php } ?>
+        <label class="ra-field__label ra-form-label"<?= $attrs($labelAttributes) ?>>
+            <?= $e($view->label) ?><?php if ($view->required) { ?><span class="ra-field__required ra-form-required" aria-hidden="true">*</span><?php } ?>
         </label>
 
         <?= $partial(\RockAdmin\Form\FormControl::templateFor($view), $view) ?>
 
         <?php if ($view->hasError()) { ?>
-            <p class="ra-form-error" id="<?= $e(\RockAdmin\Form\FormControl::errorId($view)) ?>"><?= $e($view->error()) ?></p>
+            <p class="ra-field__error ra-form-error" id="<?= $e(\RockAdmin\Form\FormControl::errorId($view)) ?>"><?= $e($view->error()) ?></p>
         <?php } ?>
 
         <?php if ($view->help !== '') { ?>
-            <p class="ra-form-help form-text" id="<?= $e(\RockAdmin\Form\FormControl::helpId($view)) ?>"><?= $e($view->help) ?></p>
+            <p class="ra-field__hint ra-form-help" id="<?= $e(\RockAdmin\Form\FormControl::helpId($view)) ?>"><?= $e($view->help) ?></p>
         <?php } ?>
     </div>
 <?php } ?>

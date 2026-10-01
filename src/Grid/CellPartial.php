@@ -50,6 +50,11 @@ final class CellPartial
             Display::Progress => 'region/list/cell/progress',
             Display::Percent => 'region/list/cell/percent',
             Display::Plain => match ($cell->type) {
+                // An actions column holds controls rather than a value (spec
+                // 8.5), so it has a partial of its own under the same name its
+                // type carries -- which is also the file a project overrides to
+                // restyle every action cell in the admin.
+                ColumnType::Actions => 'region/list/cell/actions',
                 ColumnType::Money => 'region/list/cell/money',
                 ColumnType::Datetime => 'region/list/cell/datetime',
                 ColumnType::Json => 'region/list/cell/json',

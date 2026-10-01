@@ -9,6 +9,7 @@
  *
  * @var array{message: string} $view
  * @var \Closure(mixed): string $e
+ * @var \Closure(string, mixed=): string $partial
  */
 ?>
 <!doctype html>
@@ -17,6 +18,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configuration error</title>
+    <?= $partial('error/style') ?>
 </head>
 <body class="ra-error ra-error-config-error">
     <main class="ra-error-main">

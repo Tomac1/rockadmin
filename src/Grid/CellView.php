@@ -6,6 +6,7 @@ namespace RockAdmin\Grid;
 
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
+use RockAdmin\View\ActionView;
 
 /**
  * One value as it will appear in a grid cell.
@@ -25,7 +26,17 @@ use RockAdmin\Page\Display;
  */
 final class CellView
 {
-    /** @param array<string, scalar|null> $attributes */
+    /**
+     * @param array<string, scalar|null> $attributes
+     * @param list<ActionView>           $actions    the controls an `actions` column's cell draws, already
+     *                                                filtered by the gate and by each action's own `when`
+     *                                                (spec 8.5), and empty for every other kind of cell.
+     *                                                They live on the cell rather than on the row because an
+     *                                                `actions` column is an ordinary column: it sits where it
+     *                                                was written among the others, and a row's cells have to
+     *                                                stay one per column or the header and the body disagree
+     *                                                about how many cells a row has
+     */
     public function __construct(
         public readonly string $key,
         public readonly mixed $value,
@@ -37,6 +48,7 @@ final class CellView
         public readonly array $attributes,
         public readonly ?int $percent,
         public readonly ?string $variant,
+        public readonly array $actions = [],
     ) {
     }
 }

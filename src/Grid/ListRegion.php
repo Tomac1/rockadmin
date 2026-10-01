@@ -10,7 +10,9 @@ use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\SortDirection;
 use RockAdmin\Form\FormFields;
+use RockAdmin\Http\Csrf;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\View\Classes;
@@ -40,6 +42,15 @@ use RockAdmin\View\Classes;
  */
 final class ListRegion
 {
+    /**
+     * Built here rather than injected, from the gate, the identity and the URL
+     * generator this class already holds: eleven call sites construct a
+     * `ListRegion`, and an argument every one of them would have to assemble
+     * out of three it is already passing is a wiring tax with no decision
+     * behind it.
+     */
+    private readonly ActionBuilder $actions;
+
     public function __construct(
         private readonly RowSource $rows,
         private readonly QueryFactory $queries,
@@ -53,7 +64,15 @@ final class ListRegion
          * the kernel has not already paid for.
          */
         private readonly Identity $identity,
+        /**
+         * The session's token, needed by a `post` action's own form and by
+         * nothing else this class draws. Optional because most of what builds a
+         * `ListRegion` has no action column to draw; a `post` action without
+         * one is refused by `ActionBuilder` rather than drawn unsigned.
+         */
+        ?Csrf $csrf = null,
     ) {
+        $this->actions = new ActionBuilder($gate, $identity, $urls, $csrf);
     }
 
     public function render(PageDefinition $page, RegionDefinition $region, GridState $state): ListView
@@ -91,13 +110,35 @@ final class ListRegion
         $stateUrl = $this->pageStateUrl($page, $region, $state);
 
         $createReturnTo = $this->gate->allows($user, $page->name . '.create') ? $stateUrl : null;
-        $editReturnTo = $this->gate->allows($user, $page->name . '.update') ? $stateUrl : null;
+
+        // An `actions` column (spec 8.5) is the third way this project has
+        // found to make a header and a body disagree about how many cells a row
+        // has: a writable grid that also declares one could claim two trailing
+        // cells, or claim one and draw two. It cannot, because a page that says
+        // where its row controls go has said it — the grid's own Edit cell is
+        // not drawn beside a column that exists to draw controls, and the one
+        // value below decides the header, the rows' edit links and nothing
+        // else, exactly as it did before.
+        //
+        // The alternative — drawing both — puts two Edit controls in a row, one
+        // configured and one not, and leaves a project no way to remove the
+        // second.
+        $editReturnTo = $this->gate->allows($user, $page->name . '.update') && !$this->hasActionColumn($region)
+            ? $stateUrl
+            : null;
+
+        // Decided before the rows, from the same list the view's own
+        // `isSelectable()` reads, so the header's select-all cell and the
+        // rows' checkbox cells cannot disagree about whether they exist --
+        // the third time that pairing has had to be made from one value.
+        $bulkActions = $this->actions->forPage($page->name, $page->bulkActions);
+        $selectionFormId = $bulkActions === [] ? null : ListView::selectionFormId($region->key);
 
         return new ListView(
             key: $region->key,
             pageName: $page->name,
             columns: $this->columnViews($page, $region, $state),
-            rows: $this->rowViews($page, $region, $result->rows, $editReturnTo),
+            rows: $this->rowViews($page, $region, $result->rows, $editReturnTo, $selectionFormId),
             filters: $this->filterViews($region, $state),
             pagination: $this->pagination($page, $region, $state, $limit, $result),
             search: $state->search,
@@ -116,6 +157,12 @@ final class ListRegion
             // header and the body cannot disagree about how many cells a row
             // has. `hasRowActions()` reads this and nothing else.
             rowActions: $editReturnTo !== null,
+            // Gated here, exactly as a row's actions are, so a reader who may
+            // not perform any of them gets no selection column either --
+            // checkboxes whose only purpose is to feed controls that are not
+            // drawn.
+            bulkActions: $bulkActions,
+            bulkToken: $this->actions->sessionToken(),
         );
     }
 
@@ -160,6 +207,7 @@ final class ListRegion
         RegionDefinition $region,
         array $rows,
         ?string $returnTo,
+        ?string $selectionFormId = null,
     ): array {
         $views = [];
 
@@ -174,13 +222,88 @@ final class ListRegion
             $cells = [];
 
             foreach ($region->columns as $column) {
-                $cells[] = $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
+                $cells[] = $column->type->isActions()
+                    ? $this->actionCell($page->name, $column, $row, $page->entity->key)
+                    : $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
             }
 
-            $views[] = new RowView($key, $cells, $url, Classes::of('grid-row'), $editUrl);
+            // A row with no key of its own draws no checkbox: there is
+            // nothing to put in its value, and an unchecked box that cannot
+            // ever be checked is worse than a cell that is simply empty.
+            $views[] = new RowView(
+                $key,
+                $cells,
+                $url,
+                Classes::of('grid-row'),
+                $editUrl,
+                $key !== null && \is_scalar($key) ? $selectionFormId : null,
+            );
         }
 
         return $views;
+    }
+
+    /** Whether this region declares a column that draws controls (spec 8.5). */
+    private function hasActionColumn(RegionDefinition $region): bool
+    {
+        foreach ($region->columns as $column) {
+            if ($column->type->isActions()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * One `actions` column's cell for one row.
+     *
+     * It is a `CellView` like every other cell, carrying no value and no URL of
+     * its own — a cell per column, whatever the column holds, is what keeps a
+     * row the same width as its header. The controls themselves are
+     * `ActionBuilder`'s answer: this method decides nothing about them.
+     *
+     * The classes follow `CellFormatter`'s own rule, so `ra-grid-cell-tools` is
+     * the selector 8.5 promises and the alignment is still the column's own
+     * decision rather than something a template recomputes.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function actionCell(
+        string $pageName,
+        ColumnDefinition $column,
+        array $row,
+        string $keyColumn,
+    ): CellView {
+        $actions = $this->actions->forRow($pageName, $column->actions, $row, $keyColumn);
+
+        $extra = ['ra-align-' . $column->align];
+
+        if ($column->class !== '') {
+            $extra[] = $column->class;
+        }
+
+        // A row that offers none of its column's actions -- every one of them
+        // gated away or `when`-ed out -- is empty for the same reason a null
+        // value is, and says so with the same class, so a mostly-empty actions
+        // column looks deliberate rather than broken.
+        if ($actions === []) {
+            $extra[] = 'ra-grid-cell-empty';
+        }
+
+        return new CellView(
+            key: $column->key,
+            value: null,
+            text: '',
+            type: $column->type,
+            display: $column->display,
+            classes: Classes::of('grid-cell', $column->key, $extra),
+            url: null,
+            attributes: [],
+            percent: null,
+            variant: null,
+            actions: $actions,
+        );
     }
 
     /**

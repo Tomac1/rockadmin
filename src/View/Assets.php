@@ -35,7 +35,12 @@ final class Assets
     public function styles(): array
     {
         return [
-            $this->url('vendor/bootstrap/bootstrap.min.css'),
+            // The design system: tokens, then its components. Vendored
+            // unedited apart from one line -- see ds/tokens/typography.css.
+            $this->url('css/ds/styles.css'),
+            // The faces it names, declared locally rather than fetched.
+            $this->url('css/fonts.css'),
+            // What this project adds on top, and nothing it already covers.
             $this->url('css/rockadmin.css'),
             ...$this->projectStyles,
         ];
@@ -45,7 +50,6 @@ final class Assets
     public function scripts(): array
     {
         return [
-            $this->url('vendor/bootstrap/bootstrap.bundle.min.js'),
             $this->url('js/core.js'),
             ...$this->projectScripts,
         ];

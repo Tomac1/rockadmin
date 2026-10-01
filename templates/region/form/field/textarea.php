@@ -26,4 +26,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'maxlength' => $view->max,
 ];
 ?>
-<textarea class="ra-form-control ra-form-control-textarea form-control"<?= $attrs($attributes) ?>><?= $e(\is_string($view->value) ? $view->value : '') ?></textarea>
+<textarea class="<?= $e(\RockAdmin\Form\FormControl::classes($view, 'ra-textarea')) ?>"<?= $attrs($attributes) ?>><?= $e(\is_string($view->value) ? $view->value : '') ?></textarea>

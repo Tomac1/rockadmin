@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32" fill="none">
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="#2563eb"></rect>
+  <rect x="8" y="8" width="7" height="7" rx="1.5" fill="white" opacity="0.95"></rect>
+  <rect x="17" y="8" width="7" height="7" rx="1.5" fill="white" opacity="0.6"></rect>
+  <rect x="8" y="17" width="7" height="7" rx="1.5" fill="white" opacity="0.6"></rect>
+  <rect x="17" y="17" width="7" height="7" rx="1.5" fill="white" opacity="0.3"></rect>
+  <text x="40" y="21.5" font-family="Inter, system-ui, sans-serif" font-weight="700" font-size="15" letter-spacing="-0.3" fill="white">Rock</text>
+  <text x="79" y="21.5" font-family="Inter, system-ui, sans-serif" font-weight="400" font-size="15" letter-spacing="-0.3" fill="rgba(255,255,255,0.55)">Admin</text>
+</svg>

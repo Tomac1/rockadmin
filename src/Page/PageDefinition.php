@@ -21,6 +21,11 @@ final class PageDefinition
      *                                                  by a URL — a placeholder such as `{{workspace.site_id}}`
      *                                                  survives unresolved, ready to bind per request
      * @param array<string, RegionDefinition> $regions keyed by the region's own key
+     * @param array<string, ActionDefinition> $actions keyed by the action's own key
+     * @param list<ActionDefinition>          $headerButtons the page header's own controls (spec 8.5), in
+     *                                                        the order `header.buttons` wrote them
+     * @param list<ActionDefinition>          $bulkActions   the controls offered over a selection, in the
+     *                                                        order `bulk_actions` wrote them
      */
     public function __construct(
         public readonly string $name,
@@ -30,7 +35,46 @@ final class PageDefinition
         public readonly Entity $entity,
         public readonly array $scope,
         public readonly array $regions,
+        public readonly array $actions = [],
+        public readonly array $headerButtons = [],
+        public readonly array $bulkActions = [],
     ) {
+    }
+
+    /**
+     * The page's bulk action for this verb, or null.
+     *
+     * The handler asks this, rather than scanning `actions`, because being
+     * offered over a selection is a separate permission from being offered on
+     * a row: a page may let somebody archive one ad and not forty at a time,
+     * and the way it says so is by leaving the action out of `bulk_actions`.
+     */
+    public function bulkAction(string $verb): ?ActionDefinition
+    {
+        foreach ($this->bulkActions as $action) {
+            if ($action->type->isWrite() && $action->verb() === $verb) {
+                return $action;
+            }
+        }
+
+        return null;
+    }
+
+    public function action(string $key): ActionDefinition
+    {
+        if (isset($this->actions[$key])) {
+            return $this->actions[$key];
+        }
+
+        $nearest = Schema::nearestOf(array_keys($this->actions), $key);
+        $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+        throw new PageException("Page '{$this->name}' has no action '{$key}'.{$suffix}");
+    }
+
+    public function hasAction(string $key): bool
+    {
+        return isset($this->actions[$key]);
     }
 
     public function region(string $key): RegionDefinition

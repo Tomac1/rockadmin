@@ -7,6 +7,7 @@ namespace RockAdmin\Auth;
 use RockAdmin\Config\Config;
 use RockAdmin\Http\ForbiddenException;
 use RockAdmin\Http\Route;
+use RockAdmin\Page\ActionDefinition;
 use RockAdmin\Page\PageRepository;
 
 /**
@@ -128,11 +129,16 @@ final class Gate
     ];
 
     /**
-     * The verbs `POST /a/{page}/{action}` accepts, and what each one needs.
+     * The verbs `POST /a/{page}/{action}` accepts out of the box, and what
+     * each one needs.
      *
-     * A closed set for the reason above. `ActionHandler::VERBS` is the same
-     * three; when milestone 8 adds bulk actions and inline editing it adds
-     * them here too, or they are refused — which is the correct failure.
+     * A closed set for the reason above. Milestone 8 lets a page add verbs of
+     * its own — `POST /a/ads/archive` — and that does **not** open this set:
+     * a configured action declares its own `permission`, so the gate asks the
+     * page what the verb needs rather than deriving `ads.archive` from the
+     * URL. A verb no action declares is still refused, which is the property
+     * the comment above is protecting. What changed is that the set is now
+     * closed over configuration rather than over three literals.
      *
      * @var array<string, string>
      */
@@ -142,8 +148,18 @@ final class Gate
         'delete' => 'delete',
     ];
 
-    public function __construct(private readonly Roles $roles)
-    {
+    /**
+     * The pages, for the configured half of that question only.
+     *
+     * Optional because the gate is constructed directly in a great many tests
+     * that never post an action, and because a gate without pages is still
+     * correct: it falls back to refusing every verb it does not know, which is
+     * what it did before any of this existed.
+     */
+    public function __construct(
+        private readonly Roles $roles,
+        private readonly ?PageRepository $pages = null,
+    ) {
     }
 
     /**
@@ -160,7 +176,16 @@ final class Gate
      */
     public static function fromConfig(Config $config, PageRepository $pages): self
     {
-        return new self(Roles::fromConfig($config->roles(), Permission::catalogue($pages)));
+        $catalogue = Permission::catalogue($pages);
+
+        // An action's declared permission (spec 8.5) is refused in the same
+        // breath, and for the same reason: a typo in it would deny that action
+        // forever, to everybody, with nothing anywhere saying why. The page
+        // layer cannot check it — the catalogue is generated from every page
+        // by this namespace, and `Page` depending back on `Auth` is a cycle.
+        Permission::assertActionsAreGrantable($pages, $catalogue);
+
+        return new self(Roles::fromConfig($config->roles(), $catalogue), $pages);
     }
 
     /** Whether this route has an access decision at all. */
@@ -197,6 +222,11 @@ final class Gate
      * The permission this particular request needs, or null when the route
      * needs only a signed-in user.
      *
+     * Static, and so it knows only the built-in verbs. A page's own actions
+     * are configuration, and reading them needs the repository the instance
+     * holds — see `permissionForRequest()`, which is what `authorize()` calls
+     * and what a caller deciding whether to draw a control should call too.
+     *
      * @throws ForbiddenException for an undeclared route, a denied one, or an
      *                            action verb nobody mapped to a permission
      */
@@ -230,6 +260,68 @@ final class Gate
     }
 
     /**
+     * The same question, with the page's own actions included.
+     *
+     * A page may declare `archive`, and `POST /a/ads/archive` then needs
+     * whatever that action's `permission` says — not `ads.archive`, which is
+     * derived from the URL and would mean a verb granted itself by being
+     * spelled. The action is the only thing that may say what it costs.
+     *
+     * An action that declares no permission at all returns null, which means
+     * "a signed-in user is enough". That is the schema's own default and it is
+     * deliberate: `permission` is described as the thing to set on every
+     * action that changes data, and an admin that refused every action without
+     * one would make the key mandatory in fact while optional in the schema.
+     *
+     * @throws ForbiddenException when no action of that page declares the verb
+     */
+    public function permissionForRequest(Route $route): ?string
+    {
+        try {
+            return self::permissionFor($route);
+        } catch (ForbiddenException $e) {
+            $configured = $this->configuredAction($route);
+
+            if ($configured === null) {
+                throw $e;
+            }
+
+            return $configured->permission === '' ? null : $configured->permission;
+        }
+    }
+
+    /**
+     * The page's own action for this route's verb, or null.
+     *
+     * Only the page's named `actions` block is consulted, never an action
+     * defined inline in a column. An inline action exists in one place and is
+     * drawn there; giving it a URL anybody may post to would make "defined
+     * inline" a way of adding a route without saying so.
+     */
+    private function configuredAction(Route $route): ?ActionDefinition
+    {
+        if ($this->pages === null || $route->name !== 'action') {
+            return null;
+        }
+
+        $name = $route->param('page');
+
+        if (!$this->pages->has($name)) {
+            return null;
+        }
+
+        $verb = $route->param('action');
+
+        foreach ($this->pages->get($name)->actions as $action) {
+            if ($action->type->isWrite() && $action->verb() === $verb) {
+                return $action;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Whether this user carries this permission.
      *
      * Null is nobody, and nobody is allowed nothing — so rendering may call
@@ -257,7 +349,7 @@ final class Gate
      */
     public function authorize(AuthUser $user, Route $route): void
     {
-        $permission = self::permissionFor($route);
+        $permission = $this->permissionForRequest($route);
 
         if ($permission === null || $this->allows($user, $permission)) {
             return;

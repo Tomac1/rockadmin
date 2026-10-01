@@ -1,598 +1,19 @@
 /*
- * The RockAdmin theme.
+ * What this project adds to the design system, and nothing it already does.
  *
- * This file redefines Bootstrap's own custom properties rather than
- * overriding its component classes, so there is no fork of Bootstrap to
- * maintain: every component still reads --bs-primary, --bs-border-radius and
- * the rest, it just reads different values here. Loaded after
- * bootstrap.min.css and before a project's own stylesheet, so a project
- * overrides this without !important either.
+ * `docs/design-system/` is the authority on how the admin looks; this file was
+ * 1278 lines of theme over Bootstrap, and almost all of it said what the
+ * design system now says better. What survived is here because the design
+ * system has nothing to say about it: layouts this project invented, state it
+ * draws from ARIA rather than from a class, and two fixes that were found by
+ * opening a page and would be lost by deleting the file wholesale.
  *
- * Density is the single biggest difference between something that looks like
- * a website and something that looks like a tool: an admin table wants more
- * rows on screen than a marketing page does. Everything else — the font
- * stack, the palette, the restrained radius and shadow — matters, but
- * density is why a grid reads as a grid.
+ * Every element carries both vocabularies -- `ra-table ra-grid-table`. The
+ * design system's half names what a thing looks like; this project's half
+ * names what it is, which is the override path, the test hook, and what the
+ * selectors below hang on.
  */
 
-:root {
-    /* Type: a system stack, no font request leaves the machine, and a base
-       size smaller than Bootstrap's so more of a table fits above the fold. */
-    --bs-font-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
-    --bs-body-font-family: var(--bs-font-sans-serif);
-    --bs-body-font-size: 0.9rem;
-    --bs-body-line-height: 1.4;
-
-    /* Shape: almost no radius, and no shadow by default. A radius large
-       enough to notice is a decision about every corner on the page at once,
-       and Bootstrap's own defaults are exactly what makes a page read as
-       stock. 2px is enough to stop a corner looking cut, and not enough to
-       soften a dense table into a stack of pills. */
-    --bs-border-radius: 0.125rem;
-    --bs-border-radius-sm: 0.125rem;
-    --bs-border-radius-lg: 0.1875rem;
-    --bs-box-shadow: none;
-    --bs-box-shadow-sm: none;
-
-    /* The only shadow in the theme, and it is for one job: saying that a
-       surface sits above the page. Cards and modals, nothing else -- a shadow
-       under every element is the SaaS-card default and reads as decoration
-       rather than as depth. */
-    --ra-shadow-raised: 0 1px 2px rgba(16, 24, 28, 0.08);
-
-    /* Palette: one dominant colour, and it is deliberately not blue. Blue is
-       the default state of the administrative world, which makes it a poor
-       choice for the one colour that has to be recognisably this product's.
-       Teal-ink is dark enough to carry white text at 7:1, desaturated enough
-       to sit on screen all day, and cold enough that the warm state colours
-       (amber for pending, rust for danger) read as exceptions beside it. */
-    --bs-primary: #0e5a66;
-    --bs-primary-rgb: 14, 90, 102;
-    --bs-secondary: #6c757d;
-    --bs-secondary-rgb: 108, 117, 125;
-    --bs-success: #2e7d5b;
-    --bs-success-rgb: 46, 125, 91;
-    --bs-info: #3d7d99;
-    --bs-info-rgb: 61, 125, 153;
-    --bs-warning: #b3791f;
-    --bs-warning-rgb: 179, 121, 31;
-    --bs-danger: #b3402f;
-    --bs-danger-rgb: 179, 64, 47;
-    --bs-light: #f5f6f7;
-    --bs-light-rgb: 245, 246, 247;
-    --bs-dark: #22262b;
-    --bs-dark-rgb: 34, 38, 43;
-
-    --bs-body-color: #1a1f22;
-    /* The page is a tinted neutral and a card is white, so a card reads as a
-       surface laid on the page rather than as an outlined region of it. The
-       tint is barely there -- enough that white has something to be white
-       against, not enough to look like a colour choice. */
-    --bs-body-bg: #f1f3f4;
-    --ra-surface: #ffffff;
-    --bs-border-color: #dee1e4;
-    /* The boundary of a control you can type in, which is a different
-       requirement from the boundary of a card. WCAG 1.4.11 asks 3:1 of
-       anything that identifies a component, and --bs-border-color measured
-       1.31:1 against the body here (1.57:1 in dark) — it is tuned to divide a
-       table's rows without drawing attention, which is exactly right for a
-       divider and not nearly enough for the one line that says "this is a
-       field". So inputs read their own token: 4.2:1 light, 4.5:1 dark,
-       measured from computed styles on the live page rather than reasoned
-       about here. Cards, tables and the sidebar keep --bs-border-color; they
-       are decoration, and darkening them would make every page look caged. */
-    --ra-input-border: #767c84;
-    --bs-link-color: var(--bs-primary);
-    --bs-link-hover-color: #0a454e;
-    /* `a` and `a:hover` are written in Bootstrap's own CSS as
-       rgba(var(--bs-link-color-rgb), …) and rgba(var(--bs-link-hover-color-rgb), …),
-       never as var(--bs-link-color) directly, so the hex tokens above are not
-       enough on their own: without these two, both rules read an unset custom
-       property, the whole `color` declaration is invalid, and every link falls
-       back to the inherited text colour instead of the theme's slate. */
-    --bs-link-color-rgb: var(--bs-primary-rgb);
-    --bs-link-hover-color-rgb: 44, 64, 90;
-
-    /* The danger family Bootstrap builds its .alert-danger and its emphasis
-       text from. Bootstrap ships these as literal hex derived from its own
-       #dc3545, so redefining --bs-danger above never reached them: a form's
-       error summary drew Bootstrap's pink on a slate admin. They are mixed
-       from --bs-danger at the same weights Bootstrap's Sass uses
-       (shade 60% for the text, tint 80% and tint 60% for the surfaces), so
-       one palette change still moves all three. Redefined for dark mode with
-       the mix reversed -- these are the tokens whose light-mode values would
-       otherwise sit unchanged on a dark page, because Bootstrap's own dark
-       values are keyed on [data-bs-theme=dark] and nothing else. */
-    --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 40%, black);
-    --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 12%, white);
-    --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 40%, white);
-
-    /* The palette, read as *text on the page background* rather than as a
-       fill behind white text. An accent chosen to look right as a button's
-       background is not the same colour that is legible as 13px type on the
-       body: --bs-secondary measured 3.79:1 and --bs-danger 3.13:1 against
-       the dark body, both under WCAG AA, while both pass comfortably on the
-       light one. So each is darkened here and lightened in the two dark
-       blocks below, and everything that puts a palette colour on the page
-       as ink -- an outline button's label and border, the required marker --
-       reads these rather than the fill tokens. */
-    --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 90%, black);
-    --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 80%, black);
-    --ra-fg-success: color-mix(in srgb, var(--bs-success) 90%, black);
-    --ra-fg-info: color-mix(in srgb, var(--bs-info) 85%, black);
-    --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 90%, black);
-    --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 90%, black);
-
-    /* The shell: tokens Bootstrap has no equivalent for, so they are ours
-       to name. Templates and this stylesheet are the only readers. */
-    --ra-sidebar-width: 15rem;
-    --ra-header-height: 3rem;
-    --ra-grid-row-padding: 0.25rem;
-    --ra-grid-cell-inline-padding: 0.5rem;
-    --ra-grid-gap: 0.5rem;
-
-    /*
-     * A table's two kinds of line do two different jobs, so they are not the
-     * same line. The horizontal rule separates records: it has to be followed
-     * across twenty columns, so it is the solid one. The vertical rule
-     * separates fields within one record, which the eye already groups by
-     * alignment and by the gap -- drawing it at the same weight produces a
-     * grid of boxes, and the row stops reading as one thing. So it is the
-     * same hue at roughly a third of the strength: present enough to stop two
-     * numeric columns running together, faint enough to disappear when
-     * reading down.
-     */
-    --ra-rule: var(--bs-border-color);
-    --ra-rule-faint: #eaedef;
-
-    /*
-     * Three row states, and they must not be confusable. Hover is the
-     * lightest and is a neutral tint, because it follows the mouse and means
-     * nothing. Active is the primary at low strength -- the row you chose.
-     * Edited is deliberately warm rather than a lighter primary: "this row
-     * has unsaved changes" is a different kind of fact from "this row is
-     * selected", and two tints of one hue would make them a matter of degree.
-     */
-    --ra-row-hover: #eef0f1;
-    --ra-row-active: color-mix(in srgb, var(--bs-primary) 9%, transparent);
-    --ra-row-edited: color-mix(in srgb, var(--bs-warning) 14%, transparent);
-
-    /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
-       those flip with the page theme, and the navbar does not. It is the
-       dark bar the content sits under in both modes, so its foreground and
-       background are stated once here and never redefined in a theme block.
-       Tying them to --bs-light was how the menu came to render near-black
-       text on a near-black bar the moment dark mode arrived. */
-    --ra-shell-bg: #161b1d;
-    --ra-shell-fg: #f5f6f7;
-    --ra-shell-fg-rgb: 245, 246, 247;
-}
-
-/*
- * Density. A grid cell, a table row and a form control all get less padding
- * than Bootstrap's defaults, so a screen shows more rows without shrinking
- * the type past legibility.
- */
-.ra-grid-cell,
-.table > :not(caption) > * > * {
-    padding: var(--ra-grid-row-padding) var(--ra-grid-cell-inline-padding);
-}
-
-.table {
-    --bs-table-color: var(--bs-body-color);
-    font-size: 0.85rem;
-
-    /*
-     * Digits of equal width, so a column of prices or counts lines up on its
-     * own without being told to. Applied to the whole table rather than to
-     * the numeric columns: it changes nothing but digits, and keying it to a
-     * column type would mean a second place that has to agree about which
-     * types are numbers.
-     */
-    font-variant-numeric: tabular-nums;
-}
-
-/*
- * The grid proper. Everything below is about reading many rows at once, which
- * is what this admin is for -- 47,000 of them in the first real project.
- */
-.ra-grid-table {
-    --bs-table-border-color: var(--ra-rule);
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-/* The vertical rule, drawn on the cell rather than between rows, and never
-   after the last column where it would box the table in. */
-.ra-grid-table > thead > tr > *:not(:last-child),
-.ra-grid-table > tbody > tr > *:not(:last-child) {
-    border-inline-end: 1px solid var(--ra-rule-faint);
-}
-
-/*
- * The header stays while the body scrolls. At fifty rows this is a
- * convenience; at a filtered page of several hundred it is the difference
- * between a readable table and one you have to scroll back up to interpret.
- * The background is the surface rather than transparent, or rows show
- * through it as they pass underneath.
- */
-.ra-grid-table > thead > tr > th {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background-color: var(--ra-surface);
-    border-bottom: 1px solid var(--ra-rule);
-    font-weight: 600;
-}
-
-/*
- * Row states, highlighted across the whole row rather than per cell.
- * Bootstrap's own striping is off: a tint on every other row spends the one
- * device that could mean something on a thing that means nothing.
- */
-.ra-grid-row:hover > * {
-    background-color: var(--ra-row-hover);
-}
-
-.ra-grid-row-active > *,
-.ra-grid-row[aria-selected="true"] > * {
-    background-color: var(--ra-row-active);
-}
-
-.ra-grid-row-edited > * {
-    background-color: var(--ra-row-edited);
-}
-
-/*
- * A card is the white surface the tinted page is there to set off, and the
- * only thing in the theme that casts a shadow. The border stays as well as
- * the shadow: at this strength the shadow alone is not enough to define an
- * edge on a light page, and a card whose edge you have to look for is worse
- * than a card with a visible line around it.
- */
-.card {
-    --bs-card-bg: var(--ra-surface);
-    --bs-card-border-color: var(--bs-border-color);
-    box-shadow: var(--ra-shadow-raised);
-}
-
-/*
- * A region is the card here. Nothing in the templates carries Bootstrap's
- * .card class -- styling that alone left every grid transparent on the tinted
- * page while its own sticky header was white, which is the join that made the
- * tint look like a mistake rather than a choice. The surface is the region,
- * so the page tint is only ever visible around content and never behind it.
- */
-.ra-region {
-    background-color: var(--ra-surface);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    box-shadow: var(--ra-shadow-raised);
-    /* Deliberately not clipped. A 2px radius gains almost nothing from
-       clipping, and a grid wider than its column -- twenty-two columns over a
-       domain table, in the first real project -- would be cut off inside the
-       card with no way to reach the rest. The page scrolls instead, which is
-       the behaviour that was already there. */
-}
-
-/* The toolbar belongs to the surface it filters, so it loses the gap that
-   made it look like a separate floating strip. */
-.ra-region-list {
-    gap: 0;
-}
-
-.ra-grid-toolbar,
-.ra-grid-header {
-    padding: var(--ra-grid-gap);
-    border-bottom: 1px solid var(--ra-rule);
-}
-
-.ra-grid-pagination {
-    padding: var(--ra-grid-gap);
-    border-top: 1px solid var(--ra-rule);
-}
-
-/* The last row's rule would otherwise sit directly on the region's own
-   border, drawing the same line twice. */
-.ra-grid-table > tbody > tr:last-child > * {
-    border-bottom: 0;
-}
-
-.modal-content {
-    box-shadow: var(--ra-shadow-raised);
-}
-
-.form-control,
-.form-select {
-    min-height: calc(1.4em + 0.5rem + 2px);
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-    font-size: 0.85rem;
-}
-
-/*
- * The one line that says "this is a field".
- *
- * Bootstrap writes `border: var(--bs-border-width) solid var(--bs-border-color)`
- * into `.form-control`, `.form-select` and `.form-check-input` themselves, so
- * this cannot be done by redefining a custom property the way the rest of this
- * file does: a declaration on an element is never overridden by a rule on
- * `:root`, which only reaches it by inheritance. It has to be a rule on the
- * same selectors, and it wins because this stylesheet loads after Bootstrap's.
- *
- * `:focus` and `:checked` below restate the border deliberately — they come
- * later in this file and at equal specificity, so they still win.
- */
-.form-control,
-.form-select,
-.form-check-input {
-    border-color: var(--ra-input-border);
-}
-
-.form-label {
-    margin-bottom: 0.25rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-/*
- * The focus ring and the ticked checkbox are the last two places Bootstrap's
- * own blue reaches the page: .form-control:focus hardcodes #86b7fe and
- * rgba(13,110,253,.25), and .form-check-input:checked hardcodes #0d6efd.
- * Neither reads a semantic custom property, so the theme's palette never
- * touched them -- a form drawn in this admin focused blue and ticked blue
- * against slate everything else, which is the same defect the .btn-* block
- * below exists for. Found by looking at the form in a browser, not by
- * reading this file.
- */
-/*
- * Focus and the ticked state read --ra-fg-primary, the accent as *ink*, and
- * not --bs-primary or a mix of it with white.
- *
- * Measured on the live page, which is the only way this was going to be found:
- * `color-mix(in srgb, var(--bs-primary) 55%, white)` computes to
- * rgb(147, 161, 176) and stands at 2.64:1 against the input's own white
- * background, so focusing a field made its boundary *worse* than the 4.21:1 it
- * has at rest, and the 0.25-alpha ring around it composites to about 1.3:1 and
- * cannot carry the indication on its own. A state is covered by WCAG 1.4.11
- * exactly as the resting component is. `--bs-primary` itself is no answer
- * either: it is 7.83:1 on the light page and 2.27:1 on the dark one, which is
- * the same trap the --ra-fg-* tokens were introduced for. Those are redefined
- * per theme, so this reads them: 8.87:1 light, 8.25:1 dark.
- *
- * The ring stays, at the same alpha. It is not what identifies the state any
- * more, it is what makes the state obvious at a glance, and those are
- * different jobs.
- */
-.form-control:focus,
-.form-select:focus,
-.form-check-input:focus {
-    border-color: var(--ra-fg-primary);
-    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
-}
-
-/*
- * A ticked box keeps the accent as its fill — the white glyph on it needs a
- * dark enough surface, and --bs-primary gives 7.83:1 for that — but takes its
- * border from the ink token, because the fill alone is 2.27:1 against the dark
- * page and the edge of the control would disappear into it.
- */
-.form-check-input:checked {
-    background-color: var(--bs-primary);
-    border-color: var(--ra-fg-primary);
-}
-
-.btn {
-    padding-top: 0.3rem;
-    padding-bottom: 0.3rem;
-    font-size: 0.85rem;
-}
-
-/*
- * Bootstrap's .btn-primary and its siblings do not read --bs-primary and
- * friends: each hardcodes its own --bs-btn-bg, --bs-btn-border-color and the
- * hover/active/disabled variants as literal hex from Bootstrap's own
- * palette (bootstrap.min.css: .btn-primary{--bs-btn-bg:#0d6efd;...}). Only
- * .text-bg-* and a handful of utilities read the semantic custom properties
- * this file redefines above — a button does not — so without this block
- * every button in the admin is Bootstrap blue (or green, or red) regardless
- * of the palette declared above, which is exactly what spec 8.8 rules out.
- *
- * Hover and active shades are mixed with black at the same weights
- * Bootstrap's own Sass uses (shade-color($color, 15%) / shade-color($color,
- * 20%) for the background, 20%/25% for the border) via color-mix(), so the
- * result matches Bootstrap's shading without a Sass build step.
- */
-.btn-primary,
-.btn-secondary,
-.btn-success,
-.btn-info,
-.btn-warning,
-.btn-danger,
-.btn-light,
-.btn-dark {
-    --bs-btn-border-color: var(--ra-btn-color);
-    --bs-btn-hover-bg: color-mix(in srgb, var(--ra-btn-color) 85%, black);
-    --bs-btn-hover-border-color: color-mix(in srgb, var(--ra-btn-color) 80%, black);
-    --bs-btn-active-bg: color-mix(in srgb, var(--ra-btn-color) 80%, black);
-    --bs-btn-active-border-color: color-mix(in srgb, var(--ra-btn-color) 75%, black);
-    --bs-btn-disabled-bg: var(--ra-btn-color);
-    --bs-btn-disabled-border-color: var(--ra-btn-color);
-    --bs-btn-bg: var(--ra-btn-color);
-}
-
-.btn-primary { --ra-btn-color: var(--bs-primary); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-secondary { --ra-btn-color: var(--bs-secondary); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-success { --ra-btn-color: var(--bs-success); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-info { --ra-btn-color: var(--bs-info); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-warning { --ra-btn-color: var(--bs-warning); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-danger { --ra-btn-color: var(--bs-danger); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; --bs-btn-active-color: #fff; --bs-btn-disabled-color: #fff; }
-.btn-dark { --ra-btn-color: var(--bs-dark); --bs-btn-color: var(--bs-light); --bs-btn-hover-color: var(--bs-light); --bs-btn-active-color: var(--bs-light); --bs-btn-disabled-color: var(--bs-light); }
-/* .btn-light's background follows --bs-light, which is a dark shade in dark
-   mode, so its text colour has to follow too — a fixed #000 would be the
-   navbar's bug again, dormant until a template uses this class. */
-.btn-light { --ra-btn-color: var(--bs-light); --bs-btn-color: var(--bs-dark); --bs-btn-hover-color: var(--bs-dark); --bs-btn-active-color: var(--bs-dark); --bs-btn-disabled-color: var(--bs-dark); }
-
-/*
- * The outline buttons have the same problem as the solid ones and one more
- * on top of it: .btn-outline-danger hardcodes --bs-btn-color:#dc3545, so the
- * form's Delete button was Bootstrap's red on a slate admin, and because an
- * outline button's colour is *ink on the page* rather than a fill behind
- * white text, the unadjusted accent failed WCAG AA on the dark body --
- * measured 3.93:1 for Delete and 3.79:1 for Cancel before this block. They
- * read --ra-fg-*, which is the same palette adjusted for legibility as text
- * and redefined per theme. The hover state fills with the accent itself,
- * where white text is what belongs.
- */
-.btn-outline-primary,
-.btn-outline-secondary,
-.btn-outline-success,
-.btn-outline-info,
-.btn-outline-warning,
-.btn-outline-danger,
-.btn-outline-light,
-.btn-outline-dark {
-    --bs-btn-color: var(--ra-btn-outline-color);
-    --bs-btn-border-color: var(--ra-btn-outline-color);
-    --bs-btn-hover-bg: var(--ra-btn-outline-fill);
-    --bs-btn-hover-border-color: var(--ra-btn-outline-fill);
-    --bs-btn-hover-color: var(--ra-btn-outline-contrast);
-    --bs-btn-active-bg: var(--ra-btn-outline-fill);
-    --bs-btn-active-border-color: var(--ra-btn-outline-fill);
-    --bs-btn-active-color: var(--ra-btn-outline-contrast);
-    --bs-btn-disabled-color: var(--ra-btn-outline-color);
-    --bs-btn-disabled-border-color: var(--ra-btn-outline-color);
-}
-
-.btn-outline-primary { --ra-btn-outline-color: var(--ra-fg-primary); --ra-btn-outline-fill: var(--bs-primary); --ra-btn-outline-contrast: #fff; }
-.btn-outline-secondary { --ra-btn-outline-color: var(--ra-fg-secondary); --ra-btn-outline-fill: var(--bs-secondary); --ra-btn-outline-contrast: #fff; }
-.btn-outline-success { --ra-btn-outline-color: var(--ra-fg-success); --ra-btn-outline-fill: var(--bs-success); --ra-btn-outline-contrast: #fff; }
-.btn-outline-info { --ra-btn-outline-color: var(--ra-fg-info); --ra-btn-outline-fill: var(--bs-info); --ra-btn-outline-contrast: #fff; }
-.btn-outline-warning { --ra-btn-outline-color: var(--ra-fg-warning); --ra-btn-outline-fill: var(--bs-warning); --ra-btn-outline-contrast: #fff; }
-.btn-outline-danger { --ra-btn-outline-color: var(--ra-fg-danger); --ra-btn-outline-fill: var(--bs-danger); --ra-btn-outline-contrast: #fff; }
-/* .btn-outline-light's ink is --bs-light, which is a light shade in light
-   mode and a dark one in dark mode -- it follows the theme already, so it
-   takes --bs-dark as its contrast rather than a fixed #fff. */
-.btn-outline-light { --ra-btn-outline-color: var(--bs-light); --ra-btn-outline-fill: var(--bs-light); --ra-btn-outline-contrast: var(--bs-dark); }
-.btn-outline-dark { --ra-btn-outline-color: var(--bs-dark); --ra-btn-outline-fill: var(--bs-dark); --ra-btn-outline-contrast: var(--bs-light); }
-
-/* The shell itself. */
-.ra-navbar {
-    min-height: var(--ra-header-height);
-    background-color: var(--ra-shell-bg);
-    color: var(--ra-shell-fg);
-    padding: 0 1rem;
-
-    /* The navbar's background is always the dark shell colour, in both light
-       and dark mode. Bootstrap's .navbar computes its link colours from
-       --bs-emphasis-color-rgb, which follows the *page* theme — 0,0,0 in
-       light mode — so left alone the menu is near-black text on a
-       near-black bar. These are set here, on the one element whose
-       background never follows the page theme, rather than with
-       data-bs-theme="dark" on the element: that attribute would also swing
-       every other themed token in this subtree (body background, borders,
-       form controls in the dropdown) to their dark-mode values, which is
-       more than a contrast fix asks for.
-
-       They are declared on .ra-navbar itself, so a dark-mode block on :root
-       could never reach them: a rule targeting an ancestor only applies to
-       this element by inheritance, and inheritance never overrides the
-       element's own declaration. Hence --ra-shell-*, which do not change. */
-    --bs-navbar-color: rgba(var(--ra-shell-fg-rgb), 0.75);
-    --bs-navbar-hover-color: rgba(var(--ra-shell-fg-rgb), 0.95);
-    --bs-navbar-active-color: var(--ra-shell-fg);
-}
-
-.ra-navbar-brand {
-    color: var(--ra-shell-fg);
-    font-weight: 600;
-}
-
-/*
- * The account area: who is signed in, and the way out.
- *
- * Nothing drew it until milestone 5 wired a `ShellAccount` into every handler,
- * and the first phone-width screenshot of it showed exactly why that matters.
- * Two faults, neither visible in the markup and neither caught by a test:
- *
- * `.navbar-expand` sets `flex-wrap: nowrap`, which `container-fluid` inherits,
- * so brand plus menu plus account came to 417px inside a 375px bar and the
- * name and the Log out button were painted *outside* the dark background, on
- * the white page, half cut off at the top-right corner. `wrap` puts the
- * account on a second row inside the bar instead, and `margin-left: auto`
- * keeps it hard right wherever there is room for one row. This is the same
- * family as the menu that stood on end: a flex rule inherited from a Bootstrap
- * class nobody re-read.
- *
- * And `.btn-link` reads --bs-link-color, which is the theme's slate — 1.53:1
- * against this bar, which never follows the page theme. Every other foreground
- * in here is --ra-shell-fg for that exact reason, so the button takes it too,
- * through Bootstrap's own button tokens rather than a `color` declaration a
- * hover state would then have to fight.
- */
-.ra-navbar-inner {
-    flex-wrap: wrap;
-    row-gap: 0.25rem;
-}
-
-.ra-user-menu {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-left: auto;
-}
-
-.ra-user-name {
-    color: var(--ra-shell-fg);
-    font-size: 0.85rem;
-}
-
-.ra-profile-link,
-.ra-logout-button {
-    --bs-btn-color: var(--ra-shell-fg);
-    --bs-btn-hover-color: var(--ra-shell-fg);
-    --bs-btn-active-color: var(--ra-shell-fg);
-    color: var(--ra-shell-fg);
-    font-size: 0.85rem;
-}
-
-.ra-page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem;
-}
-
-.ra-page-title {
-    font-size: 1.25rem;
-    margin-bottom: 0.25rem;
-}
-
-.ra-page-description {
-    /* --bs-secondary-color, not --bs-secondary: the former is the
-     * theme-aware "muted text" token, redefined for dark mode further down
-     * this file; the latter is the fixed accent colour and stays #6c757d in
-     * both themes, which reads at under 4.5:1 against the dark background. */
-    color: var(--bs-secondary-color, var(--bs-secondary));
-    margin-bottom: 0;
-}
-
-.ra-main {
-    padding: 0;
-}
-
-.ra-layout {
-    display: flex;
-    gap: 1rem;
-    padding: 1rem;
-}
-
-.ra-layout-two-column .ra-layout-side,
-.ra-layout-sidebar-detail .ra-layout-list {
-    flex: 0 0 var(--ra-sidebar-width);
-}
 
 /*
  * The main column fills what is left, in every layout. It was declared only
@@ -608,81 +29,20 @@
     min-width: 0;
 }
 
+/*
+ * Anchored to the bottom, which is the point: at the top it covered the
+ * navigation links completely, so for as long as a toast was on screen --
+ * after every single write -- no link in the admin could be clicked. Nothing
+ * in the markup showed it; only their stacking on a real page was wrong.
+ */
 .ra-toast-container {
     position: fixed;
-
-    /* Anchored to the bottom, which is the point: at the top it covered the
-       navigation links completely, so for as long as a toast was on screen --
-       after every single write -- no link in the admin could be clicked.
-       Nothing in the markup shows that; the toast is correct and the navbar
-       is correct, and only their stacking on a real page is wrong.
-
-       Offsetting by the header's height instead would be arithmetic against a
-       number that is not true: --ra-header-height is a min-height the navbar
-       exceeds as soon as its content is taller, so the two would drift apart
-       the first time a menu wrapped. The bottom of the viewport has nothing
-       to collide with. */
     bottom: 1rem;
     right: 1rem;
     z-index: 1080;
-}
-
-.ra-error-main {
-    max-width: 32rem;
-    margin: 4rem auto;
-    padding: 0 1rem;
-    text-align: center;
-}
-
-.ra-error-detail {
-    text-align: left;
-    white-space: pre-wrap;
-    word-break: break-word;
-    background-color: var(--bs-light);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-}
-
-/*
- * The list region: the toolbar (search + filters), the table's sort
- * affordances, the empty state and the pager. Density here follows the same
- * --ra-grid-row-padding token the shell's own density block already reads,
- * rather than a second scale of its own.
- */
-.ra-region-list {
     display: flex;
     flex-direction: column;
-    gap: var(--ra-grid-gap);
-}
-
-.ra-grid-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--ra-grid-gap);
-    padding: 1rem;
-    padding-bottom: 0;
-}
-
-.ra-grid-search {
-    flex: 1 1 16rem;
-    min-width: 12rem;
-}
-
-.ra-grid-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--ra-grid-gap);
-}
-
-.ra-grid-filter {
-    min-width: 9rem;
-}
-
-.ra-grid-filter-range {
-    display: flex;
-    gap: 0.25rem;
+    gap: var(--space-2, 0.5rem);
 }
 
 .ra-grid-table {
@@ -743,6 +103,7 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-grid-cell-json {
     font-family: var(--bs-font-monospace, monospace);
     font-size: 0.8rem;
+
 }
 
 /*
@@ -761,283 +122,89 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     vertical-align: middle;
 }
 
-.ra-grid-empty {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--bs-secondary-color, var(--bs-secondary));
-}
-
 /*
- * The preview region: one row as a field list. A two-column grid of
- * label-and-value pairs, the same density token the list region's own rows
- * use, with a wide field (a json cell, a long text cell) spanning both
- * columns instead of squeezing in beside its neighbour.
+ * The layout this project invented, which the design system has no opinion
+ * about: it ships page chrome, not a column arrangement.
  */
-.ra-region-preview,
-.ra-preview {
-    background-color: var(--ra-surface);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem 1.25rem;
-}
-
-.ra-preview-title {
-    margin-bottom: 1rem;
-    font-size: 1.1rem;
-}
-
-.ra-preview-fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--ra-grid-gap) 2rem;
-    margin: 0;
-}
-
-.ra-field {
-    padding-bottom: var(--ra-grid-row-padding);
-    border-bottom: 1px solid var(--bs-border-color-translucent, var(--bs-border-color));
-    min-width: 0;
-}
-
-.ra-field-wide {
-    grid-column: 1 / -1;
-}
-
-.ra-field-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--bs-secondary-color, var(--bs-secondary));
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-.ra-field-value {
-    margin: 0.15rem 0 0;
-    word-break: break-word;
-}
-
-.ra-field-missing {
-    color: var(--bs-secondary-color, var(--bs-secondary));
-}
-
-/*
- * The grid's own action affordances: the header strip that holds the create
- * button and the last column of each row that holds the edit link. Both
- * shipped with no rules at all and relied entirely on Bootstrap's `btn`,
- * which left the button flush against the viewport edge while the toolbar
- * below it sat inside the region's 1rem padding -- two elements a person
- * reads as one strip, misaligned by exactly that padding.
- */
-.ra-grid-header {
+.ra-layout {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--ra-grid-gap);
-    padding: 1rem 1rem 0;
+    gap: var(--space-4, 1rem);
+    padding: var(--space-4, 1rem);
+}
+
+.ra-layout-two-column .ra-layout-side,
+.ra-layout-sidebar-detail .ra-layout-list {
+    flex: 0 0 var(--ra-sidebar-width, 15rem);
 }
 
 /*
- * The actions column carries one short link, so it takes the narrowest width
- * the table will give it (`width: 1%` with `white-space: nowrap` is the
- * table-layout idiom for "as narrow as the content") and leaves the rest to
- * the columns that hold data.
+ * A region is a card. The design system draws cards as `ra-card`, and the
+ * templates emit `ra-region` because a region is what this project calls the
+ * thing -- so the two are joined here rather than by writing `ra-card` into
+ * every region template, which would make a layout concept depend on a
+ * component name.
  */
-.ra-grid-head-actions,
-.ra-grid-cell-actions {
-    width: 1%;
-    white-space: nowrap;
-    text-align: end;
+.ra-region {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: var(--radius-md, 6px);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(16, 24, 40, 0.05));
 }
 
-.ra-grid-edit {
-    font-weight: 600;
-}
-
-/*
- * Bootstrap's .pagination hardcodes its active background as its own blue
- * (bootstrap.min.css: .active>.page-link{--bs-pagination-active-bg:#0d6efd}),
- * the same way its buttons do, so the theme's palette never reaches it. The
- * current page of the grid was Bootstrap blue against a slate admin until
- * this block, which is spec 8.8's rule applied to the one component that had
- * been missed.
- */
-.ra-grid-pagination-list {
-    --bs-pagination-color: var(--bs-link-color);
-    --bs-pagination-hover-color: var(--bs-link-hover-color);
-    --bs-pagination-focus-color: var(--bs-link-hover-color);
-    --bs-pagination-active-bg: var(--bs-primary);
-    --bs-pagination-active-border-color: var(--bs-primary);
-    --bs-pagination-bg: var(--bs-body-bg);
-    --bs-pagination-hover-bg: var(--bs-tertiary-bg, var(--bs-light));
-    --bs-pagination-focus-bg: var(--bs-tertiary-bg, var(--bs-light));
-    --bs-pagination-disabled-bg: var(--bs-body-bg);
-    --bs-pagination-disabled-color: var(--bs-secondary-color, var(--bs-secondary));
-    --bs-pagination-border-color: var(--bs-border-color);
-    --bs-pagination-disabled-border-color: var(--bs-border-color);
-}
-
-/*
- * The form region. It is the same surface as a preview -- one bordered card
- * on the page background -- because they are the two ways this admin shows a
- * single row, and a create screen that looked like a different application
- * from the detail screen beside it would be the theme failing at its one job.
- *
- * Nothing here depends on a field having been refused: `ra-form-field-*`
- * carries the type and the key and never the error state, so a redrawn form
- * is laid out by exactly the selectors that laid out the fresh one.
- */
-.ra-region-form,
-.ra-form {
-    display: block;
-    max-width: 46rem;
-    margin: 1rem;
-    /* The surface, not the page. These read --bs-body-bg back when the page
-       was white and the two were the same colour; once the page gained a tint
-       a form and a sign-in box went grey while every other card stayed white. */
-    background-color: var(--ra-surface);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem 1.25rem 1.25rem;
-}
-
-.ra-form-title {
-    margin-bottom: 1rem;
-    font-size: 1.1rem;
-}
-
-.ra-form-fields {
+.ra-region-list {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
 }
 
-.ra-form-field {
-    min-width: 0;
+/* The toolbar and the pager belong to the surface they act on. */
+.ra-grid-toolbar,
+.ra-grid-header,
+.ra-grid-pagination {
+    padding: var(--space-3, 0.75rem);
 }
 
-/*
- * A checkbox is the one field whose control belongs beside its label rather
- * than under it: a lone box on its own line under the word "Featured" reads
- * as a box that lost its caption. The label is pulled into a row with the
- * control, and the help text stays underneath both.
- */
-.ra-form-field-checkbox {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: 0 0.5rem;
-}
-
-.ra-form-field-checkbox .ra-form-label {
-    order: 2;
-    margin-bottom: 0;
-}
-
-.ra-form-field-checkbox .ra-form-control-checkbox {
-    order: 1;
-    margin: 0;
-}
-
-.ra-form-field-checkbox .ra-form-error,
-.ra-form-field-checkbox .ra-form-help {
-    order: 3;
-    grid-column: 1 / -1;
-}
-
-/*
- * The required marker is decorative -- `aria-hidden`, because the control
- * itself carries `required` and a screen reader reads that -- so it is drawn
- * as an accent rather than as part of the label's text.
- */
-.ra-form-required {
-    color: var(--ra-fg-danger);
-    margin-left: 0.15rem;
-}
-
-/*
- * The per-field error, deliberately not Bootstrap's .invalid-feedback, which
- * is display:none until a sibling carries .is-invalid. Milestone 4 shipped a
- * toast nobody could see for exactly that reason; a message someone needs in
- * order to fix their form is not a thing to hang on another class being
- * present. --bs-danger-text-emphasis is the theme-aware reading of the
- * danger colour, which keeps it legible on the dark body background too.
- */
-.ra-form-error {
-    margin: 0.25rem 0 0;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--bs-danger-text-emphasis, var(--bs-danger));
-}
-
-.ra-form-help {
-    margin: 0.25rem 0 0;
-}
-
-.ra-form-errors {
-    margin-bottom: 1rem;
-}
-
-.ra-form-errors-title {
-    margin-bottom: 0.35rem;
-    font-weight: 600;
-}
-
-.ra-form-errors-list {
-    margin-bottom: 0;
-    padding-left: 1.1rem;
-}
-
-.ra-form-errors-link {
-    color: inherit;
-}
-
-.ra-form-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--ra-grid-gap);
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--bs-border-color);
-}
-
-/*
- * Delete is pushed to the far end of the row, away from Save: they are the
- * two submit buttons of the same form, and a destructive one sitting next to
- * the one everybody presses is how a row gets deleted by a slipped click.
- */
-.ra-form-delete {
-    margin-left: auto;
+.ra-grid-header,
+.ra-grid-toolbar {
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
 }
 
 .ra-grid-pagination {
-    padding: 0 1rem 1rem;
+    border-top: 1px solid var(--border-color, #e5e7eb);
 }
 
-.ra-grid-pagination-list {
-    margin-bottom: 0;
+/* The search box earns its width; the design system sizes it for a toolbar
+   that puts filters elsewhere, and this one puts them in the same row. */
+.ra-grid-search {
+    flex: 1 1 16rem;
+    min-width: 12rem;
+}
+
+.ra-grid-search-input {
+    width: 100%;
 }
 
 /*
- * The login page. It is the first thing anybody sees and the only page drawn
- * without the shell, so it has no navbar, no region card and no grid rules to
- * borrow shape from -- every rule it needs is here. Milestone 7 shipped a form
- * whose every .ra-form-* class had no CSS at all: it drew flush against the
- * viewport edge and every test passed, because structure and escaping are both
- * true of unstyled markup.
+ * The login page, restored after I deleted it.
+ *
+ * It is the one page drawn without the shell — no navigation, no region card,
+ * no grid rules to borrow shape from — so every rule it needs is here. The
+ * design system ships components, not screens: there is no `ra-login` in it,
+ * and swapping the controls for `ra-input` and `ra-btn` gave the page correct
+ * components with no layout at all, which is a wide flat form against the
+ * viewport edge.
+ *
+ * That is the same failure milestone 7 shipped, in the same place, and the
+ * comment deleted with these rules said so. Leaving the record here rather
+ * than quietly rewriting them: a block whose own comment explains which bug
+ * it prevents is the last block to delete while tidying.
  *
  * The card is centred by a flex main filling the viewport rather than by
- * margin:auto on the form, because the vertical half of "centred" needs a box
- * with a height and `body` does not reliably have one.
+ * `margin: auto` on the form, because the vertical half of "centred" needs a
+ * box with a height and `body` does not reliably have one.
  */
 .ra-login {
     min-height: 100vh;
-    /* The same tint as every other page. It used to reach for Bootstrap's
-       tertiary background to get a shade off white, which was right while the
-       admin's own pages were white and is a second, slightly different grey
-       now that they are not -- and the sign-in page is the first thing anyone
-       sees of this product. */
-    background-color: var(--bs-body-bg);
+    background: var(--color-bg-page, #f0f2f7);
 }
 
 .ra-login-main {
@@ -1051,228 +218,429 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 }
 
 .ra-login-form {
-    /* Narrower than the form region's 46rem: two short fields in a 46rem card
-       read as a mostly empty page, and a sign-in box is the one place in an
-       admin where being small is what makes it look deliberate. */
+    /* Narrower than a form region: two short fields in a wide card read as a
+       mostly empty page, and a sign-in box is the one place in an admin where
+       being small is what makes it look deliberate. */
     width: 100%;
     max-width: 23rem;
-    /* The surface, not the page. These read --bs-body-bg back when the page
-       was white and the two were the same colour; once the page gained a tint
-       a form and a sign-in box went grey while every other card stayed white. */
-    background-color: var(--ra-surface);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: var(--radius-lg, 8px);
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(16, 24, 40, 0.08));
+    padding: var(--space-6, 1.5rem);
 }
 
 .ra-login-brand {
-    margin-bottom: 0.15rem;
-    font-size: 1.15rem;
-    font-weight: 600;
+    font-size: var(--text-xl, 1.25rem);
+    font-weight: var(--font-bold, 700);
+    color: var(--text-primary, #111827);
+    margin: 0;
 }
 
-/*
- * "Sign in" is a subtitle under the brand, so it is secondary ink -- but
- * --bs-secondary-color is a 75% alpha over the body colour in dark mode, and
- * an alpha this page cannot measure is an alpha nobody checks. The opaque
- * --ra-fg-secondary is the token this stylesheet already keeps legible as ink
- * in both themes.
- */
 .ra-login-title {
-    margin-bottom: 1.25rem;
-    color: var(--ra-fg-secondary);
-}
-
-.ra-login-message {
-    margin-bottom: 1rem;
-    padding: 0.6rem 0.75rem;
-}
-
-.ra-login-message-text {
-    margin-bottom: 0;
-    font-weight: 600;
-}
-
-.ra-login-message-hint {
-    margin: 0.35rem 0 0;
-    font-size: 0.8rem;
-    font-weight: 400;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-muted, #6b7280);
+    margin: 0;
 }
 
 .ra-login-field {
-    margin-bottom: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5, 0.375rem);
 }
 
 .ra-login-actions {
-    margin-top: 1.25rem;
+    margin-top: var(--space-1, 0.25rem);
 }
 
 /*
- * One button, and the only thing to do on the page, so it takes the width of
- * the card. A 5rem "Sign in" floating at the left edge of a 23rem box is the
- * shape of a form somebody forgot to finish.
+ * The pager.
+ *
+ * The design system styles a page control as `.ra-page-btn` and its current
+ * page as `.ra-page-btn--active`; Bootstrap styled the `<li>` around it
+ * instead, which is why the state used to live there. Moving it to the
+ * control and joining the two here keeps the template from having to know
+ * which half of the markup each system cares about.
  */
-.ra-login-submit {
-    width: 100%;
+.ra-grid-pagination-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ra-grid-pagination-item.ra-is-disabled .ra-page-btn {
+    opacity: 0.48;
+    pointer-events: none;
 }
 
 /*
- * Dark mode ships now. The media-query block only applies when the document
- * carries no explicit data-bs-theme, so an operator's choice always wins
- * over the operating system's.
+ * The shared modal and offcanvas are in every page and empty until something
+ * opens them, which is a later milestone. The element that carries the id,
+ * and so the element that is shown and hidden, is the backdrop -- the dialog
+ * lives inside it.
  *
- * This mirrors more than the theme's own six tokens. Every dark-mode
- * behaviour Bootstrap ships — color-scheme, the emphasis and secondary/
- * tertiary surface tokens, the light select-arrow SVG, the form-switch dot,
- * the navbar link colours, and the close-button filter — is keyed on
- * [data-bs-theme=dark] in bootstrap.min.css and nowhere else. Setting only
- * the six custom properties above means an operator who has done nothing —
- * left dark_mode at 'auto' and let the OS decide — gets a page where the
- * body is dark but every one of those stays in its light-mode form: a
- * select's arrow is a dark glyph on a dark field, a close button is a black
- * glyph on a dark toast, and translucent surfaces (built from
- * --bs-body-bg-rgb, which nothing here set) are tinted from white. The two
- * blocks below — the media query and the explicit attribute — carry
- * identical values so 'auto' under OS dark mode and dark_mode: 'on' produce
- * the same page, which is the promise ShellView::themeAttribute() makes.
+ * Bootstrap hid them until a `.show` class arrived; the design system shows
+ * them unless something hides them. So removing Bootstrap put a 420px panel
+ * across every page — the exact inverse of the toast that was invisible for a
+ * milestone because Bootstrap hid *it* without a class. Same lesson from both
+ * directions: a component whose visibility depends on a state class behaves
+ * oppositely in two systems, and the markup alone never says which.
  *
- * --bs-light-rgb and --bs-dark-rgb are included for the same reason: they
- * back bg-light, bg-dark, text-bg-light, text-bg-dark, border-light and
- * border-dark, none of which are exercised by this milestone's templates,
- * but which would otherwise silently read the light-mode --bs-light /
- * --bs-dark hex as rgb components frozen at their light-mode values while
- * the hex tokens themselves change underneath them — found while fixing the
- * identical --bs-body-bg-rgb problem below, not asked for separately.
+ * `[hidden]` is the answer rather than a class, because it is what the
+ * attribute means and because `display: flex` in a component rule beats the
+ * browser's own `[hidden] { display: none }`.
  */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-bs-theme]) {
-    --ra-surface: #1d2023;
-        --ra-rule-faint: #292e33;
-        --ra-row-hover: #212529;
-        --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
-
-        color-scheme: dark;
-        --bs-body-color: #dfe3e6;
-        --bs-body-color-rgb: 223, 227, 230;
-        --bs-body-bg: #16181b;
-        --bs-body-bg-rgb: 22, 24, 27;
-        --bs-border-color: #363b41;
-        --ra-input-border: #7a828c;
-        --bs-light: #22262b;
-        --bs-light-rgb: 34, 38, 43;
-        --bs-dark: #0e1012;
-        --bs-dark-rgb: 14, 16, 18;
-        --bs-link-color: #7ea3c4;
-        --bs-link-hover-color: #9cbcd8;
-        --bs-link-color-rgb: 126, 163, 196;
-        --bs-link-hover-color-rgb: 156, 188, 216;
-
-        --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 55%, white);
-        --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 22%, black);
-        --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 45%, black);
-
-        --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 45%, white);
-        --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 55%, white);
-        --ra-fg-success: color-mix(in srgb, var(--bs-success) 55%, white);
-        --ra-fg-info: color-mix(in srgb, var(--bs-info) 55%, white);
-        --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 60%, white);
-        --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 55%, white);
-
-        --bs-emphasis-color: #fff;
-        --bs-emphasis-color-rgb: 255, 255, 255;
-        --bs-secondary-color: rgba(223, 227, 230, 0.75);
-        --bs-secondary-color-rgb: 223, 227, 230;
-        --bs-secondary-bg: #343a40;
-        --bs-secondary-bg-rgb: 52, 58, 64;
-        --bs-tertiary-color: rgba(223, 227, 230, 0.5);
-        --bs-tertiary-color-rgb: 223, 227, 230;
-        --bs-tertiary-bg: #2b3035;
-        --bs-tertiary-bg-rgb: 43, 48, 53;
-
-        --bs-navbar-color: rgba(255, 255, 255, 0.55);
-        --bs-navbar-hover-color: rgba(255, 255, 255, 0.75);
-        --bs-navbar-disabled-color: rgba(255, 255, 255, 0.25);
-        --bs-navbar-active-color: #fff;
-    }
-
-    :root:not([data-bs-theme]) .ra-error-detail {
-        background-color: #1c1f23;
-    }
-
-    :root:not([data-bs-theme]) .form-select {
-        --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23dee2e6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
-    }
-
-    :root:not([data-bs-theme]) .form-switch .form-check-input:not(:checked):not(:focus) {
-        --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255, 255, 255, 0.25%29'/%3e%3c/svg%3e");
-    }
-
-    :root:not([data-bs-theme]) .btn-close {
-        filter: var(--bs-btn-close-white-filter);
-    }
+.ra-modal-overlay[hidden],
+.ra-offcanvas-overlay[hidden] {
+    display: none !important;
 }
 
-[data-bs-theme="dark"] {
-    color-scheme: dark;
-    --ra-surface: #1d2023;
-    --ra-rule-faint: #292e33;
-    --ra-row-hover: #212529;
-    --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --bs-body-color: #dfe3e6;
-    --bs-body-color-rgb: 223, 227, 230;
-    --bs-body-bg: #16181b;
-    --bs-body-bg-rgb: 22, 24, 27;
-    --bs-border-color: #363b41;
-    --ra-input-border: #7a828c;
-    --bs-light: #22262b;
-    --bs-light-rgb: 34, 38, 43;
-    --bs-dark: #0e1012;
-    --bs-dark-rgb: 14, 16, 18;
-    --bs-link-color: #7ea3c4;
-    --bs-link-hover-color: #9cbcd8;
-    --bs-link-color-rgb: 126, 163, 196;
-    --bs-link-hover-color-rgb: 156, 188, 216;
-
-    --bs-danger-text-emphasis: color-mix(in srgb, var(--bs-danger) 55%, white);
-    --bs-danger-bg-subtle: color-mix(in srgb, var(--bs-danger) 22%, black);
-    --bs-danger-border-subtle: color-mix(in srgb, var(--bs-danger) 45%, black);
-
-    --ra-fg-primary: color-mix(in srgb, var(--bs-primary) 45%, white);
-    --ra-fg-secondary: color-mix(in srgb, var(--bs-secondary) 55%, white);
-    --ra-fg-success: color-mix(in srgb, var(--bs-success) 55%, white);
-    --ra-fg-info: color-mix(in srgb, var(--bs-info) 55%, white);
-    --ra-fg-warning: color-mix(in srgb, var(--bs-warning) 60%, white);
-    --ra-fg-danger: color-mix(in srgb, var(--bs-danger) 55%, white);
-
-    --bs-emphasis-color: #fff;
-    --bs-emphasis-color-rgb: 255, 255, 255;
-    --bs-secondary-color: rgba(223, 227, 230, 0.75);
-    --bs-secondary-color-rgb: 223, 227, 230;
-    --bs-secondary-bg: #343a40;
-    --bs-secondary-bg-rgb: 52, 58, 64;
-    --bs-tertiary-color: rgba(223, 227, 230, 0.5);
-    --bs-tertiary-color-rgb: 223, 227, 230;
-    --bs-tertiary-bg: #2b3035;
-    --bs-tertiary-bg-rgb: 43, 48, 53;
-
-    --bs-navbar-color: rgba(255, 255, 255, 0.55);
-    --bs-navbar-hover-color: rgba(255, 255, 255, 0.75);
-    --bs-navbar-disabled-color: rgba(255, 255, 255, 0.25);
-    --bs-navbar-active-color: #fff;
+/*
+ * The checkbox's tick.
+ *
+ * The design system draws its checkbox as a hidden input and a styled span,
+ * and inserts the tick when React re-renders. There is no React here and no
+ * JavaScript either, so the tick ships in the markup and CSS decides whether
+ * it is seen -- which is exactly what the design system itself does one rule
+ * above, for the radio's dot.
+ */
+.ra-checkbox-box > svg {
+    opacity: 0;
+    transition: opacity 100ms;
 }
 
-[data-bs-theme="dark"] .ra-error-detail {
-    background-color: #1c1f23;
+.ra-checkbox-input:checked + .ra-checkbox-box > svg {
+    opacity: 1;
 }
 
-[data-bs-theme="dark"] .form-select {
-    --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23dee2e6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+/*
+ * Three things Bootstrap supplied that the design system has no opinion
+ * about, so they are this project's own rather than borrowed from a third
+ * vocabulary.
+ *
+ * Alignment is a column's own property -- `align: 'end'` in a page file --
+ * and it was being written as Bootstrap's `text-end`. The values stay
+ * `start` and `end` because that is what configuration says and what
+ * `PageRepository` validates; only the prefix changes.
+ */
+.ra-align-start {
+    text-align: start;
 }
 
-[data-bs-theme="dark"] .form-switch .form-check-input:not(:checked):not(:focus) {
-    --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255, 255, 255, 0.25%29'/%3e%3c/svg%3e");
+.ra-align-end {
+    text-align: end;
 }
 
-[data-bs-theme="dark"] .btn-close {
-    filter: var(--bs-btn-close-white-filter);
+.ra-align-center {
+    text-align: center;
+}
+
+/*
+ * A label that exists for a screen reader and not for the eye: the search
+ * box's label, the actions column's heading. `display: none` would take it
+ * out of the accessibility tree too, which is the opposite of the point.
+ */
+.ra-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* A progress cell. The design system has no progress component at all. */
+.ra-grid-cell-progress {
+    height: 1rem;
+    border-radius: var(--radius-sm, 0.25rem);
+    background: var(--color-neutral-100, #f1f5f9);
+    overflow: hidden;
+}
+
+.ra-grid-cell-progress-bar {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary-600, #2563eb);
+    color: #fff;
+    font-size: var(--text-xs, 0.6875rem);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/*
+ * The form's own layout.
+ *
+ * The design system styles every control and the wrapper around one field,
+ * and stops there: how a column of fields is spaced, and how wide the column
+ * is, is a decision about a screen rather than about a component. It has a
+ * token for the width -- `--content-form-width`, 640px, the same number its
+ * `.ra-container--form` uses -- so this reads that rather than choosing a
+ * second number.
+ *
+ * Without the width the inputs were as wide as the window: a 2500px text
+ * field on the monitor this was built on. Without the gap the fields had
+ * none at all, because `.ra-field` spaces a label from its control and
+ * nothing spaces one field from the next.
+ */
+.ra-form {
+    max-width: var(--content-form-width, 640px);
+    padding: var(--space-5, 1.25rem);
+}
+
+.ra-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+}
+
+.ra-form-title {
+    font-size: var(--text-lg, 1rem);
+    font-weight: var(--font-semibold, 600);
+    margin: 0 0 var(--space-4, 1rem);
+}
+
+.ra-form-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    margin-top: var(--space-5, 1.25rem);
+    padding-top: var(--space-4, 1rem);
+    border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* The delete button sits apart from save and cancel: it is not the third
+   thing you might do next, it is the one that cannot be undone. */
+.ra-form-delete {
+    margin-left: auto;
+}
+
+/*
+ * The preview region: a row's fields read rather than edited.
+ *
+ * The design system has no component for this -- it is a definition list,
+ * and the vocabulary stops at the form field. So the label borrows
+ * `.ra-field__label`, which is the right size and weight for exactly this
+ * job, and the layout is written here.
+ *
+ * Two columns, because a preview of a row with a dozen fields in one column
+ * is a page of scrolling for a thing meant to be glanced at. A field marked
+ * wide -- long text, JSON -- takes both.
+ */
+.ra-preview {
+    padding: var(--space-5, 1.25rem);
+}
+
+.ra-preview-title {
+    font-size: var(--text-lg, 1rem);
+    font-weight: var(--font-semibold, 600);
+    margin: 0 0 var(--space-4, 1rem);
+}
+
+.ra-preview-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-4, 1rem) var(--space-6, 1.5rem);
+    margin: 0;
+}
+
+.ra-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 0.25rem);
+    min-width: 0;
+}
+
+.ra-field-wide {
+    grid-column: 1 / -1;
+}
+
+.ra-field-value {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* An absent value, as against an empty one. The grid draws the same dash in
+   the same colour, and the two screens disagreeing about what "no value"
+   looks like would be worse than either choice. */
+.ra-field-missing {
+    color: var(--text-muted, #64748b);
+}
+
+.ra-preview-empty {
+    margin: 0;
+    color: var(--text-muted, #64748b);
+}
+
+/*
+ * The second navigation's submenu.
+ *
+ * The design system renders it only while it is open, because React can do
+ * that; here it is in the markup always, and `.ra-snav-dd` is
+ * `position: absolute`, so every parent item with children hung its submenu
+ * open under it permanently. The same shape as the offcanvas that covered
+ * every page: a component the design system shows because it exists, in a
+ * document that keeps it.
+ *
+ * Hover and focus-within rather than a script, so it works with JavaScript
+ * off and for a keyboard — tabbing into the item opens it, tabbing past it
+ * closes it, and nothing has to stay in sync with anything.
+ */
+.ra-snav-dd {
+    display: none;
+}
+
+.ra-snav-item:hover > .ra-snav-dd,
+.ra-snav-item:focus-within > .ra-snav-dd {
+    display: block;
+}
+
+/*
+ * The filter row.
+ *
+ * `.ra-table-toolbar` is a wrapping flex row and the design system's own
+ * table has nothing in it but a search box and two buttons, so it has no
+ * opinion about what a block of filters looks like. Without one each filter
+ * was a block element: eight of them became a column pinned to the right of
+ * a 340px band of nothing, with the search box stranded beside it. That is
+ * what a real page with eight filters looked like, and the demo's two did
+ * not show it.
+ *
+ * A wrapping row of label-over-control pairs instead, aligned on their
+ * bottoms so the controls line up whether or not a label wrapped to two
+ * lines.
+ */
+.ra-grid-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    min-width: 0;
+}
+
+.ra-grid-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ra-grid-filter-label {
+    white-space: nowrap;
+}
+
+/* A range is two controls for one filter, side by side rather than stacked:
+   a from and a to that are not next to each other read as two filters. */
+.ra-grid-filter-range {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1, 0.25rem);
+}
+
+.ra-grid-filter-range .ra-input {
+    width: 7.5rem;
+}
+
+.ra-grid-filter .ra-select,
+.ra-grid-filter > .ra-input {
+    width: 9rem;
+}
+
+/* The search box leads the row and takes what is left of it. */
+.ra-grid-search {
+    order: -1;
+}
+
+/* Apply goes last whatever order the markup puts it in, and keeps to the end
+   of the row so it does not sit between two filters. */
+.ra-grid-toolbar-submit {
+    order: 1;
+    margin-left: auto;
+}
+
+/*
+ * The selection column and the bulk bar.
+ *
+ * The design system's table has no selection and its toolbar has no bar of
+ * actions over one, so both are this project's own — laid out with its
+ * tokens rather than numbers chosen here.
+ */
+.ra-grid-head-select,
+.ra-grid-cell-select {
+    width: 1px;
+    padding-right: 0;
+    white-space: nowrap;
+}
+
+.ra-grid-bulk {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 0.75rem);
+    padding: var(--space-2, 0.5rem) var(--table-cell-px, 0.75rem);
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    background: var(--color-primary-50, #eef2ff);
+}
+
+/*
+ * With nothing ticked the bar stays put and goes quiet. It does not
+ * disappear: a bar that only existed once something was selected would move
+ * the whole table down on the first click, and `core.js` adds this class --
+ * so with no script the bar is simply always active, which is correct,
+ * because the server refuses an empty selection by name.
+ */
+.ra-grid-bulk-empty {
+    background: var(--color-neutral-50, #f8fafc);
+    color: var(--text-muted, #64748b);
+}
+
+.ra-grid-bulk-count {
+    margin: 0;
+    font-size: var(--text-sm, 0.75rem);
+    color: var(--text-secondary, #475569);
+}
+
+.ra-grid-bulk-count-number {
+    font-weight: var(--font-semibold, 600);
+    font-variant-numeric: tabular-nums;
+}
+
+.ra-grid-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    margin-left: auto;
+}
+
+.ra-grid-bulk-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/*
+ * The controls in an action cell, in a row rather than a column.
+ *
+ * A `post` action is a `<form>` and a `<form>` is a block element, so three
+ * controls in one cell stacked and made every row three times taller. The
+ * form is there because the action must work with no JavaScript -- it carries
+ * the token and the method -- so it is the layout that gives way, not the
+ * markup.
+ */
+.ra-grid-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1, 0.25rem);
+    flex-wrap: wrap;
+}
+
+.ra-grid-actions .ra-action-form {
+    display: contents;
 }

@@ -7,14 +7,7 @@ namespace RockAdmin\Form;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Config\Placeholder;
-use RockAdmin\Db\CountStrategy;
-use RockAdmin\Db\DbException;
-use RockAdmin\Db\Filter;
-use RockAdmin\Db\FilterOperator;
-use RockAdmin\Db\Page as DbPage;
-use RockAdmin\Db\Query;
-use RockAdmin\Db\Result;
-use RockAdmin\Db\RowSource;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Http\Csrf;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\FieldDefinition;
@@ -36,9 +29,13 @@ use RockAdmin\Page\RegionDefinition;
  * by construction rather than by resemblance; two code paths drawing "the
  * same" control would agree until the day one of them was changed.
  *
- * Fetching the row is `PreviewRegion`'s problem already solved: a
+ * Fetching the row is `RowReader`'s job and used to be this class's: a
  * `RockAdmin\Db\Query` filtered on the entity's key and paged to one row,
- * handed to the same `RowSource` a grid reads from. No `QueryFactory` — that
+ * handed to the same `RowSource` a grid reads from. It moved out when
+ * `ActionHandler` needed the same read to re-check an action's `when`
+ * conditions — and specifically because of the SQLSTATE reading that goes
+ * with it, which tells "that id names no row" from "the database is broken"
+ * and which two copies of would drift silently. No `QueryFactory` — that
  * builds a query out of a `GridState`, the filters, search, sort and page
  * number read out of a URL, and a form of one known row has no state at all.
  *
@@ -52,7 +49,7 @@ use RockAdmin\Page\RegionDefinition;
 final class FormRegion
 {
     public function __construct(
-        private readonly RowSource $rows,
+        private readonly RowReader $reader,
         private readonly UrlGenerator $urls,
         private readonly Csrf $csrf,
         private readonly Gate $gate,
@@ -219,55 +216,12 @@ final class FormRegion
      */
     private function row(PageDefinition $page, FormDefinition $form, string $id): ?array
     {
-        $key = $page->entity->key;
-
-        // The entity's key is always selected, whether or not the form
-        // declares a field for it, because the filter below matches against
-        // it -- QueryBuilder drops a filter naming an alias the query never
-        // selected, and a form that silently ignored its own id would edit
-        // whichever row the database happened to return first.
-        $columns = [$key => $key];
-
-        foreach ($form->fields as $field) {
-            $columns[$field->key] = $field->key;
-        }
-
-        $query = new Query(
-            entity: $page->entity,
-            columns: $columns,
-            scope: $page->scope,
-            filters: [new Filter($key, FilterOperator::Equals, $id)],
-            page: DbPage::of(1, 1),
-            count: CountStrategy::None,
+        return $this->reader->byKey(
+            $page->entity,
+            $id,
+            array_map(static fn ($field): string => $field->key, array_values($form->fields)),
+            $page->scope,
         );
-
-        $result = $this->fetch($query);
-
-        return $result?->rows[0] ?? null;
-    }
-
-    /**
-     * Runs the single-row query, reading a failed statement's own SQLSTATE to
-     * tell "the id does not name a row" from "something is actually broken" —
-     * the same reading `PreviewRegion` makes, for the same URL shape.
-     *
-     * `/p/ads/abc/edit` filters an integer key with a value that is not one.
-     * MySQL coerces it and matches nothing; PostgreSQL refuses the statement
-     * with SQLSTATE class '22', a data exception. Both are saying no such
-     * row, so both answer 404. Anything else keeps propagating: a database
-     * that is actually failing must not read as a row that does not exist.
-     */
-    private function fetch(Query $query): ?Result
-    {
-        try {
-            return $this->rows->fetch($query);
-        } catch (DbException $e) {
-            if ($e->sqlStateClass() === '22') {
-                return null;
-            }
-
-            throw $e;
-        }
     }
 
     /**

@@ -30,12 +30,12 @@
  */
 ?>
 <?php if ($view->searchable || $view->filters !== []) { ?>
-    <form class="ra-grid-toolbar" method="get" action="<?= $href($view->pageUrl) ?>" data-ra-behavior="grid-toolbar">
+    <form class="ra-table-toolbar ra-grid-toolbar" method="get" action="<?= $href($view->pageUrl) ?>" data-ra-behavior="grid-toolbar">
         <?php if ($view->searchable) { ?>
-            <div class="ra-grid-search">
-                <label class="ra-grid-search-label visually-hidden" for="ra-grid-search-<?= $e($view->key) ?>">Search</label>
+            <div class="ra-table-search ra-grid-search">
+                <label class="ra-grid-search-label ra-visually-hidden" for="ra-grid-search-<?= $e($view->key) ?>">Search</label>
                 <input
-                    class="ra-grid-search-input form-control"
+                    class="ra-input ra-grid-search-input"
                     type="search"
                     id="ra-grid-search-<?= $e($view->key) ?>"
                     name="<?= $e($view->key) ?>[q]"
@@ -56,6 +56,6 @@
                 >
             <?php } ?>
         <?php } ?>
-        <button class="ra-grid-toolbar-submit btn btn-primary" type="submit">Apply</button>
+        <button class="ra-btn ra-btn--primary ra-btn--sm ra-grid-toolbar-submit" type="submit">Apply</button>
     </form>
 <?php } ?>

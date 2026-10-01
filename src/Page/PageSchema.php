@@ -91,7 +91,34 @@ final class PageSchema
                         description: 'A short description of what this page shows.',
                         example: 'All orders, past and present.',
                     ),
+                    'buttons' => new SchemaKey(
+                        ValueType::Array,
+                        description: 'The actions drawn in the page header, in the same three forms a grid '
+                            . 'column\'s `items` accepts: the name of an action from this page\'s `actions` '
+                            . 'block, that name adjusted with `\'use\' => \'@action:export\'`, or an action '
+                            . 'defined inline. A header button is drawn once, above the regions, with no row '
+                            . 'behind it — so a `when`, which tests a row, and a `{column}` placeholder, '
+                            . 'which is substituted from one, are both refused on it.',
+                        example: ['create', 'export'],
+                    ),
                 ]),
+            ),
+            'actions' => new SchemaKey(
+                ValueType::Array,
+                description: 'The actions this page offers, each defined once and referenced wherever it '
+                    . 'should appear — a grid column, the page header. A region renders content; an action '
+                    . 'decides where that content appears, which is why the two are configured separately.',
+                each: ActionSchema::create(),
+            ),
+            'bulk_actions' => new SchemaKey(
+                ValueType::Array,
+                description: 'The actions offered over a selection of rows, as a list of keys from this '
+                    . "page's `actions` block, or defined inline the same three ways a column's `items` "
+                    . 'accepts. Declaring any of them puts a selection column on the grid. Every one must '
+                    . 'be a `post`: a selection of forty rows has no single URL to navigate to. A `when` '
+                    . 'is allowed and is tested per row when the action runs, so archiving a selection '
+                    . 'archives the ones that qualify and says how many did not.',
+                example: ['delete', 'archive'],
             ),
             'regions' => new SchemaKey(
                 ValueType::Array,

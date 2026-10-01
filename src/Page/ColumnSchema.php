@@ -23,7 +23,9 @@ final class ColumnSchema
             'type' => new SchemaKey(
                 ValueType::String,
                 default: 'text',
-                description: 'What the column holds: text, int, money, datetime, bool, enum or json.',
+                description: 'What the column holds: text, int, money, datetime, bool, enum or json — or '
+                    . '`actions`, which holds controls rather than a value and takes an `items` list instead '
+                    . 'of a source.',
                 example: 'text',
             ),
             'label' => new SchemaKey(
@@ -140,6 +142,22 @@ final class ColumnSchema
                         example: 'Type a name...',
                     ),
                 ]),
+            ),
+            // No `each`, deliberately: an entry is a string as often as it is
+            // an array, so a per-entry schema could only be right about one of
+            // the three forms. What each form may contain is `ActionSchema`,
+            // applied by the loader when it builds the action.
+            'items' => new SchemaKey(
+                ValueType::Array,
+                description: 'The actions this column draws, one group of controls per row. Required on an '
+                    . '`actions` column and refused on any other, which holds a value rather than controls. '
+                    . 'Each entry is one of three forms and they mix freely: the name of an action from the '
+                    . 'page\'s `actions` block (`\'edit\'`); a map carrying `\'use\' => \'@action:edit\'` '
+                    . 'together with the keys to change for this column only; or a keyed entry defining an '
+                    . 'action inline, written exactly as one in the `actions` block, for an action used only '
+                    . 'here. Every form is built and refused by the same loader, so an inline `post` still '
+                    . 'needs its `confirm`.',
+                example: ['edit', 'delete'],
             ),
             'collection' => new SchemaKey(
                 ValueType::Array,

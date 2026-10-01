@@ -91,21 +91,21 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertStringContainsString('/c.js', $html);
     }
 
-    public function testDarkModeOnWritesBootstrapsThemeAttribute(): void
+    public function testDarkModeOnWritesTheThemeAttribute(): void
     {
         $html = $this->renderer()->render(
             'layout/base',
             $this->page(shell: new ShellView('RockAdmin', darkMode: 'on')),
         );
 
-        $this->assertStringContainsString('data-bs-theme="dark"', $html);
+        $this->assertStringContainsString('data-ra-theme="dark"', $html);
     }
 
     public function testDarkModeAutoLeavesTheDecisionToTheStylesheet(): void
     {
         $html = $this->renderer()->render('layout/base', $this->page());
 
-        $this->assertStringNotContainsString('data-bs-theme', $html);
+        $this->assertStringNotContainsString('data-ra-theme', $html);
     }
 
     public function testTheMenuMarksTheActiveItem(): void
@@ -130,16 +130,25 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertStringContainsString('ra-flash ra-flash-success', $html);
         $this->assertStringContainsString('Saved.', $html);
 
-        // Bootstrap 5.3 ships `.toast:not(.show){display:none}`. Without the
-        // `show` class the flash is in the DOM but invisible; asserting the
-        // classes and the message text alone, as this test did before, is
-        // also true of markup nobody can see.
+        // This test exists because a flash once rendered with the right
+        // classes and the right text and was invisible for a whole milestone:
+        // Bootstrap ships `.toast:not(.show){display:none}`, so a toast
+        // needed a second class to be seen, and the assertions above are
+        // equally true of markup nobody can see.
+        //
+        // The design system has no such state — `.ra-toast` is visible
+        // because it exists — so what is asserted now is that the toast does
+        // not depend on one. A `show`/`hide` pair reappearing here is the
+        // shape of the original bug, whoever reintroduces it.
         if (preg_match('/class="([^"]*)"\s+role="status"[^>]*data-ra-toast/', $html, $match) !== 1) {
             $this->fail('No element carrying the toast class was rendered.');
         }
 
         $classes = explode(' ', $match[1]);
-        $this->assertContains('show', $classes, 'The toast is missing the "show" class and is therefore invisible.');
+
+        $this->assertContains('ra-toast', $classes, 'The toast does not carry the class that makes it visible.');
+        $this->assertNotContains('toast', $classes, 'A Bootstrap toast hides itself without a second class.');
+        $this->assertNotContains('hide', $classes);
     }
 
     public function testNoFlashesLeaveTheToastContainerEmptyRatherThanAbsent(): void
@@ -306,7 +315,58 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertSame(1, substr_count($html, 'id="ra-offcanvas"'));
 
         // Empty, because their contents arrive as a fragment.
-        $this->assertStringContainsString('<div class="ra-modal-content modal-content"></div>', $html);
-        $this->assertStringContainsString('<div class="ra-offcanvas-body offcanvas-body"></div>', $html);
+        // Empty on purpose: a later milestone fills them from a fragment.
+        // Asserted by the identity class rather than the whole element, so a
+        // styling change does not read as a behaviour change.
+        $this->assertStringContainsString('ra-modal-content"></div>', $html);
+        $this->assertStringContainsString('ra-offcanvas-body"></div>', $html);
+    }
+
+    public function testTheSharedOverlaysCloseRatherThanDismiss(): void
+    {
+        // `data-ra-dismiss` removes its target from the document, which is
+        // right for a toast and wrong for these two: there is one of each for
+        // the whole page, and an action that opens one after another action
+        // closed it would find nothing to fill and report nothing.
+        //
+        // The offcanvas shipped with `data-ra-dismiss="offcanvas"` on its
+        // close button, so the first close was also the last.
+        $html = $this->renderer()->render('layout/base', $this->page());
+
+        $this->assertStringContainsString('data-ra-close="modal"', $html);
+        $this->assertStringContainsString('data-ra-close="offcanvas"', $html);
+        $this->assertStringNotContainsString('data-ra-dismiss="modal"', $html);
+        $this->assertStringNotContainsString('data-ra-dismiss="offcanvas"', $html);
+    }
+
+    public function testTheModalNamesAWidthTheDesignSystemDefines(): void
+    {
+        // `.ra-modal` is `width: 100%`; the max-width is a size modifier, so
+        // a dialog without one is as wide as the window. Same shape as the
+        // button that had no height, in the same stylesheet.
+        $html = $this->renderer()->render('layout/base', $this->page());
+
+        if (preg_match('/<div class="([^"]*ra-modal-dialog[^"]*)"/', $html, $match) !== 1) {
+            $this->fail('No element carrying the modal dialog class was rendered.');
+        }
+
+        $css = (string) file_get_contents(\dirname(__DIR__, 3) . '/assets/css/ds/components.css');
+
+        preg_match_all('/^\.ra-modal--([a-z]+)/m', $css, $defined);
+
+        $sizes = array_values(array_intersect(['sm', 'md', 'lg', 'xl'], $defined[1]));
+        $named = [];
+
+        foreach (preg_split('/\s+/', trim($match[1])) ?: [] as $token) {
+            if (str_starts_with($token, 'ra-modal--')) {
+                $named[] = substr($token, 10);
+            }
+        }
+
+        $this->assertNotEmpty($sizes, 'The design system stopped defining modal sizes.');
+        $this->assertNotEmpty(
+            array_intersect($named, $sizes),
+            'The modal dialog names no size, so it is as wide as the window.',
+        );
     }
 }

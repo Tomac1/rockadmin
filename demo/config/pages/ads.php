@@ -35,6 +35,52 @@ return [
             ],
         ],
     ],
+    // Milestone 8. Three actions, each showing a different thing an action
+    // can be.
+    //
+    // `edit` is a `link`: it navigates, it carries a row placeholder, and it
+    // needs no confirmation because it changes nothing.
+    //
+    // `archive` is a `post` with a `when`. It is drawn only on a row that is
+    // active, and the condition is re-checked on the server when it runs --
+    // `when` decides what is *offered*, and a client that was never shown the
+    // control can post to it anyway.
+    //
+    // `bin` points at `@action:delete`, which is how a page gets a working
+    // delete out of configuration alone: it reaches the verb the admin
+    // already has, so no `set` has to spell out what deleting means.
+    'actions' => [
+        'edit' => [
+            'type' => 'link',
+            'to' => '@page:ads/{id}/edit',
+            'label' => 'Edit',
+            'permission' => 'ads.update',
+        ],
+        'archive' => [
+            'type' => 'post',
+            'to' => '@action:archive',
+            'label' => 'Archive',
+            'confirm' => 'Archive this ad?',
+            'permission' => 'ads.update',
+            'when' => ['state' => 'active'],
+            'set' => ['state' => 'archived'],
+        ],
+        'bin' => [
+            'type' => 'post',
+            'to' => '@action:delete',
+            'label' => 'Delete',
+            'confirm' => 'Delete this ad? This cannot be undone.',
+            'permission' => 'ads.delete',
+        ],
+    ],
+
+    // Over a selection rather than one row. `edit` is deliberately absent:
+    // there is no such thing as editing forty rows at once, and a `link` in
+    // here is refused at load for that reason. Offered on a row and offered
+    // over a selection are two different permissions, and this list is how a
+    // page says which.
+    'bulk_actions' => ['archive', 'bin'],
+
     'regions' => [
         'grid' => [
             'type' => 'list',
@@ -96,6 +142,17 @@ return [
                         'foreign_key' => 'ad_id',
                         'column' => 'label',
                     ],
+                ],
+                // An actions column is an ordinary column, placed among the
+                // others and named for what it holds -- the key becomes the
+                // class `ra-grid-cell-tools` and the template override path,
+                // so `tools` is worth more than `actions2`. Declaring one
+                // also takes away the grid's own Edit cell: a page that says
+                // where its row controls go has said it.
+                'tools' => [
+                    'type' => 'actions',
+                    'label' => '',
+                    'items' => ['edit', 'archive', 'bin'],
                 ],
             ],
         ],

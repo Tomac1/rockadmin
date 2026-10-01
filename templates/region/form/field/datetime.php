@@ -24,6 +24,7 @@
  * to the person as they will be asked to correct it.
  *
  * @var \RockAdmin\Form\FormFieldView $view
+ * @var \Closure(mixed): string $e
  * @var \Closure(array<int|string, scalar|null>): string $attrs
  */
 
@@ -34,4 +35,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'step' => $view->step,
 ];
 ?>
-<input class="ra-form-control ra-form-control-datetime form-control"<?= $attrs($attributes) ?>>
+<input class="<?= $e(\RockAdmin\Form\FormControl::classes($view, 'ra-input')) ?>"<?= $attrs($attributes) ?>>

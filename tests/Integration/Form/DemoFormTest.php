@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
@@ -138,7 +139,7 @@ final class DemoFormTest extends DatabaseTestCase
         return new FormHandler(
             $this->repository(),
             new FormRegion(
-                new SqlRowSource($connection),
+                new RowReader(new SqlRowSource($connection)),
                 $urls,
                 new Csrf($this->session),
                 Access::gateFor($this->repository()),
@@ -160,9 +161,11 @@ final class DemoFormTest extends DatabaseTestCase
 
         return new ActionHandler(
             $this->repository(),
-            new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
+            new FormRegion(new RowReader(new SqlRowSource($connection)), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
             new FieldValidator(),
             new SqlWriteHandler($connection),
+            new RowReader(new SqlRowSource($connection)),
+            $connection,
             $this->forms($connection),
             $csrf,
             new FlashBag($this->session),
@@ -261,7 +264,7 @@ final class DemoFormTest extends DatabaseTestCase
 
         // The select's options come from demo/config/enums.php, through the
         // same @enum: reference the grid's badge and filter read.
-        $this->assertSame(['active', 'draft', 'sold'], array_keys($form->field('state')->options));
+        $this->assertSame(['active', 'draft', 'sold', 'archived'], array_keys($form->field('state')->options));
     }
 
     #[DataProvider('connections')]
@@ -376,7 +379,24 @@ final class DemoFormTest extends DatabaseTestCase
         $this->assertSame([], $this->ads($connection), 'a refused submission writes nothing');
 
         // Every failure at once, not just the first: three fields were wrong.
-        $this->assertSame(3, substr_count($response->body, 'class="ra-form-error"'));
+        //
+        // Counted through the DOM rather than by matching text. The first
+        // version matched `class="ra-form-error"` exactly and broke the
+        // moment a second class joined it; the obvious repair -- counting
+        // the substring -- reported 18, because `ra-form-error` is also
+        // inside `ra-form-errors`, the summary block. A class is a token in
+        // a list, and only a parser knows that.
+        $document = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $document->loadHTML($response->body);
+        libxml_clear_errors();
+
+        $errors = (new \DOMXPath($document))->query(
+            '//*[contains(concat(" ", normalize-space(@class), " "), " ra-form-error ")]',
+        );
+
+        $this->assertNotFalse($errors);
+        $this->assertSame(3, $errors->length, 'one error per wrong field, not just the first');
     }
 
     #[DataProvider('connections')]

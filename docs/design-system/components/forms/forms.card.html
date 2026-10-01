@@ -1,0 +1,62 @@
+<!-- @dsCard group="Components" viewport="700x520" name="Form Controls" subtitle="Input, Select, Textarea, Checkbox, Radio, Switch, SearchSelect" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:16px;background:var(--bg-page)} .label{font-size:11px;color:var(--text-muted);font-family:var(--font-sans);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px} .row{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { Input, Select, Textarea, Checkbox, Radio, RadioGroup, Switch, SearchSelect, FormField } = window.RockAdminDesignSystem_fced52;
+const SearchIcon = () => <svg width="13" height="13" viewBox="0 0 14 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"><circle cx="6" cy="6" r="4"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>;
+const EyeIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"><ellipse cx="8" cy="8" rx="7" ry="4"/><circle cx="8" cy="8" r="2"/></svg>;
+
+function App() {
+  const [pw, setPw] = React.useState('');
+  const [showPw, setShowPw] = React.useState(false);
+  const [sw1, setSw1] = React.useState(true);
+  const [sw2, setSw2] = React.useState(false);
+  const [chk, setChk] = React.useState(true);
+  const [radio, setRadio] = React.useState('a');
+  const [sel, setSel] = React.useState('');
+  return (
+    <div style={{fontFamily:'var(--font-sans)'}}>
+      <div className="label">Inputs</div>
+      <div className="row">
+        <FormField label="Search" style={{flex:1,minWidth:160}}><Input placeholder="Search products..." leftIcon={<SearchIcon />} /></FormField>
+        <FormField label="Email" style={{flex:1,minWidth:160}}><Input type="email" placeholder="you@company.com" /></FormField>
+        <FormField label="Password" error="Too short" style={{flex:1,minWidth:160}}><Input type={showPw?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} error rightIcon={<EyeIcon />} onRightIconClick={()=>setShowPw(v=>!v)} /></FormField>
+      </div>
+      <div className="label">Select &amp; SearchSelect</div>
+      <div className="row">
+        <FormField label="Status" style={{width:180}}><Select options={['All','Active','Inactive','Archived']} placeholder="Choose..." /></FormField>
+        <FormField label="Category (search)" style={{width:220}}><SearchSelect options={['Electronics','Clothing','Food','Sports','Books','Toys']} placeholder="Select category..." /></FormField>
+        <FormField label="Tags (multi)" style={{width:240}}><SearchSelect options={['Featured','Sale','New','Popular','Limited']} placeholder="Select tags..." multi value={['Featured','New']} /></FormField>
+      </div>
+      <div className="label">Textarea with placeholders</div>
+      <FormField label="Description" hint="Supports {name} and {date} placeholders">
+        <Textarea placeholder="Write a description..." rows={2} placeholders={[{label:'{name}',value:'{name}'},{label:'{date}',value:'{date}'}]} maxLength={200} />
+      </FormField>
+      <div className="label">Checkbox, Radio, Switch</div>
+      <div className="row" style={{alignItems:'center',gap:24}}>
+        <Checkbox checked={chk} onChange={e=>setChk(e.target.checked)} label="In stock" />
+        <Checkbox checked={false} label="Featured" />
+        <Checkbox indeterminate label="Select all" />
+        <div style={{width:1,height:20,background:'var(--border-color)'}} />
+        <RadioGroup horizontal>
+          <Radio name="r1" value="a" checked={radio==='a'} onChange={()=>setRadio('a')} label="Monthly" />
+          <Radio name="r1" value="b" checked={radio==='b'} onChange={()=>setRadio('b')} label="Annual" />
+          <Radio name="r1" value="c" checked={radio==='c'} onChange={()=>setRadio('c')} label="Custom" />
+        </RadioGroup>
+        <div style={{width:1,height:20,background:'var(--border-color)'}} />
+        <Switch checked={sw1} onChange={e=>setSw1(e.target.checked)} label="Notifications" />
+        <Switch checked={sw2} onChange={e=>setSw2(e.target.checked)} label="Two-factor" />
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script></body></html>

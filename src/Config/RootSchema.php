@@ -136,7 +136,10 @@ final class RootSchema
                     'dark' => new SchemaKey(
                         ValueType::String,
                         default: 'auto',
-                        description: "Dark mode: 'auto' follows the operating system, 'on' and 'off' decide.",
+                        description: "Dark mode: 'auto' follows the operating system, 'on' and 'off' decide. "
+                            . 'Writes data-ra-theme on the document; the bundled stylesheets '
+                            . 'define no dark palette yet, so today this is a hook for a '
+                            . "project's own CSS rather than a switch.",
                         example: 'auto',
                     ),
                 ]),

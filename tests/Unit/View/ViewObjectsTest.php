@@ -71,9 +71,13 @@ final class ViewObjectsTest extends TestCase
     public static function buttonIdentities(): array
     {
         return [
-            'create, primary' => ['create', 'primary', 'ra-btn ra-btn-create btn btn-primary'],
-            'export, secondary' => ['export', 'secondary', 'ra-btn ra-btn-export btn btn-secondary'],
-            'delete, danger' => ['delete', 'danger', 'ra-btn ra-btn-delete btn btn-danger'],
+            'create, primary' => ['create', 'primary', 'ra-btn ra-btn-create ra-btn--primary ra-btn--sm'],
+            'export, secondary' => ['export', 'secondary', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
+            'delete, danger' => ['delete', 'danger', 'ra-btn ra-btn-delete ra-btn--danger ra-btn--sm'],
+            // A style the design system has no button for still gets a button:
+            // the neutral one, never a class list that styles nothing.
+            'export, info' => ['export', 'info', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
+            'export, nonsense' => ['export', 'chartreuse', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
         ];
     }
 
@@ -93,8 +97,8 @@ final class ViewObjectsTest extends TestCase
         $plain = new MenuItemView('Ads', '/admin/p/ads');
         $active = new MenuItemView('Ads', '/admin/p/ads', active: true);
 
-        $this->assertSame('ra-menu-item nav-link', $plain->classes());
-        $this->assertSame('ra-menu-item ra-menu-item-active nav-link active', $active->classes());
+        $this->assertSame('ra-menu-item', $plain->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-active', $active->classes());
     }
 
     public function testAMenuItemCarriesAnIdentityClassWhenGivenAKey(): void
@@ -105,8 +109,8 @@ final class ViewObjectsTest extends TestCase
         $plain = new MenuItemView('Ads', '/admin/p/ads', key: 'ads');
         $active = new MenuItemView('Ads', '/admin/p/ads', active: true, key: 'ads');
 
-        $this->assertSame('ra-menu-item ra-menu-item-ads nav-link', $plain->classes());
-        $this->assertSame('ra-menu-item ra-menu-item-ads ra-menu-item-active nav-link active', $active->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-ads', $plain->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-ads ra-menu-item-active', $active->classes());
     }
 
     public function testAMenuItemsKeyIsRefusedTheSameWayAnyIdentityIs(): void
@@ -120,10 +124,14 @@ final class ViewObjectsTest extends TestCase
     public static function flashLevels(): array
     {
         return [
-            'success' => ['success', 'ra-flash ra-flash-success text-bg-success'],
-            'info' => ['info', 'ra-flash ra-flash-info text-bg-info'],
-            'warning' => ['warning', 'ra-flash ra-flash-warning text-bg-warning'],
-            'danger' => ['danger', 'ra-flash ra-flash-danger text-bg-danger'],
+            // Both vocabularies, and `danger` maps to the design system's
+            // `error`: the level is what a handler asks for, and
+            // `$flashes->danger(...)` reads better beside an exception that
+            // is not one.
+            'success' => ['success', 'ra-flash ra-flash-success ra-toast ra-toast--success'],
+            'info' => ['info', 'ra-flash ra-flash-info ra-toast ra-toast--info'],
+            'warning' => ['warning', 'ra-flash ra-flash-warning ra-toast ra-toast--warning'],
+            'danger' => ['danger', 'ra-flash ra-flash-danger ra-toast ra-toast--error'],
         ];
     }
 
@@ -153,10 +161,13 @@ final class ViewObjectsTest extends TestCase
     }
 
     #[DataProvider('darkModes')]
-    public function testDarkModeBecomesBootstrapsThemeAttribute(string $mode, ?string $expected): void
+    public function testDarkModeBecomesTheThemeAttribute(string $mode, ?string $expected): void
     {
-        // Bootstrap 5.3 reads data-bs-theme. 'auto' writes no attribute,
-        // leaving the media query in rockadmin.css to decide.
+        // The document carries data-ra-theme. 'auto' writes no attribute,
+        // which is the honest answer for 'follow the system': nothing here
+        // decides. Nothing else decides either at the moment -- the design
+        // system ships one palette and no dark rules -- so this attribute is
+        // a hook for a project's own stylesheet, not a switch that works.
         $this->assertSame($expected, (new ShellView('X', darkMode: $mode))->themeAttribute());
     }
 

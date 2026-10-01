@@ -21,6 +21,22 @@ $classes = 'ra-region ra-region-list ' . \RockAdmin\View\Classes::identity('regi
     <?php if ($view->isEmpty()) { ?>
         <?= $partial('region/list/empty', $view) ?>
     <?php } else { ?>
+        <?php if ($view->isSelectable()) { ?>
+            <?php
+            /*
+             * Before the table, and outside it. The checkboxes in the rows
+             * point back at this form by id rather than sitting inside it,
+             * because a form wrapping the table would contain the forms a
+             * row's `post` actions draw — and the browser drops a nested form
+             * silently.
+             *
+             * Not drawn for an empty grid: a bar offering to act on a
+             * selection, above a table with nothing to select, is a control
+             * that cannot be used.
+             */
+            ?>
+            <?= $partial('region/list/bulk', $view) ?>
+        <?php } ?>
         <?= $partial('region/list/table', $view) ?>
     <?php } ?>
     <?= $partial('region/list/pagination', $view->pagination) ?>

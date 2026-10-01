@@ -27,6 +27,16 @@ final class FlashView
 
     public function classes(): string
     {
-        return Classes::of('flash', $this->level, ['text-bg-' . $this->level]);
+        // The design system's own level names, which are not Bootstrap's:
+        // `danger` is `error` there, and the rest line up. Mapped here rather
+        // than renaming the level, because the level is what a handler asks
+        // for and `$flashes->danger(...)` reads better than `->error(...)`
+        // beside an exception that is not one.
+        $variant = $this->level === 'danger' ? 'error' : $this->level;
+
+        return Classes::of('flash', $this->level, [
+            'ra-toast',
+            'ra-toast--' . $variant,
+        ]);
     }
 }

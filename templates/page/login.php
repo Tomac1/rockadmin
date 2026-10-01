@@ -36,7 +36,7 @@ $emailId = 'ra-login-email';
 $passwordId = 'ra-login-password';
 ?>
 <!doctype html>
-<html class="ra-html" lang="en"<?= $attrs(['data-bs-theme' => $theme]) ?>>
+<html class="ra-html" lang="en"<?= $attrs(['data-ra-theme' => $theme]) ?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -52,10 +52,10 @@ $passwordId = 'ra-login-password';
             <p class="ra-login-title"><?= $e($view->title) ?></p>
 
             <?php if ($view->message !== null) { ?>
-                <div class="ra-login-message alert alert-danger" role="alert">
-                    <p class="ra-login-message-text"><?= $e($view->message) ?></p>
+                <div class="ra-alert ra-alert--error ra-login-message" role="alert">
+                    <p class="ra-alert__title ra-login-message-text"><?= $e($view->message) ?></p>
                     <?php if ($view->hint !== '') { ?>
-                        <p class="ra-login-message-hint"><?= $e($view->hint) ?></p>
+                        <p class="ra-alert__desc ra-login-message-hint"><?= $e($view->hint) ?></p>
                     <?php } ?>
                 </div>
             <?php } ?>
@@ -69,19 +69,19 @@ $passwordId = 'ra-login-password';
             <input type="hidden" name="<?= $e(\RockAdmin\Form\FormFields::RETURN_TO) ?>" value="<?= $e($view->returnTo) ?>">
 
             <div class="ra-login-field ra-login-field-email">
-                <label class="ra-login-label form-label" for="<?= $e($emailId) ?>">Email</label>
-                <input class="ra-login-control form-control" type="email" id="<?= $e($emailId) ?>" name="<?= $e(\RockAdmin\Http\LoginHandler::EMAIL_FIELD) ?>" value="<?= $e($view->email) ?>" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
+                <label class="ra-field__label ra-login-label" for="<?= $e($emailId) ?>">Email</label>
+                <input class="ra-input ra-login-control" type="email" id="<?= $e($emailId) ?>" name="<?= $e(\RockAdmin\Http\LoginHandler::EMAIL_FIELD) ?>" value="<?= $e($view->email) ?>" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
             </div>
 
             <div class="ra-login-field ra-login-field-password">
-                <label class="ra-login-label form-label" for="<?= $e($passwordId) ?>">Password</label>
+                <label class="ra-login-label ra-field__label" for="<?= $e($passwordId) ?>">Password</label>
                 <?php // No value attribute is written at all, and the view has
                       // no property that could fill one. See LoginView. ?>
-                <input class="ra-login-control form-control" type="password" id="<?= $e($passwordId) ?>" name="<?= $e(\RockAdmin\Http\LoginHandler::PASSWORD_FIELD) ?>" value="" autocomplete="current-password" required>
+                <input class="ra-input ra-login-control" type="password" id="<?= $e($passwordId) ?>" name="<?= $e(\RockAdmin\Http\LoginHandler::PASSWORD_FIELD) ?>" value="" autocomplete="current-password" required>
             </div>
 
             <div class="ra-login-actions">
-                <button class="ra-login-submit btn btn-primary" type="submit">Sign in</button>
+                <button class="ra-btn ra-btn--primary ra-btn--lg ra-btn--full ra-login-submit" type="submit">Sign in</button>
             </div>
         </form>
     </main>

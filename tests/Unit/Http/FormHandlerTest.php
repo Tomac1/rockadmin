@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Result;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
@@ -129,7 +130,7 @@ final class FormHandlerTest extends TestCase
         return new FormHandler(
             $this->repository(),
             new FormRegion(
-                new FakeRowSource([new Result($rows, null, [new Sql('SELECT 1')])]),
+                new RowReader(new FakeRowSource([new Result($rows, null, [new Sql('SELECT 1')])])),
                 $urls,
                 new Csrf(new ArraySessionStore()),
                 Access::gateFor($this->repository()),

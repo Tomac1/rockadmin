@@ -1,0 +1,56 @@
+/*
+ * The typefaces the design system is drawn in.
+ *
+ * It names Inter and JetBrains Mono and fetches them from Google Fonts; this
+ * package may not — `assets/` carries no CDN, so a page load makes no
+ * third-party request and an installation behind a firewall looks the same as
+ * one that is not.
+ *
+ * Both families are under the SIL Open Font License, which allows
+ * redistributing them inside a package like this one on the condition that
+ * the licence text travels with them. That is what `assets/fonts/OFL-*.txt`
+ * are for; they are the reason this is legal, not paperwork.
+ *
+ * 528 kB in total, served from the admin's own origin.
+ */
+
+/*
+ * Inter, as one variable file covering every weight the design system uses.
+ * `font-weight: 100 900` is the range the file carries, not a request for it:
+ * a rule asking for 500 gets 500 drawn from the same file, with no second
+ * request and no synthetic bolding.
+ */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../fonts/inter-variable.woff2') format('woff2-variations');
+}
+
+/*
+ * JetBrains Mono ships its variable face as TTF only, and a TTF is three to
+ * four times the size of the equivalent woff2 — so this takes the two static
+ * weights instead. That costs nothing here: the design system asks for 400 and
+ * 500 and no others, and mono is used for domain names, identifiers and JSON,
+ * where a weight axis buys nothing.
+ *
+ * Declaring each weight separately matters. With one face and no `500`, a
+ * browser synthesises the medium by smearing the regular, which in a monospace
+ * column reads as slightly broken rendering rather than as emphasis.
+ */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/jetbrains-mono-regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('../fonts/jetbrains-mono-medium.woff2') format('woff2');
+}

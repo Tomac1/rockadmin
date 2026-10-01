@@ -42,9 +42,10 @@ final class TemplateStandardsTest extends TestCase
         // (four region/form/*.php plus eleven region/form/field/*.php, one per
         // field type), for fifty-one, and task 8 added
         // region/list/header.php, for fifty-two. Milestone 5 task 4 added
-        // page/login.php, for fifty-three. This fails loudly if a future
-        // refactor moves the directory.
-        $this->assertGreaterThanOrEqual(53, \count(iterator_to_array(self::templates())));
+        // page/login.php, for fifty-three. Milestone 8 task 4 added
+        // ui/action.php and region/list/cell/actions.php, for fifty-five. This
+        // fails loudly if a future refactor moves the directory.
+        $this->assertGreaterThanOrEqual(55, \count(iterator_to_array(self::templates())));
     }
 
     #[DataProvider('templates')]
@@ -439,12 +440,27 @@ final class TemplateStandardsTest extends TestCase
             return true;
         }
 
-        // A class attribute that is nothing but a prepared view's own classes
-        // has delegated the job to the object which assembled them, and that
-        // is the arrangement this project prefers. Demanding a literal token
-        // here forced one template to repeat the very class the view already
-        // carried, purely to satisfy this check.
-        if (preg_match('/\bclass\s*=\s*(["\'])\s*<\?=\s*\$\w+\(\$\w+->classes\b/', $contents) === 1) {
+        // A stylesheet partial names its ra- classes as selectors, because
+        // it has no elements of its own to put them on. `error/style` is the
+        // whole of that category: the error pages cannot link the design
+        // system, so they carry it.
+        if (str_contains($contents, '<style>') && preg_match('/\.ra-[a-z0-9-]+/', $contents) === 1) {
+            return true;
+        }
+
+        // A class attribute that is nothing but a call to something named
+        // `classes` has delegated the job to whatever assembled them, and
+        // that is the arrangement this project prefers. Demanding a literal
+        // token here forced one template to repeat the very class the view
+        // already carried, purely to satisfy this check.
+        //
+        // Two spellings, because there are two owners. A prepared view
+        // carries its own -- `$e($view->classes())`. A control's classes
+        // depend on the field *and* on which design-system element draws it,
+        // which no view object knows, so `FormControl::classes($view, ...)`
+        // assembles them for all nine control templates at once. Both end in
+        // Classes::of(); neither writes `ra-` where this can see it.
+        if (preg_match('/\bclass\s*=\s*(["\'])\s*<\?=\s*\$\w+\([^)"\']*classes\(/', $contents) === 1) {
             return true;
         }
 

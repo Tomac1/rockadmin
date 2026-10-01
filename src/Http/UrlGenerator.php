@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace RockAdmin\Http;
 
 use InvalidArgumentException;
+use RockAdmin\Config\ActionReference;
+use RockAdmin\Config\PageReference;
 use RuntimeException;
 
 /**
@@ -48,6 +50,55 @@ final class UrlGenerator
     public function to(string $path, array $query = []): string
     {
         return $this->build(Request::normalizePath($path), $query);
+    }
+
+    /**
+     * Builds the link a `@page:` or `@action:` reference addresses (spec 8.5).
+     *
+     * It takes the reference rather than its parts, so no caller has to know
+     * that a page lives under `/p/` and an action under `/a/` — that is this
+     * class's knowledge, and spreading it over every template and view that
+     * draws an action is how a hardcoded URL gets written (rule 6).
+     *
+     * An unsubstituted row placeholder is **refused**. `{id}` is a row
+     * placeholder, substituted per row while a grid renders; by the time a URL
+     * is being built the substitution has either happened or been forgotten.
+     * Building the link anyway would percent-encode the braces and produce
+     * `/p/users/%7Bid%7D/edit` — a 404 addressing a row called "{id}", whose
+     * real cause is three layers away and invisible. The same judgement as
+     * `route()` refusing a `..` parameter rather than emitting it.
+     *
+     * @param ?string                   $currentPage required by an ActionReference, which 8.5
+     *                                               addresses on the current page
+     * @param array<string, string|int> $query
+     */
+    public function reference(
+        PageReference|ActionReference $reference,
+        ?string $currentPage = null,
+        array $query = [],
+    ): string {
+        if ($reference instanceof PageReference) {
+            $path = 'p/' . $reference->page . ($reference->suffix === '' ? '' : '/' . $reference->suffix);
+        } else {
+            if ($currentPage === null || $currentPage === '') {
+                throw new InvalidArgumentException(
+                    "{$reference} is addressed on the current page, so building its URL needs that page's "
+                    . 'name. Pass it as the second argument.',
+                );
+            }
+
+            $path = 'a/' . $currentPage . '/' . $reference->action;
+        }
+
+        if (preg_match('/\{[^}]*}/', $path, $match) === 1) {
+            throw new InvalidArgumentException(
+                "Cannot build a URL for {$reference}: the row placeholder '{$match[0]}' has not been "
+                . 'substituted. Row placeholders are substituted per row while the region renders, from a '
+                . 'column of that row, not here.',
+            );
+        }
+
+        return $this->to($path, $query);
     }
 
     /**

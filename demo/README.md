@@ -73,6 +73,57 @@ rather than throwing a connection error at whoever only came to look at the
 theme. You reach it by signing in, which without a database you cannot, so
 this is the one thing you have to configure a database to look at.
 
+## Actions
+
+`config/pages/ads.php` declares three, and between them they are everything an
+action can be:
+
+- **`edit`** is a `link`. It navigates, it carries a `{id}` row placeholder,
+  and it asks nothing, because it changes nothing.
+- **`archive`** is a `post` with `when: state = active` and
+  `set: state = archived`. It is drawn only on an active row, and the
+  condition is checked again on the server when it runs -- `when` decides
+  what is *offered*, and a client that was never shown the control can post
+  to the URL anyway.
+- **`bin`** points at `@action:delete`. That is how a page gets a working
+  delete out of configuration alone: the reference reaches the verb the admin
+  already has, so nothing has to spell out what deleting means, and the URL
+  is `/a/ads/delete` rather than `/a/ads/bin` -- the action key and the verb
+  are separate things.
+
+They appear in a `tools` column, which is an ordinary column placed among the
+others. Declaring one takes away the grid's own trailing **Edit** cell: a page
+that has said where its row controls go has said it, and two Edit controls in
+a row, one configured and one not, would leave a project no way to remove the
+second.
+
+`bulk_actions` lists `archive` and `bin`, which puts a selection column on the
+grid and a bar above it. `edit` is deliberately absent -- there is no such
+thing as editing forty rows at once, and a `link` in that list is refused at
+load for exactly that reason.
+
+Things worth doing once, in a browser:
+
+- Archive a row and watch its **Archive** button disappear: the condition is
+  re-evaluated from the row, not remembered from the page.
+- Select an active row **and** the draft one, and press **Archive** in the
+  bar. One is archived, the other is skipped, and the message names which:
+  *Archive applied to 1 of 2 rows. Skipped: 3.* A selection is an argument,
+  not an authorisation -- ticking a box says "this one", not "do it to this
+  whatever it is".
+- Press a bulk action with nothing selected. It says so, rather than
+  answering 404: an unchecked checkbox sends nothing, so the form carries a
+  marker that says the submission was a bulk one whatever was ticked.
+- Turn JavaScript off and do all of it again. The checkboxes submit with the
+  form by `form="..."`, each bulk button chooses its action with
+  `formaction`, and every row action is an ordinary `<form>`. What is lost is
+  the running count, the select-all box and the confirmation -- and the
+  server re-checks the token, the permission and the `when` regardless, so
+  none of it was ever evidence of anything.
+- Look at `ra_activity_log` afterwards. A bulk action over three rows leaves
+  three rows there, not one: the log answers "what happened to this row", and
+  a row whose change is recorded only in a summary cannot answer it.
+
 ## Identity and permission
 
 Things worth doing once, in a browser:
@@ -126,8 +177,8 @@ some point in this project's history:
 - Turn JavaScript off and do all of it again. Nothing here needs a script —
   `core.js` only adds the confirmation in front of Delete, and the server
   never treats that attribute as evidence that anybody agreed.
-- Toggle your operating system's dark mode on the form. Every colour on it
-  comes from a token that is redefined for dark mode; an accent that is legible
-  as a button fill is not automatically legible as text, which is why the
-  outline buttons and the required marker read `--ra-fg-*` and not
-  `--bs-danger`.
+- Toggle your operating system's dark mode on the form, and notice that
+  nothing happens. The design system ships one palette and no dark rules at
+  all, so `theme.dark` writes `data-ra-theme` on the document and nothing
+  bundled answers it. It is a hook for a project's own stylesheet; the
+  schema says so.

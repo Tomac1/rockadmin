@@ -44,6 +44,7 @@ written link must still show a grid, not an error page.
 | --- | --- | --- | --- | --- |
 | `title` | string | — | `Orders` | The page title, shown in the browser tab and header. **Required.** |
 | `layout` | string | `single` | `single` | The page layout: single, two-column or multi-column. Single is the default. |
+| `bulk_actions` | array | — | `['delete', 'archive']` | The actions offered over a selection of rows, as a list of keys from this page's `actions` block, or defined inline the same three ways a column's `items` accepts. Declaring any of them puts a selection column on the grid. Every one must be a `post`: a selection of forty rows has no single URL to navigate to. A `when` is allowed and is tested per row when the action runs, so archiving a selection archives the ones that qualify and says how many did not. |
 
 ## `entity`
 
@@ -56,6 +57,8 @@ The data source and entity being shown.
 | `scope` | array | — | `['site_id' => '{{workspace.site_id}}']` | A map of column to value, most often a placeholder. Every entry becomes a filter that is always applied and can never be removed by a URL, which is what makes it a workspace boundary rather than a default. |
 
 ## `entity.relations.*`
+
+Relationships to other tables, for joining.
 
 Every entry of `entity.relations`.
 
@@ -72,8 +75,29 @@ Optional content shown at the top of the page.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `description` | string | — | `All orders, past and present.` | A short description of what this page shows. |
+| `buttons` | array | — | `['create', 'export']` | The actions drawn in the page header, in the same three forms a grid column's `items` accepts: the name of an action from this page's `actions` block, that name adjusted with `'use' => '@action:export'`, or an action defined inline. A header button is drawn once, above the regions, with no row behind it — so a `when`, which tests a row, and a `{column}` placeholder, which is substituted from one, are both refused on it. |
+
+## `actions.*`
+
+The actions this page offers, each defined once and referenced wherever it should appear — a grid column, the page header. A region renders content; an action decides where that content appears, which is why the two are configured separately.
+
+Every entry of `actions`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `type` | string | `link` | `post` | What activating the action does: `link` navigates to it, `post` submits to it and changes data. `open` loads a region into a modal or an offcanvas; it is in the specification and refused at load until the milestone that builds it. |
+| `label` | string | — | `Archive` | The text on the control. Defaults at load to the key, first letter upper-cased, underscores turned to spaces — so `archive` needs no label and `send_to_review` probably wants one. |
+| `icon` | string | — | `archive` | An icon name shown before the label, or instead of it in a narrow action column. Set it when the action appears in a grid row, where there is rarely room for words. |
+| `to` | mixed | — | `@page:ads/{id}/edit` | Where the action goes, always as a reference and never as a bare URL: `@page:ads/{id}/edit` for a `link`, `@action:archive` for a `post`. A `{column}` in it is substituted per row while rendering, URL-encoded, from that row's own data — not to be confused with `{{user.id}}`, which resolves once at load from the signed-in administrator. A raw URL is refused because it cannot be permission-checked against a page. |
+| `permission` | string | — | `ads.update` | The permission a reader needs before the action is drawn for them at all, and before a `post` to it is accepted. One of the generated `page.action` names; anything outside that catalogue is refused when the gate is built. Set it on every action that changes data. |
+| `confirm` | string | — | `Archive this ad?` | The question asked before a `post` runs. Required on every `post` — one that changes data and asks nothing is a mis-click away from a deletion — and refused on a `link`, because confirming something that only navigates teaches people to dismiss confirmations. |
+| `when` | array | — | `['state' => 'active']` | Row conditions deciding whether the action is offered: a map of column key to the one value that column must hold. Every key must name a column the list region declares. It decides what is *offered*, so it is re-checked on the server when the action is performed — a client that was never shown it can still post it. |
+| `set` | array | — | `['state' => 'archived']` | What a `post` writes: a map of column key to the one value to store, applied to the row the action was drawn for. This is what makes `archive` mean something — `'set' => ['state' => 'archived']` — and every `post` needs it except one pointing at `@action:delete`, which deletes instead. Values are literals, never expressions and never row placeholders: an action that computes what it writes is a form, and forms already exist. Refused on a `link`, which writes nothing. |
+| `refresh` | array | — | `['grid']` | Which regions of this page re-render once the action completes, as a list of region keys. Without it the page reloads. Set it when the action changes what one region shows and nothing else. |
 
 ## `regions.*`
+
+The regions of the page, each showing data in a different way.
 
 Every entry of `regions`.
 
@@ -94,11 +118,13 @@ Presentation for the region's search box. Which columns it searches is decided p
 
 ## `regions.*.columns.*`
 
+The columns shown in this region, each described by the column schema.
+
 Every entry of `regions.*.columns`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json. |
+| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
 | `label` | string | — | `First Name` | The column header, shown above the values. Defaults at load to the key, title-cased. |
 | `source` | string | — | `user.name` | A source path: the database column or expression to read. Defaults to the key. Use `.` to join a relation, `->` to traverse JSON. Must not be set on a column carrying `collection`. |
 | `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress or percent. Defaults to the type's own. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
@@ -112,6 +138,7 @@ Every entry of `regions.*.columns`.
 | `format` | string | — | `Y-m-d H:i` | PHP date format string. For `datetime` type only. |
 | `max` | int | — | `100` | The value that counts as full. For `progress` display only. |
 | `options` | mixed | — | `['active' => ['label' => 'Active', 'color' => 'success'], 'inactive' => 'Inactive']` | The enum values, keyed by their stored value: an `@enum:` reference to a shared enumeration, or a literal map where each entry is either the label as a plain string, or `['label' => ..., 'color' => ...]` when the value needs a badge colour. For `enum` type only. |
+| `items` | array | — | `['edit', 'delete']` | The actions this column draws, one group of controls per row. Required on an `actions` column and refused on any other, which holds a value rather than controls. Each entry is one of three forms and they mix freely: the name of an action from the page's `actions` block (`'edit'`); a map carrying `'use' => '@action:edit'` together with the keys to change for this column only; or a keyed entry defining an action inline, written exactly as one in the `actions` block, for an action used only here. Every form is built and refused by the same loader, so an inline `post` still needs its `confirm`. |
 
 ## `regions.*.columns.*.filter`
 
@@ -141,6 +168,8 @@ The fields this form reads and writes, and how copying a row differs from editin
 
 
 ## `regions.*.form.fields.*`
+
+The fields of this form, each described by the field schema.
 
 Every entry of `regions.*.form.fields`.
 
