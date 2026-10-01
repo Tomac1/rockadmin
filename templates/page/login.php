@@ -81,7 +81,7 @@ $passwordId = 'ra-login-password';
             </div>
 
             <div class="ra-login-actions">
-                <button class="ra-btn ra-btn--primary ra-btn--full ra-login-submit" type="submit">Sign in</button>
+                <button class="ra-btn ra-btn--primary ra-btn--lg ra-btn--full ra-login-submit" type="submit">Sign in</button>
             </div>
         </form>
     </main>
