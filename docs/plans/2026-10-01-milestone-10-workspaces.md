@@ -266,3 +266,56 @@ milestone.
 - **Workspace-scoped admin users.** 9.3 says admins are not tenant-scoped;
   they are granted access to workspaces. That distinction is the whole design
   and is not quietly reversible.
+
+---
+
+## Where it ended up (2026-10-01)
+
+All seven tasks done. The milestone's own claim — the scope is not a filter —
+is carried by `tests/Integration/Auth/WorkspaceScopeTest.php`, which points
+every route that touches a row at another workspace's row and checks the
+database afterwards with plain SQL, on both drivers.
+
+### What the plan got right, and what it cost
+
+**The write hole was real and worse than the plan said.** `SqlWriteHandler`
+built `UPDATE … WHERE id = ?`, so a posted `_id` from another tenant passed
+the gate, carried a valid token and named a row that existed. Closing it
+meant a required argument on `WriteHandler`, which breaks every
+implementation — four of them, all audited. The scope is applied twice per
+write, to the read and to the statement: a boundary enforced only by the read
+before it is a boundary with a gap.
+
+**The open question answered itself once the costs were written down.** A
+page no workspace lists is a page nobody sees, because the two readings are
+not symmetric — the other one hides one tenant's page inside another's.
+
+### Three things found by running it
+
+**A bulk action cancelled itself on an unreachable row.** The scoped write
+raised, and atomicity rolled back the rows the person could perfectly well
+touch. A row you cannot see is not a failure; it is a row that is not there,
+the same as one somebody deleted a moment ago. Both are skipped and counted.
+
+**`scopeFor()` returning `[]` when unwired was a hole of its own**, and three
+failing tests caught it. A missing collaborator must not turn into an
+unscoped query. It passes the page's own scope through instead, so a literal
+scope still applies and an unbound placeholder is refused — loud instead of
+open.
+
+**PostgreSQL's identity sequence does not notice explicit ids.** A fixture
+inserting rows 1 and 2 by hand left the sequence at 1, so the create
+collided. MySQL's AUTO_INCREMENT moves itself. Exactly the kind of difference
+rule 3 exists to surface, found because the suite runs both.
+
+### Still open
+
+**The `Host`-header seam has no implementation here.** `ActiveWorkspace` is
+the interface Bazik would implement to resolve its tenant per request, and
+only the session-backed one ships. That is correct — a host's own resolution
+belongs to the host — but nobody has written one against the interface yet,
+so its shape is untested by use.
+
+**Milestone 9's two open items are still open**: nobody has switched
+JavaScript off, and narrow viewports remain unverified because window
+resizing does not reach the page viewport through the tooling available.

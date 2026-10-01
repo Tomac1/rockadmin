@@ -147,6 +147,52 @@ Things worth doing once, in a browser:
   one. With no JavaScript at all, a plain click does the same thing in this
   tab.
 
+## Workspaces
+
+`config/workspaces.php` declares two sites over one database — Cyklobazar.cz
+and Motobazar.cz — and `ra_test_ads.tenant_id` says which one an ad belongs
+to. The page does the rest with one line:
+
+```php
+'entity' => ['table' => 'ra_test_ads', 'scope' => ['tenant_id' => '{{workspace.tenant_id}}']],
+```
+
+That becomes `WHERE tenant_id = ?` on every query **and every write**, bound
+from the active workspace. It is not a default filter: no URL can remove it,
+and no posted `_id` can reach past it. Specification 9.3 gives the reason —
+"were the scope merely a default filter value, a user could edit it in the
+URL and read another workspace's data".
+
+The three demo administrators are arranged to make the interesting cases
+visible:
+
+| | workspaces | what they see |
+|---|---|---|
+| Alena | both | a switcher, and **All workspaces** |
+| Bohdan | Cyklobazar | no switcher at all — there is nothing to choose |
+| Cecilie | Motobazar | the exact complement of Bohdan's grid |
+
+Things worth doing once, in a browser:
+
+- Sign in as Bohdan, then as Cecilie, and look at `/p/ads`. They see
+  different ads: ids 1, 3, 5… against 2, 4, 6….
+- As Bohdan, type `/p/ads/2` into the address bar. 404 — it is Motobazar's.
+  So are its edit form and its region fragment.
+- As Bohdan, submit an *entirely valid* edit of row 2 with a real token. Also
+  404, from the scope rather than from validation: `No row '2' in
+  'ra_test_ads' to update`.
+- As Alena, press **Motobazar.cz** in the top bar. The grid changes
+  underneath you and you stay on the page. Notice it is a form, not a link —
+  browsers prefetch links on hover, and this changes what you see for the
+  rest of the session.
+- As Alena, press **All workspaces**. Both tenants' rows interleave and a
+  **Workspace** column appears saying which is which. It shows the label
+  rather than the number, because a grid saying "2" makes you remember what
+  tenant 2 was.
+- Delete `config/workspaces.php`. Everything goes back to one undivided
+  admin: no scope, no switcher, no extra check. The single-tenant case costs
+  nothing to not have.
+
 ## Identity and permission
 
 Things worth doing once, in a browser:
