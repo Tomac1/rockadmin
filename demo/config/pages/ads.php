@@ -28,6 +28,11 @@ return [
     'entity' => [
         'table' => 'ra_test_ads',
         'key' => 'id',
+        // The workspace boundary (spec 9.3). It becomes `WHERE tenant_id = ?`
+        // on every query and every write, bound from the active workspace --
+        // never a default filter, so no URL can remove it and no posted `_id`
+        // can reach past it.
+        'scope' => ['tenant_id' => '{{workspace.tenant_id}}'],
         'relations' => [
             'user' => [
                 'table' => 'ra_test_users',

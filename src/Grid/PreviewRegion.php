@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Grid;
 
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Db\CountStrategy;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Filter;
@@ -47,6 +48,19 @@ final class PreviewRegion
     public function __construct(
         private readonly RowSource $rows,
         private readonly CellFormatter $cells,
+        /**
+         * The workspace boundary this request reads inside.
+         *
+         * Specification 9.3 applies the scope "to update, delete and preview
+         * as well as list", and it is applied here rather than left on the
+         * page definition because `$page->scope` still holds unbound
+         * `Placeholder` objects -- which `QueryBuilder` refuses outright, by
+         * design, so that no query can ever carry one as text.
+         *
+         * Optional because an admin with no workspaces has no boundary and a
+         * great many tests build this without one; null answers `[]`.
+         */
+        private readonly ?RequestScope $scope = null,
     ) {
     }
 
@@ -84,7 +98,13 @@ final class PreviewRegion
         $query = new Query(
             entity: $page->entity,
             columns: $columns,
-            scope: $page->scope,
+            // Unwired, the page's own scope goes through untouched rather
+            // than being dropped. That matters: a literal scope still
+            // applies, and an unbound `Placeholder` reaches `QueryBuilder`
+            // and is refused there. Dropping it instead would turn a missing
+            // collaborator into a silently unscoped query, which is the exact
+            // failure this whole subsystem exists to prevent.
+            scope: $this->scope?->forPage($page) ?? $page->scope,
             filters: [new Filter($key, FilterOperator::Equals, $id)],
             page: DbPage::of(1, 1),
             count: CountStrategy::None,

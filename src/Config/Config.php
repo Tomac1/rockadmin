@@ -22,7 +22,7 @@ final class Config
      * it as absent and rebuild. Raise this when you add a constructor
      * argument, never otherwise.
      */
-    public const int CACHE_VERSION = 2;
+    public const int CACHE_VERSION = 3;
 
     /**
      * @param array<string, mixed> $data
@@ -36,6 +36,16 @@ final class Config
         private readonly array $data,
         private readonly Enums $enums,
         private readonly array $roles = [],
+        /**
+         * The contents of workspaces.php, in the same half-built state and
+         * for the same reason: which pages exist is the pages' business, and
+         * `Workspaces::fromConfig()` is given the catalogue by whoever has
+         * one. An empty array is the single-tenant case — no workspaces,
+         * nothing scoped, nothing to pay for.
+         *
+         * @var array<string, mixed>
+         */
+        private readonly array $workspaces = [],
         /**
          * The version of the class that produced this object. Only ever
          * differs from CACHE_VERSION for an object restored from a stale
@@ -98,9 +108,15 @@ final class Config
         return $this->roles;
     }
 
+    /** @return array<string, mixed> */
+    public function workspaces(): array
+    {
+        return $this->workspaces;
+    }
+
     /**
      * @param array{data: array<string, mixed>, enums: Enums, roles?: array<string, mixed>,
-     *              cacheVersion?: int} $state written by var_export()
+     *              workspaces?: array<string, mixed>, cacheVersion?: int} $state written by var_export()
      *
      * The defaults are not compatibility shims: they exist so that a stale
      * cache file can be *constructed* without a TypeError, and then
@@ -114,6 +130,7 @@ final class Config
             $state['data'],
             $state['enums'],
             $state['roles'] ?? [],
+            $state['workspaces'] ?? [],
             $state['cacheVersion'] ?? 1,
         );
     }

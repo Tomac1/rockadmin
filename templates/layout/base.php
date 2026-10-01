@@ -58,14 +58,40 @@ $theme = $view->shell->themeAttribute();
          */
         ?>
         <?php if ($view->shell->workspaces !== []) { ?>
-            <div class="ra-topnav__projects ra-workspaces">
-                <?php foreach ($view->shell->workspaces as $workspace) { ?>
-                    <a class="ra-topnav__proj-btn ra-workspace<?= $e($workspace->active ? ' ra-topnav__proj-btn--active' : '') ?>"
-                       href="<?= $href($workspace->url) ?>">
-                        <span class="ra-topnav__proj-dot" aria-hidden="true"></span><?= $e($workspace->label) ?>
-                    </a>
+            <?php
+            /*
+             * A form, not links. Specification 5.1: switching changes what
+             * somebody sees for the rest of the session, and browsers
+             * prefetch links on hover — a GET here would let a hover over the
+             * switcher quietly change the active workspace.
+             *
+             * One form and a `formaction` per button, the way the bulk bar
+             * does it: the token is written once and which workspace is
+             * chosen is the button that was pressed.
+             *
+             * `_ret` is where to come back to, so switching reloads the page
+             * you were looking at in the new workspace. The handler validates
+             * it as an internal path and falls back to the dashboard, because
+             * the page you were on may not be in the workspace you just moved
+             * to.
+             */
+            ?>
+            <form class="ra-topnav__projects ra-workspaces" method="post" action="<?= $href($view->shell->workspaces[0]->url) ?>">
+                <?php if ($view->shell->csrfToken !== null) { ?>
+                    <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->shell->csrfToken) ?>">
                 <?php } ?>
-            </div>
+                <input type="hidden" name="<?= $e(\RockAdmin\Form\FormFields::RETURN_TO) ?>" value="<?= $e($view->shell->currentUrl) ?>">
+                <?php foreach ($view->shell->workspaces as $workspace) { ?>
+                    <button
+                        class="ra-topnav__proj-btn ra-workspace<?= $e($workspace->active ? ' ra-topnav__proj-btn--active' : '') ?>"
+                        type="submit"
+                        formaction="<?= $href($workspace->url) ?>"
+                        <?= $e($workspace->active ? 'aria-current="true"' : '') ?>
+                    >
+                        <span class="ra-topnav__proj-dot" aria-hidden="true"></span><?= $e($workspace->label) ?>
+                    </button>
+                <?php } ?>
+            </form>
         <?php } ?>
 
         <span class="ra-topnav__spacer"></span>

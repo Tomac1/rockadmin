@@ -62,13 +62,39 @@ use RockAdmin\Db\Sql;
  */
 const DEMO_PASSWORD = 'rockadmin';
 
-/** @return list<array{email: string, name: string, roles: list<string>}> */
+/** @return list<array{email: string, name: string, roles: list<string>, workspaces: list<string>}> */
 function demoUsers(): array
 {
     return [
-        ['email' => 'super@example.com', 'name' => 'Alena Superadmin', 'roles' => ['superadmin']],
-        ['email' => 'editor@example.com', 'name' => 'Bohdan Editor', 'roles' => ['editor']],
-        ['email' => 'viewer@example.com', 'name' => 'Cecilie Viewer', 'roles' => ['viewer']],
+        // Three people, three arrangements of workspace access, because the
+        // interesting cases are all about who sees which rows:
+        //
+        // - Alena holds both, so she gets the switcher *and* the "all
+        //   workspaces" option, which 9.3 offers only to somebody who could
+        //   reach every row through the switcher anyway.
+        // - Bohdan holds one. No switcher at all -- there is nothing to
+        //   choose -- and the boundary is invisible to him, which is what it
+        //   should be when you only have one.
+        // - Cecilie holds the other one, so the two of them looking at
+        //   /p/ads see entirely different ads.
+        [
+            'email' => 'super@example.com',
+            'name' => 'Alena Superadmin',
+            'roles' => ['superadmin'],
+            'workspaces' => ['cyklobazar', 'motobazar'],
+        ],
+        [
+            'email' => 'editor@example.com',
+            'name' => 'Bohdan Editor',
+            'roles' => ['editor'],
+            'workspaces' => ['cyklobazar'],
+        ],
+        [
+            'email' => 'viewer@example.com',
+            'name' => 'Cecilie Viewer',
+            'roles' => ['viewer'],
+            'workspaces' => ['motobazar'],
+        ],
     ];
 }
 
@@ -106,7 +132,7 @@ function seedAdministrators(Connection $connection): void
                 $user['name'],
                 true,
                 json_encode($user['roles'], JSON_THROW_ON_ERROR),
-                json_encode([], JSON_THROW_ON_ERROR),
+                json_encode($user['workspaces'], JSON_THROW_ON_ERROR),
                 gmdate('Y-m-d H:i:s'),
             ],
         ));
@@ -153,7 +179,11 @@ function seedOneServer(string $label, array $server): void
         'CREATE TABLE ra_test_companies (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL)',
         'CREATE TABLE ra_test_users (id INTEGER PRIMARY KEY, company_id INTEGER, '
             . 'name VARCHAR(100) NOT NULL, email VARCHAR(100))',
-        "CREATE TABLE ra_test_ads (id {$key}, user_id INTEGER, "
+        // `tenant_id` is the workspace boundary (spec 9.3). Every ad belongs
+        // to one of the two sites `demo/config/workspaces.php` declares, and
+        // the page's `scope` is what keeps one site's ads out of the other's
+        // grid -- in the WHERE, where a URL cannot reach it.
+        "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
             . 'created_at TIMESTAMP)',
@@ -194,10 +224,13 @@ function seedOneServer(string $label, array $server): void
             : (new DateTimeImmutable('-' . $index . ' days'))->format('Y-m-d');
 
         $connection->execute(new Sql(
-            'INSERT INTO ra_test_ads (id, user_id, title, description, price, state, featured, '
-                . 'published_on, stats, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO ra_test_ads (id, tenant_id, user_id, title, description, price, state, '
+                . 'featured, published_on, stats, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 $adId,
+                // Alternating, so both workspaces have rows and switching
+                // visibly changes the grid rather than looking broken.
+                $index % 2 === 0 ? 1 : 2,
                 $userId,
                 $title,
                 "{$title} \u{2014} popis inzerátu, seeded so the textarea has something to draw.",

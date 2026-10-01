@@ -20,6 +20,7 @@ use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellAccount;
 use RockAdmin\View\ShellView;
+use RockAdmin\View\ShellWorkspaces;
 
 /**
  * Renders the whole document for `GET /p/{page}`: the shell, the page header
@@ -72,6 +73,11 @@ final class PageHandler implements Handler
          * milestone keeps finding.
          */
         private readonly ?ActionBuilder $actions = null,
+        /**
+         * The switcher in the top bar, or null for an admin that has nothing
+         * to switch. Resolved per render, like the account beside it.
+         */
+        private readonly ?ShellWorkspaces $workspaces = null,
     ) {
     }
 
@@ -95,6 +101,8 @@ final class PageHandler implements Handler
             logoutUrl: $this->account?->logoutUrl(),
             darkMode: $this->darkMode,
             csrfToken: $this->account?->csrfToken(),
+            workspaces: $this->workspaces?->all() ?? [],
+            currentUrl: $this->workspaces?->pageUrl($name) ?? '',
         );
 
         $header = new PageView(

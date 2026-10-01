@@ -24,6 +24,9 @@ final class RecordingWriteHandler implements WriteHandler
     /** @var list<array{0: string, 1: string, 2: array<string, mixed>}> verb, key, values */
     public array $calls = [];
 
+    /** @var list<array<string, mixed>> the scope each write was given, in the same order */
+    public array $scopes = [];
+
     public function __construct(
         private readonly ?Throwable $throw = null,
         private readonly string $generatedKey = '7',
@@ -39,18 +42,26 @@ final class RecordingWriteHandler implements WriteHandler
         return new WriteResult($this->generatedKey, [], $values);
     }
 
-    /** @param array<string, mixed> $values */
-    public function update(Entity $entity, string $key, array $values): WriteResult
+    /**
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $scope
+     */
+    public function update(Entity $entity, string $key, array $values, array $scope): WriteResult
     {
+        // The scope is recorded as well as the values, because the thing most
+        // worth asserting about a write is no longer only what it wrote.
         $this->calls[] = ['update', $key, $values];
+        $this->scopes[] = $scope;
         $this->raise();
 
         return new WriteResult($key, $values, $values);
     }
 
-    public function delete(Entity $entity, string $key): WriteResult
+    /** @param array<string, mixed> $scope */
+    public function delete(Entity $entity, string $key, array $scope): WriteResult
     {
         $this->calls[] = ['delete', $key, []];
+        $this->scopes[] = $scope;
         $this->raise();
 
         return new WriteResult($key, ['id' => $key], []);

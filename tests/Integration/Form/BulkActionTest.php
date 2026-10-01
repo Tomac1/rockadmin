@@ -396,6 +396,7 @@ final class BulkActionTest extends DatabaseTestCase
             new FieldValidator(),
             new SqlWriteHandler($connection),
             $reader,
+            null,
             $connection,
             new FormHandler(
                 $this->repository(),

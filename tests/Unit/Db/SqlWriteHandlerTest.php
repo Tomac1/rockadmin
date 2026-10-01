@@ -170,7 +170,7 @@ final class SqlWriteHandlerTest extends TestCase
             [['id' => 1, 'title' => 'New title', 'price' => 12000]],
         ]);
 
-        $this->handler($pdo)->update($this->entity(), '1', ['title' => 'New title']);
+        $this->handler($pdo)->update($this->entity(), '1', ['title' => 'New title'], []);
 
         $update = $pdo->executed[1];
 
@@ -192,7 +192,7 @@ final class SqlWriteHandlerTest extends TestCase
             [['id' => 2, 'title' => 'New title']],
         ]);
 
-        $result = $this->handler($pdo)->update($this->entity(), '1', ['id' => 2, 'title' => 'New title']);
+        $result = $this->handler($pdo)->update($this->entity(), '1', ['id' => 2, 'title' => 'New title'], []);
 
         $read = $pdo->executed[2];
 
@@ -218,14 +218,14 @@ final class SqlWriteHandlerTest extends TestCase
 
         $this->expectException(DbException::class);
 
-        $this->handler($pdo)->update($this->entity(), '1', ['id' => 2, 'title' => 'New title']);
+        $this->handler($pdo)->update($this->entity(), '1', ['id' => 2, 'title' => 'New title'], []);
     }
 
     public function testADeleteFiltersByTheKey(): void
     {
         $pdo = new FakePdo([[['id' => 1, 'title' => 'Horské kolo']], []]);
 
-        $this->handler($pdo)->delete($this->entity(), '1');
+        $this->handler($pdo)->delete($this->entity(), '1', []);
 
         $delete = $pdo->executed[1];
 
@@ -313,6 +313,6 @@ final class SqlWriteHandlerTest extends TestCase
 
         $this->expectException(DbException::class);
 
-        $this->handler($pdo)->update($this->entity(), '999', ['title' => 'New title']);
+        $this->handler($pdo)->update($this->entity(), '999', ['title' => 'New title'], []);
     }
 }

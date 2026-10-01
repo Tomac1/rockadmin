@@ -7,6 +7,8 @@ namespace RockAdmin\Http;
 use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
+use RockAdmin\Auth\RequestScope;
+use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
@@ -94,6 +96,20 @@ final class ActionHandler implements Handler
          * writes anything.
          */
         private readonly RowReader $reader,
+        /**
+         * The workspace boundary this request writes inside.
+         *
+         * Every write below passes it. Specification 9.3 puts the scope on
+         * update and delete as well as on reads, for the reason it gives
+         * about filters: a boundary that can be edited out of a request is
+         * not a boundary, and `_id` in a posted body is exactly that kind of
+         * edit.
+         *
+         * Optional only because a great many tests build this handler to
+         * exercise one write and have no workspaces at all; `NoScope` is the
+         * admin that never had any, and it answers `[]`.
+         */
+        private readonly ?RequestScope $scope,
         /**
          * The seam milestone 7 recorded and declined to open.
          *
@@ -204,6 +220,45 @@ final class ActionHandler implements Handler
         // audit rows for one row's one change would make the log lie about
         // what happened.
         return array_values(array_unique($keys));
+    }
+
+    /**
+     * The scope every write on this page happens inside.
+     *
+     * One method, so the five write call sites below cannot disagree -- and
+     * so that an admin with no workspaces gets `[]` from the same place
+     * rather than from five separate conditions.
+     *
+     * @return array<string, mixed>
+     */
+    private function scopeFor(PageDefinition $page): array
+    {
+        // Unwired, the page's own scope goes through untouched rather than
+        // being dropped. A literal scope still applies, and an unbound
+        // `Placeholder` is refused here rather than ignored -- because a
+        // missing collaborator turning into an unscoped UPDATE is the exact
+        // failure this subsystem exists to prevent.
+        if ($this->scope !== null) {
+            return $this->scope->forPage($page);
+        }
+
+        foreach ($page->scope as $column => $value) {
+            if ($value instanceof Placeholder) {
+                // Said here rather than left to the driver. An INSERT hands
+                // the placeholder's text to the database and comes back with
+                // "incorrect integer value '{{workspace.tenant_id}}'", which
+                // is loud but names nothing anybody can act on.
+                throw new \LogicException(\sprintf(
+                    "Page '%s' scopes '%s' to %s, and this handler was built without a RequestScope, "
+                    . 'so there is nothing to bind it from. Pass one, or the write would be unscoped.',
+                    $page->name,
+                    (string) $column,
+                    (string) $value,
+                ));
+            }
+        }
+
+        return $page->scope;
     }
 
     /**
@@ -320,9 +375,10 @@ final class ActionHandler implements Handler
 
         $applied = 0;
         $skipped = [];
+        $scope = $this->scopeFor($page);
 
         try {
-            $this->connection->transaction(function () use ($page, $action, $keys, &$applied, &$skipped): void {
+            $this->connection->transaction(function () use ($page, $action, $keys, $scope, &$applied, &$skipped): void {
                 foreach ($keys as $key) {
                     $refusal = $this->bulkRefusal($page, $action, $key);
 
@@ -332,9 +388,27 @@ final class ActionHandler implements Handler
                         continue;
                     }
 
-                    $write = $action->isDelete()
-                        ? $this->writes->delete($page->entity, $key)
-                        : $this->writes->update($page->entity, $key, $action->set);
+                    try {
+                        $write = $action->isDelete()
+                            ? $this->writes->delete($page->entity, $key, $scope)
+                            : $this->writes->update($page->entity, $key, $action->set, $scope);
+                    } catch (NoSuchRowException) {
+                        // A row the scope excludes, or one somebody removed
+                        // while this loop was running. Both are "not there"
+                        // from this reader's side, and neither is a failure
+                        // of the action -- so it is skipped and counted
+                        // rather than rolling the other thirty-nine back.
+                        //
+                        // Selecting a row in another workspace is the first
+                        // of those, and it must not be able to cancel a bulk
+                        // action over rows the person may perfectly well
+                        // touch. A selection is an argument, not an
+                        // authorisation, and an argument naming something
+                        // unreachable is an argument to ignore.
+                        $skipped[] = $key;
+
+                        continue;
+                    }
 
                     $this->record($action->key, $page, $write);
                     $applied++;
@@ -388,7 +462,7 @@ final class ActionHandler implements Handler
             $page->entity,
             $key,
             array_map(strval(...), array_keys($action->when)),
-            $page->scope,
+            $this->scopeFor($page),
         );
 
         if ($row === null) {
@@ -467,7 +541,7 @@ final class ActionHandler implements Handler
                 $page->entity,
                 $key,
                 array_map(strval(...), array_keys($action->when)),
-                $page->scope,
+                $this->scopeFor($page),
             );
 
             if ($row === null) {
@@ -490,7 +564,7 @@ final class ActionHandler implements Handler
         }
 
         try {
-            $write = $this->writes->update($page->entity, $key, $action->set);
+            $write = $this->writes->update($page->entity, $key, $action->set, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
@@ -596,7 +670,7 @@ final class ActionHandler implements Handler
     private function delete(PageDefinition $page, string $returnTo, string $key): Response
     {
         try {
-            $write = $this->writes->delete($page->entity, $key);
+            $write = $this->writes->delete($page->entity, $key, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             // Somebody deleted it between this page being drawn and the
             // button being pressed. That is a row that is gone, not a server
@@ -653,10 +727,29 @@ final class ActionHandler implements Handler
             $values = $this->withUnofferedDefaults($form, $values);
         }
 
+        // The workspace a row is placed in, or kept in. Milestone 7 recorded
+        // this as a hole and called it "safe until a row scope check exists";
+        // it exists now.
+        //
+        // On a create the scope's columns are written from the active
+        // workspace, *over* anything submitted. A form in a browser is
+        // editable and a hidden input carrying `tenant_id` is a suggestion,
+        // so the first thing anybody tries is a create into somebody else's
+        // workspace.
+        //
+        // On an update they are stripped rather than overwritten. Moving a
+        // row between workspaces is a real operation and this is not it: if
+        // it is ever wanted it is an action with its own permission, not a
+        // side effect of editing a title. And the `WHERE` the update already
+        // carries means the row was in this workspace to begin with.
+        $values = $isCreate
+            ? [...$values, ...$this->scopeFor($page)]
+            : array_diff_key($values, $this->scopeFor($page));
+
         try {
             $write = $isCreate
                 ? $this->writes->insert($page->entity, $values)
-                : $this->writes->update($page->entity, (string) $key, $values);
+                : $this->writes->update($page->entity, (string) $key, $values, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             // The row went away while this form was open. Redrawing the form
             // would offer to save into nothing; the honest answer is that

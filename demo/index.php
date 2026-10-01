@@ -29,8 +29,11 @@ use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
+use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
 use RockAdmin\Auth\SqlAuthenticator;
+use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
@@ -63,6 +66,7 @@ use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\Router;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Http\WorkspaceHandler;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
@@ -74,6 +78,7 @@ use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellAccount;
 use RockAdmin\View\ShellView;
+use RockAdmin\View\ShellWorkspaces;
 use RockAdmin\View\TemplateErrorPage;
 use RockAdmin\View\ViewFactory;
 
@@ -209,6 +214,13 @@ $authenticator = $connection !== null
 
 $identity = new Identity($session, $authenticator);
 $gate = Gate::fromConfig($config, $pages);
+
+// Workspaces (spec 9.3). The demo declares none, so `Workspaces::fromConfig()`
+// returns the empty set and nothing is scoped -- which is the single-tenant
+// case and is meant to cost nothing. The wiring is here rather than absent so
+// that adding `workspaces.php` is the only change a second tenant needs.
+$workspaces = Workspaces::fromConfig($config->workspaces(), $pages);
+$activeWorkspace = new SessionWorkspace($session, $workspaces);
 
 // One `Csrf` for the whole request, wired before the handlers because three of
 // them need it: the login form, the logout button in the navbar, and the write
@@ -375,21 +387,40 @@ $handlers->register(
 
 if ($connection !== null) {
     $rows = new SqlRowSource($connection);
+
+    // One object answers "what is this request's scope" for the grid, the
+    // preview, the form and every write. Four of them working it out
+    // separately is four chances to differ, and the one that differs is a
+    // hole rather than a bug.
+    $requestScope = new RequestScope($activeWorkspace, $identity, $workspaces);
+
     $listRegion = new ListRegion(
         $rows,
-        new QueryFactory(),
+        new QueryFactory(scope: $requestScope),
         new CellFormatter(),
         $urls,
         $gate,
         $identity,
         $csrf,
+        $requestScope,
     );
-    $previewRegion = new PreviewRegion($rows, new CellFormatter());
+    $previewRegion = new PreviewRegion($rows, new CellFormatter(), $requestScope);
 
     // The page header's own configured controls (spec 8.5). The same three
     // decisions a grid's action cell makes -- the gate, the URL from the
     // reference, the token a POST carries -- so it is the same builder.
     $actionBuilder = new ActionBuilder($gate, $identity, $urls, $csrf);
+
+    // Spec 9.3's switcher, and 5.1's reason for it being a POST: browsers
+    // prefetch links on hover, and switching changes what somebody sees for
+    // the rest of the session.
+    $handlers->register('workspace.switch', new WorkspaceHandler(
+        $workspaces,
+        $activeWorkspace,
+        $identity,
+        $csrf,
+        $urls,
+    ));
 
     $handlers->register('page.index', new PageHandler(
         $pages,
@@ -402,6 +433,7 @@ if ($connection !== null) {
         $menu,
         $account,
         $actionBuilder,
+        new ShellWorkspaces($workspaces, $activeWorkspace, $identity, $urls),
     ));
     $handlers->register('page.detail', new DetailHandler(
         $pages,
@@ -423,7 +455,7 @@ if ($connection !== null) {
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
     $reader = new RowReader($rows);
-    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity);
+    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity, $requestScope);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -446,6 +478,7 @@ if ($connection !== null) {
         new FieldValidator(),
         new SqlWriteHandler($connection),
         $reader,
+        $requestScope,
         $connection,
         $forms,
         $csrf,

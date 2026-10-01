@@ -196,6 +196,7 @@ final class ActionHandlerTest extends TestCase
             $this->writes,
             new RowReader($rows),
             null,
+            null,
             new FormHandler(
                 $this->repository(),
                 $region,

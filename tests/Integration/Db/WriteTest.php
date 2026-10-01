@@ -232,7 +232,7 @@ final class WriteTest extends DatabaseTestCase
         $entity = $this->entity();
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000, 'active' => true]);
-        $result = $handler->update($entity, '1', ['active' => false]);
+        $result = $handler->update($entity, '1', ['active' => false], []);
 
         $this->assertFalse($this->boolValue($result->after['active']));
     }
@@ -261,7 +261,7 @@ final class WriteTest extends DatabaseTestCase
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
 
-        $result = $handler->update($entity, '1', ['price' => 15000]);
+        $result = $handler->update($entity, '1', ['price' => 15000], []);
 
         $this->assertSame('Horské kolo', $result->after['title'], 'title was not part of the update');
         $this->assertSame(15000, $this->intValue($result->after['price']));
@@ -276,7 +276,7 @@ final class WriteTest extends DatabaseTestCase
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
 
-        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 15000]);
+        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 15000], []);
 
         $changed = $result->changed();
 
@@ -294,7 +294,7 @@ final class WriteTest extends DatabaseTestCase
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
 
-        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 12000]);
+        $result = $handler->update($entity, '1', ['title' => 'Horské kolo', 'price' => 12000], []);
 
         $this->assertSame([], $result->changed());
     }
@@ -314,7 +314,7 @@ final class WriteTest extends DatabaseTestCase
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
 
-        $result = $handler->update($entity, '1', ['id' => 2, 'title' => 'Nové jméno']);
+        $result = $handler->update($entity, '1', ['id' => 2, 'title' => 'Nové jméno'], []);
 
         $this->assertSame('2', $result->key);
         $this->assertSame(1, $this->intValue($result->before['id']));
@@ -336,7 +336,7 @@ final class WriteTest extends DatabaseTestCase
         $entity = $this->entity();
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
-        $handler->delete($entity, '1');
+        $handler->delete($entity, '1', []);
 
         $rows = $connection->select(new Sql('SELECT id FROM ra_test_write WHERE id = ?', [1]));
 
@@ -351,7 +351,7 @@ final class WriteTest extends DatabaseTestCase
         $entity = $this->entity();
 
         $handler->insert($entity, ['id' => 1, 'title' => 'Horské kolo', 'price' => 12000]);
-        $result = $handler->delete($entity, '1');
+        $result = $handler->delete($entity, '1', []);
 
         $this->assertSame([], $result->after);
         $this->assertSame('Horské kolo', $result->before['title']);
@@ -374,8 +374,8 @@ final class WriteTest extends DatabaseTestCase
         foreach (['update', 'delete'] as $verb) {
             try {
                 $verb === 'update'
-                    ? $handler->update($entity, '404', ['title' => 'edited'])
-                    : $handler->delete($entity, '404');
+                    ? $handler->update($entity, '404', ['title' => 'edited'], [])
+                    : $handler->delete($entity, '404', []);
 
                 $this->fail("A {$verb} of a row that is not there should be refused.");
             } catch (NoSuchRowException $e) {
@@ -536,7 +536,7 @@ final class WriteTest extends DatabaseTestCase
         $handler->insert($entity, ['id' => 4, 'title' => 'Row four', 'price' => 100]);
 
         try {
-            $handler->delete($entity, '4abc');
+            $handler->delete($entity, '4abc', []);
 
             $this->fail('Expected a malformed key to be refused rather than silently matching row 4.');
         } catch (DbException $e) {
