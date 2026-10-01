@@ -35,14 +35,6 @@ final class Assets
     public function styles(): array
     {
         return [
-            // Bootstrap is on its way out: the design system covers every
-            // block this admin uses, and `assets/css/rockadmin.css` is a
-            // theme over Bootstrap that dies with it. It stays loaded only
-            // while the templates still emit its classes -- removing it
-            // before they are converted would leave every page unstyled
-            // between two commits. It loads *first* so the design system
-            // wins wherever the two name the same element.
-            $this->url('vendor/bootstrap/bootstrap.min.css'),
             // The design system: tokens, then its components. Vendored
             // unedited apart from one line -- see ds/tokens/typography.css.
             $this->url('css/ds/styles.css'),
@@ -58,7 +50,6 @@ final class Assets
     public function scripts(): array
     {
         return [
-            $this->url('vendor/bootstrap/bootstrap.bundle.min.js'),
             $this->url('js/core.js'),
             ...$this->projectScripts,
         ];

@@ -255,3 +255,49 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-login-actions {
     margin-top: var(--space-1, 0.25rem);
 }
+
+/*
+ * The pager.
+ *
+ * The design system styles a page control as `.ra-page-btn` and its current
+ * page as `.ra-page-btn--active`; Bootstrap styled the `<li>` around it
+ * instead, which is why the state used to live there. Moving it to the
+ * control and joining the two here keeps the template from having to know
+ * which half of the markup each system cares about.
+ */
+.ra-grid-pagination-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ra-grid-pagination-item.ra-is-current .ra-page-btn {
+    background: var(--color-primary-600, #2563eb);
+    border-color: var(--color-primary-600, #2563eb);
+    color: #fff;
+}
+
+.ra-grid-pagination-item.ra-is-disabled .ra-page-btn {
+    opacity: 0.48;
+    pointer-events: none;
+}
+
+/*
+ * The shared modal and offcanvas are in every page and empty until something
+ * opens them, which is a later milestone.
+ *
+ * Bootstrap hid them until a `.show` class arrived; the design system shows
+ * them unless something hides them. So removing Bootstrap put a 420px panel
+ * across every page — the exact inverse of the toast that was invisible for a
+ * milestone because Bootstrap hid *it* without a class. Same lesson from both
+ * directions: a component whose visibility depends on a state class behaves
+ * oppositely in two systems, and the markup alone never says which.
+ *
+ * `[hidden]` is the answer rather than a class, because it is what the
+ * attribute means and because `display: flex` in a component rule beats the
+ * browser's own `[hidden] { display: none }`.
+ */
+.ra-modal[hidden],
+.ra-offcanvas[hidden] {
+    display: none !important;
+}

@@ -238,8 +238,11 @@ final class ListTemplatesTest extends TestCase
 
         $html = $this->renderer()->render('region/list/row', $row);
 
-        $this->assertStringContainsString('badge', $html);
-        $this->assertStringContainsString('text-bg-success', $html);
+        $this->assertStringContainsString('ra-badge', $html);
+        // Configuration says what the colour means -- 'success' -- and the
+        // design system names what it is. The template joins the two, so this
+        // asserts the end of that mapping rather than the word in between.
+        $this->assertStringContainsString('ra-badge--green', $html);
         $this->assertStringContainsString('Active', $html);
     }
 

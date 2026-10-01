@@ -20,23 +20,20 @@ final class AssetsTest extends TestCase
         $this->root = sys_get_temp_dir() . '/ra-assets-' . bin2hex(random_bytes(6));
         mkdir($this->root . '/css', 0o777, true);
         mkdir($this->root . '/js', 0o777, true);
-        mkdir($this->root . '/vendor/bootstrap', 0o777, true);
         mkdir($this->root . '/css/ds', 0o777, true);
         file_put_contents($this->root . '/css/rockadmin.css', ':root{}');
         file_put_contents($this->root . '/css/fonts.css', '/* faces */');
         file_put_contents($this->root . '/css/ds/styles.css', ':root{}');
         file_put_contents($this->root . '/js/core.js', '// core');
-        file_put_contents($this->root . '/vendor/bootstrap/bootstrap.min.css', '.btn{}');
-        file_put_contents($this->root . '/vendor/bootstrap/bootstrap.bundle.min.js', '// bs');
     }
 
     protected function tearDown(): void
     {
-        foreach (['css/rockadmin.css', 'css/fonts.css', 'css/ds/styles.css', 'js/core.js', 'vendor/bootstrap/bootstrap.min.css', 'vendor/bootstrap/bootstrap.bundle.min.js'] as $file) {
+        foreach (['css/rockadmin.css', 'css/fonts.css', 'css/ds/styles.css', 'js/core.js'] as $file) {
             @unlink($this->root . '/' . $file);
         }
 
-        foreach (['vendor/bootstrap', 'vendor', 'css/ds', 'css', 'js', ''] as $directory) {
+        foreach (['css/ds', 'css', 'js', ''] as $directory) {
             @rmdir(rtrim($this->root . '/' . $directory, '/'));
         }
     }
@@ -52,17 +49,17 @@ final class AssetsTest extends TestCase
 
     public function testTheSheetsLoadInTheOrderThatDecidesWhoWins(): void
     {
-        // Bootstrap first, because it is leaving and must not override what
-        // replaces it; then the design system, which is the authority on how
-        // the admin looks; then the faces it names, declared locally because
-        // this package fetches nothing; then this project's own additions.
+        // The design system first, because it is the authority on how the
+        // admin looks; then the faces it names, declared locally because this
+        // package fetches nothing; then this project's own additions, which
+        // win because they are last and are only ever what the design system
+        // has no opinion about.
         $styles = $this->assets()->styles();
 
-        $this->assertCount(4, $styles);
-        $this->assertStringContainsString('bootstrap.min.css', $styles[0]);
-        $this->assertStringContainsString('css/ds/styles.css', $styles[1]);
-        $this->assertStringContainsString('css/fonts.css', $styles[2]);
-        $this->assertStringContainsString('css/rockadmin.css', $styles[3]);
+        $this->assertCount(3, $styles);
+        $this->assertStringContainsString('css/ds/styles.css', $styles[0]);
+        $this->assertStringContainsString('css/fonts.css', $styles[1]);
+        $this->assertStringContainsString('css/rockadmin.css', $styles[2]);
     }
 
     public function testNoStylesheetIsFetchedFromAnywhereElse(): void
@@ -97,20 +94,15 @@ final class AssetsTest extends TestCase
         $this->assertSame('/css/admin-theme.css', end($styles));
     }
 
-    public function testBootstrapsBundleComesBeforeCoreJs(): void
-    {
-        $scripts = $this->assets()->scripts();
-
-        $this->assertCount(2, $scripts);
-        $this->assertStringContainsString('bootstrap.bundle.min.js', $scripts[0]);
-        $this->assertStringContainsString('core.js', $scripts[1]);
-    }
 
     public function testProjectScriptsComeLast(): void
     {
         $scripts = $this->assets([], ['/js/admin-extra.js'])->scripts();
 
-        $this->assertSame('/js/admin-extra.js', $scripts[2]);
+        // The last one, not a fixed index: Bootstrap's bundle used to sit
+        // ahead of core.js and does not any more, and this test is about
+        // order, not about how many scripts the SDK happens to ship.
+        $this->assertSame('/js/admin-extra.js', end($scripts));
     }
 
     public function testAnAssetUrlGoesThroughTheAssetsRoute(): void

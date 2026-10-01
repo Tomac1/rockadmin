@@ -18,16 +18,16 @@
 ?>
 <?php if ($view->hasPrevious || $view->hasNext || \count($view->pages) > 1) { ?>
     <nav class="ra-grid-pagination" aria-label="Pagination">
-        <ul class="ra-grid-pagination-list pagination">
-            <li class="ra-grid-pagination-item ra-grid-pagination-prev page-item<?= $e($view->hasPrevious ? '' : ' disabled') ?>">
+        <ul class="ra-table-footer__pages ra-grid-pagination-list">
+            <li class="ra-grid-pagination-item ra-grid-pagination-prev<?= $e($view->hasPrevious ? '' : ' ra-is-disabled') ?>">
                 <?php if ($view->hasPrevious && $view->previousUrl !== null) { ?>
-                    <a class="ra-grid-pagination-link page-link" href="<?= $href($view->previousUrl) ?>" data-ra-action="paginate" rel="prev">Previous</a>
+                    <a class="ra-page-btn ra-grid-pagination-link" href="<?= $href($view->previousUrl) ?>" data-ra-action="paginate" rel="prev">Previous</a>
                 <?php } else { ?>
                     <span class="ra-grid-pagination-link page-link">Previous</span>
                 <?php } ?>
             </li>
             <?php foreach ($view->pages as $page) { ?>
-                <li class="ra-grid-pagination-item page-item<?= $e($page['current'] ? ' active' : '') ?>">
+                <li class="ra-grid-pagination-item<?= $e($page['current'] ? ' ra-is-current' : '') ?>">
                     <?php if ($page['current']) { ?>
                         <span class="ra-grid-pagination-link page-link" aria-current="page"><?= $e($page['number']) ?></span>
                     <?php } else { ?>
@@ -35,7 +35,7 @@
                     <?php } ?>
                 </li>
             <?php } ?>
-            <li class="ra-grid-pagination-item ra-grid-pagination-next page-item<?= $e($view->hasNext ? '' : ' disabled') ?>">
+            <li class="ra-grid-pagination-item ra-grid-pagination-next<?= $e($view->hasNext ? '' : ' ra-is-disabled') ?>">
                 <?php if ($view->hasNext && $view->nextUrl !== null) { ?>
                     <a class="ra-grid-pagination-link page-link" href="<?= $href($view->nextUrl) ?>" data-ra-action="paginate" rel="next">Next</a>
                 <?php } else { ?>

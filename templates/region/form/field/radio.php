@@ -34,10 +34,10 @@ $group = [
     'aria-describedby' => \RockAdmin\Form\FormControl::describedBy($view),
 ];
 ?>
-<div class="ra-form-control ra-form-control-radio"<?= $attrs($group) ?>>
+<div class="ra-radio-input ra-form-control ra-form-control-radio"<?= $attrs($group) ?>>
     <?php foreach ($view->options as $option) { ?>
         <?php $optionId = \RockAdmin\Form\FormControl::optionId($view, $index); ?>
-        <div class="ra-form-radio form-check">
+        <div class="ra-radio-group ra-form-radio">
             <input
                 class="ra-form-radio-input ra-checkbox-input"
                 type="radio"
@@ -50,7 +50,7 @@ $group = [
                     'disabled' => $view->readonly,
                 ]) ?>
             >
-            <label class="ra-form-radio-label form-check-label" for="<?= $e($optionId) ?>"><?= $e($option->label) ?></label>
+            <label class="ra-radio-label ra-form-radio-label" for="<?= $e($optionId) ?>"><?= $e($option->label) ?></label>
         </div>
         <?php ++$index; ?>
     <?php } ?>

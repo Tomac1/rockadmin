@@ -103,7 +103,7 @@ $theme = $view->shell->themeAttribute();
                     <?php if ($item->children !== []) { ?>
                         <div class="ra-snav-dd ra-submenu">
                             <?php foreach ($item->children as $child) { ?>
-                                <a class="ra-snav-dd__item ra-submenu-entry <?= $e($child->classes()) ?>" href="<?= $href($child->url) ?>">
+                                <a class="ra-snav-dd__item<?= $e($child->active ? ' ra-snav-dd__item--active' : '') ?> ra-submenu-entry <?= $e($child->classes()) ?>" href="<?= $href($child->url) ?>">
                                     <span class="ra-snav-dd__item-label"><?= $e($child->label) ?></span>
                                 </a>
                             <?php } ?>
@@ -118,15 +118,15 @@ $theme = $view->shell->themeAttribute();
 
     <?= $partial('ui/modal') ?>
 
-    <div class="ra-offcanvas offcanvas offcanvas-end" tabindex="-1" id="ra-offcanvas" aria-hidden="true" data-ra-offcanvas>
-        <div class="ra-offcanvas-header offcanvas-header">
-            <h5 class="ra-offcanvas-title offcanvas-title"></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    <div class="ra-offcanvas ra-offcanvas--right" tabindex="-1" id="ra-offcanvas" hidden data-ra-offcanvas>
+        <div class="ra-offcanvas__header ra-offcanvas-header">
+            <h5 class="ra-offcanvas__title ra-offcanvas-title"></h5>
+            <button type="button" class="ra-offcanvas__close" data-ra-dismiss="offcanvas" aria-label="Close"></button>
         </div>
-        <div class="ra-offcanvas-body offcanvas-body"></div>
+        <div class="ra-offcanvas__body ra-offcanvas-body"></div>
     </div>
 
-    <div class="ra-toast-container toast-container" aria-live="polite" aria-atomic="true">
+    <div class="ra-toast-container" aria-live="polite" aria-atomic="true">
         <?php foreach ($view->shell->flashes as $flash) { ?>
             <?= $partial('ui/toast', $flash) ?>
         <?php } ?>

@@ -30,7 +30,7 @@
     <form class="ra-action-form ra-action-form-<?= $e($view->key) ?>" method="post" action="<?= $href($view->url) ?>">
         <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->token) ?>">
         <button
-            class="<?= $e($view->classes()) ?> btn btn-sm btn-outline-secondary"
+            class="ra-btn ra-btn--outline ra-btn--sm <?= $e($view->classes()) ?>"
             type="submit"
             data-ra-confirm="<?= $e($view->confirm) ?>"
         >
@@ -41,7 +41,7 @@
         </button>
     </form>
 <?php } else { ?>
-    <a class="<?= $e($view->classes()) ?> btn btn-sm btn-outline-secondary" href="<?= $href($view->url) ?>">
+    <a class="ra-btn ra-btn--outline ra-btn--sm <?= $e($view->classes()) ?>" href="<?= $href($view->url) ?>">
         <?php if ($view->icon !== null) { ?>
             <?= $partial('ui/icon', $view->icon) ?>
         <?php } ?>

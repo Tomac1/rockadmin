@@ -71,9 +71,13 @@ final class ViewObjectsTest extends TestCase
     public static function buttonIdentities(): array
     {
         return [
-            'create, primary' => ['create', 'primary', 'ra-btn ra-btn-create btn btn-primary'],
-            'export, secondary' => ['export', 'secondary', 'ra-btn ra-btn-export btn btn-secondary'],
-            'delete, danger' => ['delete', 'danger', 'ra-btn ra-btn-delete btn btn-danger'],
+            'create, primary' => ['create', 'primary', 'ra-btn ra-btn-create ra-btn--primary ra-btn--sm'],
+            'export, secondary' => ['export', 'secondary', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
+            'delete, danger' => ['delete', 'danger', 'ra-btn ra-btn-delete ra-btn--danger ra-btn--sm'],
+            // A style the design system has no button for still gets a button:
+            // the neutral one, never a class list that styles nothing.
+            'export, info' => ['export', 'info', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
+            'export, nonsense' => ['export', 'chartreuse', 'ra-btn ra-btn-export ra-btn--secondary ra-btn--sm'],
         ];
     }
 
@@ -93,8 +97,8 @@ final class ViewObjectsTest extends TestCase
         $plain = new MenuItemView('Ads', '/admin/p/ads');
         $active = new MenuItemView('Ads', '/admin/p/ads', active: true);
 
-        $this->assertSame('ra-menu-item nav-link', $plain->classes());
-        $this->assertSame('ra-menu-item ra-menu-item-active nav-link active', $active->classes());
+        $this->assertSame('ra-menu-item', $plain->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-active', $active->classes());
     }
 
     public function testAMenuItemCarriesAnIdentityClassWhenGivenAKey(): void
@@ -105,8 +109,8 @@ final class ViewObjectsTest extends TestCase
         $plain = new MenuItemView('Ads', '/admin/p/ads', key: 'ads');
         $active = new MenuItemView('Ads', '/admin/p/ads', active: true, key: 'ads');
 
-        $this->assertSame('ra-menu-item ra-menu-item-ads nav-link', $plain->classes());
-        $this->assertSame('ra-menu-item ra-menu-item-ads ra-menu-item-active nav-link active', $active->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-ads', $plain->classes());
+        $this->assertSame('ra-menu-item ra-menu-item-ads ra-menu-item-active', $active->classes());
     }
 
     public function testAMenuItemsKeyIsRefusedTheSameWayAnyIdentityIs(): void

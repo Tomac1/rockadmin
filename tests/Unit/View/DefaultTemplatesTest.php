@@ -315,7 +315,10 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertSame(1, substr_count($html, 'id="ra-offcanvas"'));
 
         // Empty, because their contents arrive as a fragment.
-        $this->assertStringContainsString('<div class="ra-modal-content modal-content"></div>', $html);
-        $this->assertStringContainsString('<div class="ra-offcanvas-body offcanvas-body"></div>', $html);
+        // Empty on purpose: a later milestone fills them from a fragment.
+        // Asserted by the identity class rather than the whole element, so a
+        // styling change does not read as a behaviour change.
+        $this->assertStringContainsString('ra-modal-content"></div>', $html);
+        $this->assertStringContainsString('ra-offcanvas-body"></div>', $html);
     }
 }

@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use RockAdmin\View\ButtonView;
 use SplFileInfo;
 
 /**
@@ -70,6 +71,48 @@ final class ButtonModifierTest extends TestCase
         // it behaved for its first three revisions while I read its silence
         // as the code being wrong.
         $this->assertGreaterThan(4, $examined, 'No buttons were examined; the pattern has stopped matching.');
+    }
+
+    public function testAButtonBuiltInPhpNamesModifiersTheDesignSystemDefines(): void
+    {
+        // The test above reads templates, so it saw none of this: the page
+        // header's buttons are `ButtonView`s and their class list is composed
+        // in PHP. They shipped as `ra-btn btn btn-primary` -- Bootstrap's
+        // vocabulary, no size, 16px tall -- and passed every test here while
+        // doing it.
+        $known = $this->modifiersTheDesignSystemDefines();
+        $sizes = array_values(array_intersect(['sm', 'md', 'lg', 'xl'], $known));
+
+        // Styles a host may pass, including ones the design system has no
+        // button for: each must still come out as a button.
+        $styles = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark', 'link', 'chartreuse'];
+
+        foreach ($styles as $style) {
+            $classes = preg_split('/\s+/', (new ButtonView('export', 'Label', '/x', style: $style))->classes()) ?: [];
+
+            $this->assertContains('ra-btn', $classes, "style '{$style}' does not produce a button at all.");
+
+            $modifiers = [];
+
+            foreach ($classes as $token) {
+                if (str_starts_with($token, 'ra-btn--')) {
+                    $modifiers[] = substr($token, 8);
+                }
+            }
+
+            foreach ($modifiers as $modifier) {
+                $this->assertContains(
+                    $modifier,
+                    $known,
+                    "style '{$style}' emits ra-btn--{$modifier}, which the design system does not define.",
+                );
+            }
+
+            $this->assertNotEmpty(
+                array_intersect($modifiers, $sizes),
+                "style '{$style}' emits a button with no size modifier.",
+            );
+        }
     }
 
     /** @return list<string> */

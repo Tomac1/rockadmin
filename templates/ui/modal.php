@@ -7,8 +7,8 @@
  * without carrying its own copy of this markup.
  */
 ?>
-<div class="ra-modal modal" id="ra-modal" tabindex="-1" aria-hidden="true" data-ra-modal>
-    <div class="ra-modal-dialog modal-dialog">
-        <div class="ra-modal-content modal-content"></div>
+<div class="ra-modal" id="ra-modal" tabindex="-1" hidden data-ra-modal>
+    <div class="ra-modal__dialog ra-modal-dialog">
+        <div class="ra-modal__body ra-modal-content"></div>
     </div>
 </div>

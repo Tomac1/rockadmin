@@ -27,7 +27,7 @@
 $errors = $view->allErrors();
 ?>
 <?php if ($errors !== []) { ?>
-    <div class="ra-form-errors alert alert-danger" role="alert">
+    <div class="ra-alert ra-alert--error ra-form-errors" role="alert">
         <p class="ra-form-errors-title">This form was not saved:</p>
         <ul class="ra-form-errors-list">
             <?php foreach ($errors as $error) { ?>

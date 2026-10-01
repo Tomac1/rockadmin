@@ -23,6 +23,6 @@
 ?>
 <?php if ($view->createUrl !== null) { ?>
     <div class="ra-grid-header">
-        <a class="ra-grid-create btn btn-primary" href="<?= $href($view->createUrl) ?>">New <?= $e($view->pageName) ?></a>
+        <a class="ra-btn ra-btn--primary ra-btn--sm ra-grid-create" href="<?= $href($view->createUrl) ?>">New <?= $e($view->pageName) ?></a>
     </div>
 <?php } ?>
