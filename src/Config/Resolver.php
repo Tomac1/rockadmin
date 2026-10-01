@@ -37,7 +37,27 @@ final class Resolver
      * a link to nowhere. `@enum:` is matched separately, above, because it
      * predates this and its key pattern is wider.
      */
-    private const REFERENCE_NAMESPACES = ['page', 'action', 'region'];
+    private const array REFERENCE_NAMESPACES = ['page', 'action', 'region'];
+
+    /**
+     * Every `@namespace:` this class claims, including `@enum:`.
+     *
+     * Public because `Definitions` has to know it. A shared definition is
+     * referenced as `['use' => '@column:id']` and that mechanism runs before
+     * this one, over the whole file, claiming every `use` key it finds — so
+     * without this list `['use' => '@action:preview']`, which specification
+     * 8.5 documents as the way to adjust a named action where it is used,
+     * answers "Unknown definition namespace 'action'": a refusal about a
+     * mechanism the page file was not using. The namespaces here belong to
+     * references, `Definitions` owns the rest, and the two no longer have to
+     * agree by coincidence.
+     *
+     * @return list<string>
+     */
+    public static function referenceNamespaces(): array
+    {
+        return [...self::REFERENCE_NAMESPACES, 'enum'];
+    }
 
     /**
      * A page name, an action verb, a literal path segment.

@@ -16,6 +16,10 @@ final class PageView
     /**
      * @param list<ButtonView>      $buttons
      * @param array<string, string> $slots   rendered HTML per layout slot
+     * @param list<ActionView>      $actions the page header's own configured controls (spec 8.5,
+     *                                        `header.buttons`), already filtered by the gate. They are
+     *                                        separate from `$buttons` because a `ButtonView` is always a
+     *                                        link, and a `post` action is a form carrying a token
      */
     public function __construct(
         public readonly string $key,
@@ -25,6 +29,7 @@ final class PageView
         public readonly string $type = 'list',
         public readonly array $buttons = [],
         public readonly array $slots = [],
+        public readonly array $actions = [],
     ) {
     }
 

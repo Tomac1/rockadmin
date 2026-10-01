@@ -42,9 +42,10 @@ final class TemplateStandardsTest extends TestCase
         // (four region/form/*.php plus eleven region/form/field/*.php, one per
         // field type), for fifty-one, and task 8 added
         // region/list/header.php, for fifty-two. Milestone 5 task 4 added
-        // page/login.php, for fifty-three. This fails loudly if a future
-        // refactor moves the directory.
-        $this->assertGreaterThanOrEqual(53, \count(iterator_to_array(self::templates())));
+        // page/login.php, for fifty-three. Milestone 8 task 4 added
+        // ui/action.php and region/list/cell/actions.php, for fifty-five. This
+        // fails loudly if a future refactor moves the directory.
+        $this->assertGreaterThanOrEqual(55, \count(iterator_to_array(self::templates())));
     }
 
     #[DataProvider('templates')]

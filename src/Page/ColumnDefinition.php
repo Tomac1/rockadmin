@@ -17,7 +17,11 @@ use RockAdmin\Db\Collection;
  */
 final class ColumnDefinition
 {
-    /** @param array<string, mixed> $options currency, format, max, enum options */
+    /**
+     * @param array<string, mixed>     $options currency, format, max, enum options
+     * @param list<ActionDefinition>   $actions the controls an `actions` column draws (spec 8.5), in the
+     *                                           order they were written, empty for every other type
+     */
     public function __construct(
         public readonly ?FilterDefinition $filter,
         public readonly ?Collection $collection,
@@ -32,6 +36,7 @@ final class ColumnDefinition
         public readonly ?string $width,
         public readonly string $class,
         public readonly array $options = [],
+        public readonly array $actions = [],
     ) {
     }
 }

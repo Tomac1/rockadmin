@@ -110,6 +110,13 @@ final class QueryFactory
                 continue;
             }
 
+            // An actions column draws controls, not a value (spec 8.5): it
+            // names no database column, so asking for one would be a SQL error
+            // on every row of the page.
+            if ($column->type->isActions()) {
+                continue;
+            }
+
             $columns[$column->key] = $column->source;
         }
 

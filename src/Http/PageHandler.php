@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace RockAdmin\Http;
 
+use LogicException;
+use RockAdmin\Grid\ActionBuilder;
 use RockAdmin\Grid\GridState;
 use RockAdmin\Grid\ListRegion;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\Page\RegionType;
+use RockAdmin\View\ActionView;
 use RockAdmin\View\Assets;
 use RockAdmin\View\FlashBag;
 use RockAdmin\View\Menu;
@@ -60,6 +63,15 @@ final class PageHandler implements Handler
          * what a shell without one looks like.
          */
         private readonly ?ShellAccount $account = null,
+        /**
+         * What turns this page's `header.buttons` (spec 8.5) into controls:
+         * the gate filter, the URL from each action's reference, and a token
+         * for a `post`. Null draws no header buttons — and a page that declares
+         * some is refused rather than quietly rendered without them, because a
+         * configured control that silently never appears is the defect this
+         * milestone keeps finding.
+         */
+        private readonly ?ActionBuilder $actions = null,
     ) {
     }
 
@@ -85,7 +97,13 @@ final class PageHandler implements Handler
             csrfToken: $this->account?->csrfToken(),
         );
 
-        $header = new PageView($page->name, $page->title, $shell, description: $page->description);
+        $header = new PageView(
+            $page->name,
+            $page->title,
+            $shell,
+            description: $page->description,
+            actions: $this->headerButtons($page),
+        );
 
         $main = $this->renderer->render('page/header', $header) . $this->regions($page, $request);
 
@@ -100,6 +118,24 @@ final class PageHandler implements Handler
         );
 
         return Response::html($html);
+    }
+
+    /** @return list<ActionView> */
+    private function headerButtons(PageDefinition $page): array
+    {
+        if ($page->headerButtons === []) {
+            return [];
+        }
+
+        if ($this->actions === null) {
+            throw new LogicException(\sprintf(
+                "Page '%s' declares header buttons, and this handler was built without an ActionBuilder, so "
+                . 'they could only be drawn by ignoring the gate. Pass one to PageHandler.',
+                $page->name,
+            ));
+        }
+
+        return $this->actions->forPage($page->name, $page->headerButtons);
     }
 
     private function regions(PageDefinition $page, Request $request): string

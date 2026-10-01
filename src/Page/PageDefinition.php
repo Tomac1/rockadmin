@@ -22,6 +22,8 @@ final class PageDefinition
      *                                                  survives unresolved, ready to bind per request
      * @param array<string, RegionDefinition> $regions keyed by the region's own key
      * @param array<string, ActionDefinition> $actions keyed by the action's own key
+     * @param list<ActionDefinition>          $headerButtons the page header's own controls (spec 8.5), in
+     *                                                        the order `header.buttons` wrote them
      */
     public function __construct(
         public readonly string $name,
@@ -32,6 +34,7 @@ final class PageDefinition
         public readonly array $scope,
         public readonly array $regions,
         public readonly array $actions = [],
+        public readonly array $headerButtons = [],
     ) {
     }
 

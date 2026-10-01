@@ -6,6 +6,7 @@ namespace RockAdmin\Grid;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use LogicException;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
@@ -112,6 +113,17 @@ final class CellFormatter
         }
 
         [$text, $percent, $variant, $attributes] = match ($column->type) {
+            // An actions column has no value to format: its cell is built by
+            // `ListRegion` from the action list, because the controls it draws
+            // depend on who is reading and on the whole row rather than on one
+            // column's value. Reaching here means a caller formatted a column
+            // it should have handed to `ActionBuilder`, and an empty cell would
+            // be a row of silently missing controls.
+            ColumnType::Actions => throw new LogicException(\sprintf(
+                "The column '%s' is an actions column, which has no value to format. Its cell is built from "
+                . 'the actions it declares, not from a row value.',
+                $column->key,
+            )),
             ColumnType::Text => [$this->stringify($value), null, null, []],
             ColumnType::Int => $this->formatInt($column, $value),
             ColumnType::Money => [$this->formatMoney($column, $value), null, null, []],

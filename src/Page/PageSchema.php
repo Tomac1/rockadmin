@@ -91,6 +91,16 @@ final class PageSchema
                         description: 'A short description of what this page shows.',
                         example: 'All orders, past and present.',
                     ),
+                    'buttons' => new SchemaKey(
+                        ValueType::Array,
+                        description: 'The actions drawn in the page header, in the same three forms a grid '
+                            . 'column\'s `items` accepts: the name of an action from this page\'s `actions` '
+                            . 'block, that name adjusted with `\'use\' => \'@action:export\'`, or an action '
+                            . 'defined inline. A header button is drawn once, above the regions, with no row '
+                            . 'behind it — so a `when`, which tests a row, and a `{column}` placeholder, '
+                            . 'which is substituted from one, are both refused on it.',
+                        example: ['create', 'export'],
+                    ),
                 ]),
             ),
             'actions' => new SchemaKey(

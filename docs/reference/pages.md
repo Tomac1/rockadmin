@@ -74,6 +74,7 @@ Optional content shown at the top of the page.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `description` | string | — | `All orders, past and present.` | A short description of what this page shows. |
+| `buttons` | array | — | `['create', 'export']` | The actions drawn in the page header, in the same three forms a grid column's `items` accepts: the name of an action from this page's `actions` block, that name adjusted with `'use' => '@action:export'`, or an action defined inline. A header button is drawn once, above the regions, with no row behind it — so a `when`, which tests a row, and a `{column}` placeholder, which is substituted from one, are both refused on it. |
 
 ## `actions.*`
 
@@ -121,7 +122,7 @@ Every entry of `regions.*.columns`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json. |
+| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
 | `label` | string | — | `First Name` | The column header, shown above the values. Defaults at load to the key, title-cased. |
 | `source` | string | — | `user.name` | A source path: the database column or expression to read. Defaults to the key. Use `.` to join a relation, `->` to traverse JSON. Must not be set on a column carrying `collection`. |
 | `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress or percent. Defaults to the type's own. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
@@ -135,6 +136,7 @@ Every entry of `regions.*.columns`.
 | `format` | string | — | `Y-m-d H:i` | PHP date format string. For `datetime` type only. |
 | `max` | int | — | `100` | The value that counts as full. For `progress` display only. |
 | `options` | mixed | — | `['active' => ['label' => 'Active', 'color' => 'success'], 'inactive' => 'Inactive']` | The enum values, keyed by their stored value: an `@enum:` reference to a shared enumeration, or a literal map where each entry is either the label as a plain string, or `['label' => ..., 'color' => ...]` when the value needs a badge colour. For `enum` type only. |
+| `items` | array | — | `['edit', 'delete']` | The actions this column draws, one group of controls per row. Required on an `actions` column and refused on any other, which holds a value rather than controls. Each entry is one of three forms and they mix freely: the name of an action from the page's `actions` block (`'edit'`); a map carrying `'use' => '@action:edit'` together with the keys to change for this column only; or a keyed entry defining an action inline, written exactly as one in the `actions` block, for an action used only here. Every form is built and refused by the same loader, so an inline `post` still needs its `confirm`. |
 
 ## `regions.*.columns.*.filter`
 

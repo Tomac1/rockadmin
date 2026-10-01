@@ -271,6 +271,15 @@ final class PageRepository
 
         /** @var array<string, mixed> $regionsConfig */
         $regionsConfig = \is_array($config['regions'] ?? null) ? $config['regions'] : [];
+
+        /** @var array<string, mixed> $actionsConfig */
+        $actionsConfig = \is_array($config['actions'] ?? null) ? $config['actions'] : [];
+
+        // Read before any region is built, because an action defined inside a
+        // column's `items` is built while its own region still is. See
+        // `ActionContext`.
+        $context = ActionContext::of($regionsConfig);
+
         $regions = [];
 
         foreach ($regionsConfig as $regionKey => $regionConfig) {
@@ -279,7 +288,14 @@ final class PageRepository
             }
 
             /** @var array<string, mixed> $regionConfig */
-            $regions[(string) $regionKey] = $this->buildRegion($name, (string) $regionKey, $regionConfig, $entity);
+            $regions[(string) $regionKey] = $this->buildRegion(
+                $name,
+                (string) $regionKey,
+                $regionConfig,
+                $entity,
+                $actionsConfig,
+                $context,
+            );
         }
 
         // A preview region's fields (spec 8.5) are resolved in a second pass,
@@ -310,8 +326,6 @@ final class PageRepository
             );
         }
 
-        /** @var array<string, mixed> $actionsConfig */
-        $actionsConfig = \is_array($config['actions'] ?? null) ? $config['actions'] : [];
         $actions = [];
 
         foreach ($actionsConfig as $actionKey => $actionConfig) {
@@ -324,12 +338,149 @@ final class PageRepository
                 $name,
                 (string) $actionKey,
                 $actionConfig,
-                $regions,
-                $grid,
+                $context,
             );
         }
 
-        return new PageDefinition($name, $title, $layout, $description, $entity, $scope, $regions, $actions);
+        $headerButtons = \is_array($header)
+            ? $this->buildActionItems($name, 'header button', $header['buttons'] ?? null, $actionsConfig, $context, true)
+            : [];
+
+        return new PageDefinition(
+            $name,
+            $title,
+            $layout,
+            $description,
+            $entity,
+            $scope,
+            $regions,
+            $actions,
+            $headerButtons,
+        );
+    }
+
+    /**
+     * An `items` list, or a `header.buttons` list, in the three forms
+     * specification 8.5 gives — a named action, a named action adjusted here,
+     * and one defined inline — mixed in any order.
+     *
+     * **Every form goes through `buildAction()`.** That is the whole shape of
+     * this method: it decides which configuration array an entry stands for and
+     * hands it over, so an inline `post` with no `confirm`, an inline `when` on
+     * a column nobody declared and an inline bare URL are refused by the five
+     * refusals that already exist, rather than by a second copy of them that
+     * would drift. A named entry is looked up in the page's own raw `actions`
+     * block and built again from it; building it twice costs nothing and means
+     * there is one construction path rather than a cache that has to be
+     * populated in the right order.
+     *
+     * An adjusted entry merges its own keys over the named action's, overrides
+     * winning and a whole key at a time: `when` is one value, and merging two
+     * `when` maps would produce a third condition set neither author wrote.
+     *
+     * @param  string                 $what        names the carrier in every refusal: "column 'tools'"
+     * @param  array<string, mixed>   $pageActions the page's own `actions` block, raw
+     * @param  bool                   $rowless     true where there is no row behind the control
+     * @return list<ActionDefinition>
+     */
+    private function buildActionItems(
+        string $pageName,
+        string $what,
+        mixed $items,
+        array $pageActions,
+        ActionContext $context,
+        bool $rowless,
+    ): array {
+        if (!\is_array($items)) {
+            return [];
+        }
+
+        $where = "Page '{$pageName}': {$what}";
+        $built = [];
+
+        foreach ($items as $index => $item) {
+            [$key, $config] = $this->actionItem($where, $index, $item, $pageActions);
+            $built[] = $this->buildAction($pageName, $key, $config, $context, $what, $rowless);
+        }
+
+        return $built;
+    }
+
+    /**
+     * Which of the three forms one entry is, and what action configuration it
+     * therefore stands for.
+     *
+     * @param  array<string, mixed>                 $pageActions
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function actionItem(string $where, int|string $index, mixed $item, array $pageActions): array
+    {
+        if (\is_string($item)) {
+            return [$item, $this->namedAction($where, $item, $pageActions)];
+        }
+
+        if (!\is_array($item)) {
+            throw new PageException(\sprintf(
+                '%s has an entry that is a %s. An entry names an action of this page, adjusts one with '
+                . "'use' => '@action:...', or defines one inline under a key of its own.",
+                $where,
+                get_debug_type($item),
+            ));
+        }
+
+        /** @var array<string, mixed> $item */
+        if (\array_key_exists('use', $item)) {
+            $reference = $item['use'];
+
+            if (!$reference instanceof ActionReference) {
+                throw new PageException(\sprintf(
+                    "%s has a 'use' of %s. An entry adjusted here names the action it starts from as "
+                    . "'@action:edit' — an action of this page, never a page or a shared definition.",
+                    $where,
+                    \is_string($reference) ? "'{$reference}'" : get_debug_type($reference),
+                ));
+            }
+
+            unset($item['use']);
+
+            return [
+                $reference->action,
+                array_replace($this->namedAction($where, $reference->action, $pageActions), $item),
+            ];
+        }
+
+        if (\is_int($index)) {
+            throw new PageException(\sprintf(
+                '%s defines an action inline with no key, so nothing names it — and its key is what becomes '
+                . "its CSS class and what a permission is read against. Write it as 'log' => [...], or use "
+                . "'use' => '@action:...' to start from one the page already declares.",
+                $where,
+            ));
+        }
+
+        return [$index, $item];
+    }
+
+    /**
+     * @param  array<string, mixed>  $pageActions
+     * @return array<string, mixed>
+     */
+    private function namedAction(string $where, string $key, array $pageActions): array
+    {
+        $config = $pageActions[$key] ?? null;
+
+        if (!\is_array($config)) {
+            $nearest = Schema::nearestOf(array_map(strval(...), array_keys($pageActions)), $key);
+            $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+            throw new PageException(
+                "{$where} names the action '{$key}', which this page's 'actions' block does not "
+                . "declare.{$suffix}",
+            );
+        }
+
+        /** @var array<string, mixed> $config */
+        return $config;
     }
 
     /**
@@ -345,17 +496,24 @@ final class PageRepository
      * which lives in `Auth` because `Auth` depends on `Page` and the reverse
      * would be a cycle.
      *
-     * @param array<string, mixed>            $actionConfig
-     * @param array<string, RegionDefinition> $regions
+     * @param array<string, mixed> $actionConfig
+     * @param ?string              $within what carries this action, for the refusals to name: null for the
+     *                                      page's own `actions` block, "column 'tools'" or 'header button'
+     *                                      for an action reached through an `items` list
+     * @param bool                 $rowless true where the control is drawn once with no row behind it, so a
+     *                                      `when` and a `{column}` placeholder can never mean anything
      */
     private function buildAction(
         string $pageName,
         string $actionKey,
         array $actionConfig,
-        array $regions,
-        ?RegionDefinition $grid,
+        ActionContext $context,
+        ?string $within = null,
+        bool $rowless = false,
     ): ActionDefinition {
-        $where = "Page '{$pageName}': action '{$actionKey}'";
+        $where = "Page '{$pageName}': "
+            . ($within === null ? '' : "{$within}: ")
+            . "action '{$actionKey}'";
         $typeValue = \is_string($actionConfig['type'] ?? null) ? $actionConfig['type'] : 'link';
 
         try {
@@ -364,7 +522,7 @@ final class PageRepository
             throw new PageException("{$where}: {$e->getMessage()}", previous: $e);
         }
 
-        $to = $this->actionTarget($where, $type, $actionConfig);
+        $to = $this->actionTarget($where, $type, $actionConfig, $rowless);
         $confirm = \is_string($actionConfig['confirm'] ?? null) ? $actionConfig['confirm'] : '';
 
         if ($type->isWrite() && $confirm === '') {
@@ -395,8 +553,8 @@ final class PageRepository
             icon: \is_string($actionConfig['icon'] ?? null) ? $actionConfig['icon'] : '',
             permission: \is_string($actionConfig['permission'] ?? null) ? $actionConfig['permission'] : '',
             confirm: $confirm,
-            when: $this->actionConditions($where, $actionConfig, $grid),
-            refresh: $this->actionRefresh($where, $actionConfig, $regions),
+            when: $this->actionConditions($where, $actionConfig, $context, $rowless),
+            refresh: $this->actionRefresh($where, $actionConfig, $context),
         );
     }
 
@@ -424,6 +582,7 @@ final class PageRepository
         string $where,
         ActionType $type,
         array $actionConfig,
+        bool $rowless = false,
     ): PageReference|ActionReference {
         $to = $actionConfig['to'] ?? null;
 
@@ -463,6 +622,22 @@ final class PageRepository
             $this->assertPageExists($to, $where);
         }
 
+        // A row placeholder is substituted while a region renders, from the
+        // row being drawn. A control with no row behind it has nothing to
+        // substitute from, and leaving it would carry the braces all the way
+        // to `UrlGenerator::reference()`, which refuses them with a message
+        // about a template -- three layers from the page file that wrote this.
+        if ($rowless && $to instanceof PageReference && preg_match('/\{[^}]*}/', $to->suffix, $match) === 1) {
+            throw new PageException(\sprintf(
+                "%s points at '%s', and '%s' is a row placeholder: it is substituted per row, from the row "
+                . 'being rendered, and this control is drawn once with no row behind it. Point it at the '
+                . 'page itself, or put the action in a grid column where there is a row.',
+                $where,
+                (string) $to,
+                $match[0],
+            ));
+        }
+
         return $to;
     }
 
@@ -477,15 +652,27 @@ final class PageRepository
      * @param  array<string, mixed>                 $actionConfig
      * @return array<string, bool|float|int|string>
      */
-    private function actionConditions(string $where, array $actionConfig, ?RegionDefinition $grid): array
-    {
+    private function actionConditions(
+        string $where,
+        array $actionConfig,
+        ActionContext $context,
+        bool $rowless = false,
+    ): array {
         $when = $actionConfig['when'] ?? null;
 
         if (!\is_array($when) || $when === []) {
             return [];
         }
 
-        if ($grid === null) {
+        if ($rowless) {
+            throw new PageException(
+                "{$where} has a 'when', which tests the values of a row, and this control is drawn once with "
+                . 'no row behind it — so the condition could never be true and the control would never '
+                . 'appear. Put the action in a grid column if it depends on a row.',
+            );
+        }
+
+        if ($context->gridKey === null) {
             throw new PageException(
                 "{$where} has a 'when', which tests the values of a row, and this page has no list region "
                 . 'for a row to come from. Remove it, or give the page a list region.',
@@ -507,12 +694,12 @@ final class PageRepository
                 ));
             }
 
-            if (!$grid->hasColumn($column)) {
-                $nearest = Schema::nearestOf(array_keys($grid->columns), $column);
+            if (!\in_array($column, $context->gridColumns, true)) {
+                $nearest = Schema::nearestOf($context->gridColumns, $column);
                 $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
 
                 throw new PageException(
-                    "{$where} has a 'when' on '{$column}', which the region '{$grid->key}' does not "
+                    "{$where} has a 'when' on '{$column}', which the region '{$context->gridKey}' does not "
                     . "declare, so the condition could never be true and the action would never appear.{$suffix}",
                 );
             }
@@ -529,11 +716,10 @@ final class PageRepository
      * A key naming no region would quietly refresh nothing, which looks
      * exactly like an action that did not run.
      *
-     * @param  array<string, mixed>            $actionConfig
-     * @param  array<string, RegionDefinition> $regions
+     * @param  array<string, mixed> $actionConfig
      * @return list<string>
      */
-    private function actionRefresh(string $where, array $actionConfig, array $regions): array
+    private function actionRefresh(string $where, array $actionConfig, ActionContext $context): array
     {
         $refresh = $actionConfig['refresh'] ?? null;
 
@@ -552,8 +738,8 @@ final class PageRepository
                 ));
             }
 
-            if (!isset($regions[$entry])) {
-                $nearest = Schema::nearestOf(array_keys($regions), $entry);
+            if (!\in_array($entry, $context->regionKeys, true)) {
+                $nearest = Schema::nearestOf($context->regionKeys, $entry);
                 $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
 
                 throw new PageException(
@@ -809,9 +995,21 @@ final class PageRepository
         return $scope;
     }
 
-    /** @param array<string, mixed> $regionConfig */
-    private function buildRegion(string $pageName, string $regionKey, array $regionConfig, Entity $entity): RegionDefinition
-    {
+    /**
+     * @param array<string, mixed> $regionConfig
+     * @param array<string, mixed> $pageActions the page's own `actions` block, raw, for a column whose
+     *                                          `items` names one of them
+     */
+    private function buildRegion(
+        string $pageName,
+        string $regionKey,
+        array $regionConfig,
+        Entity $entity,
+        array $pageActions = [],
+        ?ActionContext $context = null,
+    ): RegionDefinition {
+        $context ??= new ActionContext([]);
+
         $typeValue = \is_string($regionConfig['type'] ?? null) ? $regionConfig['type'] : '';
 
         try {
@@ -852,7 +1050,14 @@ final class PageRepository
             }
 
             /** @var array<string, mixed> $columnConfig */
-            $columns[$columnKey] = $this->buildColumn($pageName, $columnKey, $columnConfig, $entity);
+            $columns[$columnKey] = $this->buildColumn(
+                $pageName,
+                $columnKey,
+                $columnConfig,
+                $entity,
+                $pageActions,
+                $context,
+            );
 
             if (($columnConfig['searchable'] ?? false) === true) {
                 $searchable[] = $columnKey;
@@ -1195,9 +1400,18 @@ final class PageRepository
         );
     }
 
-    /** @param array<string, mixed> $columnConfig */
-    private function buildColumn(string $pageName, string $columnKey, array $columnConfig, Entity $entity): ColumnDefinition
-    {
+    /**
+     * @param array<string, mixed> $columnConfig
+     * @param array<string, mixed> $pageActions the page's own `actions` block, raw
+     */
+    private function buildColumn(
+        string $pageName,
+        string $columnKey,
+        array $columnConfig,
+        Entity $entity,
+        array $pageActions = [],
+        ?ActionContext $context = null,
+    ): ColumnDefinition {
         $typeValue = \is_string($columnConfig['type'] ?? null) ? $columnConfig['type'] : 'text';
 
         try {
@@ -1234,6 +1448,53 @@ final class PageRepository
             ? $columnConfig['label']
             : $this->labelFromKey($columnKey);
 
+        $where = "Page '{$pageName}': column '{$columnKey}'";
+        $align = \is_string($columnConfig['align'] ?? null) && $columnConfig['align'] !== ''
+            ? $this->resolveAlign($pageName, $columnKey, $columnConfig['align'])
+            : $type->defaultAlignment();
+        $width = \is_string($columnConfig['width'] ?? null) ? $columnConfig['width'] : null;
+        $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
+
+        // An actions column holds controls, not a value (spec 8.5), so it
+        // leaves this method here: it has no source to reach, nothing to
+        // format, and none of the keys below could do anything for it. Those
+        // are refused by name first, the way every other dead pairing in this
+        // loader is, rather than accepted and silently ignored.
+        if ($type->isActions()) {
+            $this->assertActionsColumnIsSound($where, $columnConfig);
+
+            return new ColumnDefinition(
+                filter: null,
+                collection: null,
+                key: $columnKey,
+                label: $label,
+                source: $columnKey,
+                type: $type,
+                display: $display,
+                sortable: false,
+                link: false,
+                align: $align,
+                width: $width,
+                class: $class,
+                actions: $this->buildActionItems(
+                    $pageName,
+                    "column '{$columnKey}'",
+                    $columnConfig['items'] ?? null,
+                    $pageActions,
+                    $context ?? new ActionContext([]),
+                    false,
+                ),
+            );
+        }
+
+        if (\array_key_exists('items', $columnConfig) && $columnConfig['items'] !== null) {
+            throw new PageException(
+                "{$where} has 'items', which lists the actions a column draws, and its type is "
+                . "'{$type->value}'. A column either shows a value or draws controls — set "
+                . "'type' => 'actions' on it, and name it for what it holds.",
+            );
+        }
+
         $hasSource = \array_key_exists('source', $columnConfig) && $columnConfig['source'] !== null;
         $hasCollection = \array_key_exists('collection', $columnConfig) && $columnConfig['collection'] !== null;
 
@@ -1269,11 +1530,6 @@ final class PageRepository
 
         $sortable = ($columnConfig['sortable'] ?? false) === true;
         $link = ($columnConfig['link'] ?? false) === true;
-        $align = \is_string($columnConfig['align'] ?? null) && $columnConfig['align'] !== ''
-            ? $this->resolveAlign($pageName, $columnKey, $columnConfig['align'])
-            : $type->defaultAlignment();
-        $width = \is_string($columnConfig['width'] ?? null) ? $columnConfig['width'] : null;
-        $class = \is_string($columnConfig['class'] ?? null) ? $columnConfig['class'] : '';
 
         $enumOptions = \array_key_exists('options', $columnConfig)
             ? $this->resolveOptions($columnConfig['options'], $pageName, $columnKey, 'column')
@@ -1320,6 +1576,56 @@ final class PageRepository
             class: $class,
             options: $options,
         );
+    }
+
+    /**
+     * What an `actions` column may not say about itself.
+     *
+     * It draws controls and names no database column, so it never reaches the
+     * select list — which makes `sortable`, `searchable`, `filter` and `link`
+     * exactly the silently dead configuration they are on a `collection`
+     * column: a sort link that reorders nothing, a filter box that narrows
+     * nothing, a cell wrapped in a link to the row it is already drawing links
+     * for. `source` and `collection` are ways of getting a value, and there is
+     * no value. Each is refused by name.
+     *
+     * `items` is required, because a column of controls with no controls is a
+     * blank cell in every row and a header nobody can explain.
+     *
+     * @param array<string, mixed> $columnConfig
+     */
+    private function assertActionsColumnIsSound(string $where, array $columnConfig): void
+    {
+        $dead = [
+            'source' => 'names a database column, and an actions column has no value to read',
+            'collection' => 'fetches related values, and an actions column shows none',
+            'sortable' => 'would order the rows by a column the query never selects',
+            'searchable' => 'would search a column the query never selects',
+            'filter' => 'would narrow the rows by a column the query never selects',
+            'link' => 'wraps the cell in a link to the row, and this cell already draws its own',
+        ];
+
+        foreach ($dead as $key => $why) {
+            $value = $columnConfig[$key] ?? null;
+
+            if ($value === null || $value === false || $value === []) {
+                continue;
+            }
+
+            throw new PageException(
+                "{$where} is an actions column carrying '{$key}', which {$why} — so it would be accepted and "
+                . 'do nothing. Remove it, or make this a column of its own that shows the value.',
+            );
+        }
+
+        $items = $columnConfig['items'] ?? null;
+
+        if (!\is_array($items) || $items === []) {
+            throw new PageException(
+                "{$where} is an actions column with no 'items', so every row would draw an empty cell under a "
+                . "header nobody could explain. List the actions it draws: 'items' => ['edit', 'delete'].",
+            );
+        }
     }
 
     /**
