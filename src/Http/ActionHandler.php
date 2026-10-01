@@ -367,9 +367,27 @@ final class ActionHandler implements Handler
                         continue;
                     }
 
-                    $write = $action->isDelete()
-                        ? $this->writes->delete($page->entity, $key, $scope)
-                        : $this->writes->update($page->entity, $key, $action->set, $scope);
+                    try {
+                        $write = $action->isDelete()
+                            ? $this->writes->delete($page->entity, $key, $scope)
+                            : $this->writes->update($page->entity, $key, $action->set, $scope);
+                    } catch (NoSuchRowException) {
+                        // A row the scope excludes, or one somebody removed
+                        // while this loop was running. Both are "not there"
+                        // from this reader's side, and neither is a failure
+                        // of the action -- so it is skipped and counted
+                        // rather than rolling the other thirty-nine back.
+                        //
+                        // Selecting a row in another workspace is the first
+                        // of those, and it must not be able to cancel a bulk
+                        // action over rows the person may perfectly well
+                        // touch. A selection is an argument, not an
+                        // authorisation, and an argument naming something
+                        // unreachable is an argument to ignore.
+                        $skipped[] = $key;
+
+                        continue;
+                    }
 
                     $this->record($action->key, $page, $write);
                     $applied++;
@@ -423,7 +441,7 @@ final class ActionHandler implements Handler
             $page->entity,
             $key,
             array_map(strval(...), array_keys($action->when)),
-            $page->scope,
+            $this->scopeFor($page),
         );
 
         if ($row === null) {
@@ -502,7 +520,7 @@ final class ActionHandler implements Handler
                 $page->entity,
                 $key,
                 array_map(strval(...), array_keys($action->when)),
-                $page->scope,
+                $this->scopeFor($page),
             );
 
             if ($row === null) {
