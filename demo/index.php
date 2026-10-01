@@ -66,6 +66,7 @@ use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\Router;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Http\WorkspaceHandler;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
@@ -77,6 +78,7 @@ use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellAccount;
 use RockAdmin\View\ShellView;
+use RockAdmin\View\ShellWorkspaces;
 use RockAdmin\View\TemplateErrorPage;
 use RockAdmin\View\ViewFactory;
 
@@ -385,21 +387,39 @@ $handlers->register(
 
 if ($connection !== null) {
     $rows = new SqlRowSource($connection);
+
+    // One object answers "what is this request's scope" for the grid, the
+    // preview, the form and every write. Four of them working it out
+    // separately is four chances to differ, and the one that differs is a
+    // hole rather than a bug.
+    $requestScope = new RequestScope($activeWorkspace, $identity);
+
     $listRegion = new ListRegion(
         $rows,
-        new QueryFactory(),
+        new QueryFactory(scope: $requestScope),
         new CellFormatter(),
         $urls,
         $gate,
         $identity,
         $csrf,
     );
-    $previewRegion = new PreviewRegion($rows, new CellFormatter());
+    $previewRegion = new PreviewRegion($rows, new CellFormatter(), $requestScope);
 
     // The page header's own configured controls (spec 8.5). The same three
     // decisions a grid's action cell makes -- the gate, the URL from the
     // reference, the token a POST carries -- so it is the same builder.
     $actionBuilder = new ActionBuilder($gate, $identity, $urls, $csrf);
+
+    // Spec 9.3's switcher, and 5.1's reason for it being a POST: browsers
+    // prefetch links on hover, and switching changes what somebody sees for
+    // the rest of the session.
+    $handlers->register('workspace.switch', new WorkspaceHandler(
+        $workspaces,
+        $activeWorkspace,
+        $identity,
+        $csrf,
+        $urls,
+    ));
 
     $handlers->register('page.index', new PageHandler(
         $pages,
@@ -412,6 +432,7 @@ if ($connection !== null) {
         $menu,
         $account,
         $actionBuilder,
+        new ShellWorkspaces($workspaces, $activeWorkspace, $identity, $urls),
     ));
     $handlers->register('page.detail', new DetailHandler(
         $pages,
@@ -433,7 +454,7 @@ if ($connection !== null) {
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
     $reader = new RowReader($rows);
-    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity);
+    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity, $requestScope);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -456,10 +477,7 @@ if ($connection !== null) {
         new FieldValidator(),
         new SqlWriteHandler($connection),
         $reader,
-        // The demo declares no workspaces, so this answers [] for every page
-        // -- but it is wired rather than left null, because the day the demo
-        // grows a second workspace the wiring should already be right.
-        new RequestScope($activeWorkspace, $identity),
+        $requestScope,
         $connection,
         $forms,
         $csrf,

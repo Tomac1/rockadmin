@@ -6,6 +6,9 @@ namespace RockAdmin\Tests\Integration\Form;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\SessionWorkspace;
+use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\RowReader;
@@ -106,7 +109,10 @@ final class DemoFormTest extends DatabaseTestCase
             . 'name VARCHAR(100) NOT NULL, email VARCHAR(100))',
         ));
         $connection->execute(new Sql(
-            "CREATE TABLE ra_test_ads (id {$key}, user_id INTEGER, "
+            // tenant_id mirrors demo/seed.php: the demo page is scoped to
+            // the workspace, so a fixture without the column cannot
+            // answer the query the page actually builds.
+            "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
             . 'created_at TIMESTAMP)',
@@ -115,6 +121,30 @@ final class DemoFormTest extends DatabaseTestCase
             'INSERT INTO ra_test_users (id, company_id, name, email) VALUES (?, ?, ?, ?)',
             [1, 1, 'Jana', 'jana@example.com'],
         ));
+    }
+
+    /**
+     * The scope a reader in Cyklobazar gets.
+     *
+     * The demo's ads page is scoped to `{{workspace.tenant_id}}` now, so a
+     * handler built without this cannot bind it — and says so rather than
+     * handing the placeholder's text to the database, which is what it did
+     * for one run of this suite and produced "incorrect integer value
+     * '{{workspace.tenant_id}}'".
+     */
+    private function requestScope(): RequestScope
+    {
+        $workspaces = Workspaces::fromConfig(
+            (new Loader(\dirname(__DIR__, 3) . '/demo/config', static fn (string $n): ?string => null))
+                ->load()
+                ->workspaces(),
+            $this->repository(),
+        );
+
+        return new RequestScope(
+            new SessionWorkspace(new ArraySessionStore(), $workspaces),
+            Access::identityFor(Access::user(workspaces: ['cyklobazar'])),
+        );
     }
 
     /** The demo's configuration, read from the files the demo ships. */
@@ -144,6 +174,7 @@ final class DemoFormTest extends DatabaseTestCase
                 new Csrf($this->session),
                 Access::gateFor($this->repository()),
                 Access::identity(),
+                $this->requestScope(),
             ),
             new Renderer(new TemplateResolver([]), new Escaper(), $urls),
             new Assets($urls),
@@ -161,11 +192,18 @@ final class DemoFormTest extends DatabaseTestCase
 
         return new ActionHandler(
             $this->repository(),
-            new FormRegion(new RowReader(new SqlRowSource($connection)), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
+            new FormRegion(
+                new RowReader(new SqlRowSource($connection)),
+                $urls,
+                $csrf,
+                Access::gateFor($this->repository()),
+                Access::identity(),
+                $this->requestScope(),
+            ),
             new FieldValidator(),
             new SqlWriteHandler($connection),
             new RowReader(new SqlRowSource($connection)),
-            null,
+            $this->requestScope(),
             $connection,
             $this->forms($connection),
             $csrf,

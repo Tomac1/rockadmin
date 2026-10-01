@@ -8,7 +8,10 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Permission;
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Auth\Roles;
+use RockAdmin\Auth\SessionWorkspace;
+use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\Sql;
@@ -96,7 +99,10 @@ final class DemoActionsTest extends DatabaseTestCase
             . 'name VARCHAR(100) NOT NULL, email VARCHAR(100))',
         ));
         $connection->execute(new Sql(
-            "CREATE TABLE ra_test_ads (id {$key}, user_id INTEGER, "
+            // tenant_id mirrors demo/seed.php: the demo page is scoped to
+            // the workspace, so a fixture without the column cannot
+            // answer the query the page actually builds.
+            "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
             . 'created_at TIMESTAMP)',
@@ -239,6 +245,31 @@ final class DemoActionsTest extends DatabaseTestCase
         return $connection;
     }
 
+    /**
+     * The scope a reader in Cyklobazar gets.
+     *
+     * The demo's ads page is scoped to `{{workspace.tenant_id}}` now, so a
+     * reader with no workspace reaches `QueryBuilder`'s refusal rather than
+     * an unscoped query -- which is the guard working, and is how these
+     * tests found out they needed this.
+     *
+     * @param list<string> $held
+     */
+    private function requestScope(array $held = ['cyklobazar']): RequestScope
+    {
+        $workspaces = Workspaces::fromConfig(
+            (new Loader(\dirname(__DIR__, 3) . '/demo/config', static fn (string $n): ?string => null))
+                ->load()
+                ->workspaces(),
+            $this->repository(),
+        );
+
+        return new RequestScope(
+            new SessionWorkspace(new ArraySessionStore(), $workspaces),
+            Access::identityFor(Access::user(workspaces: $held)),
+        );
+    }
+
     /** @param list<string> $permissions */
     private function grid(Connection $connection, array $permissions): \RockAdmin\Grid\ListView
     {
@@ -257,7 +288,7 @@ final class DemoActionsTest extends DatabaseTestCase
 
         $list = new ListRegion(
             new SqlRowSource($connection),
-            new QueryFactory(),
+            new QueryFactory(scope: $this->requestScope()),
             new CellFormatter(),
             $urls,
             $gate,

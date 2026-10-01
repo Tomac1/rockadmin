@@ -8,6 +8,7 @@ use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Config\Placeholder;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
@@ -234,10 +235,30 @@ final class ActionHandler implements Handler
     {
         // Unwired, the page's own scope goes through untouched rather than
         // being dropped. A literal scope still applies, and an unbound
-        // `Placeholder` reaching a write is refused rather than ignored --
-        // because a missing collaborator turning into an unscoped UPDATE is
-        // the exact failure this subsystem exists to prevent.
-        return $this->scope?->forPage($page) ?? $page->scope;
+        // `Placeholder` is refused here rather than ignored -- because a
+        // missing collaborator turning into an unscoped UPDATE is the exact
+        // failure this subsystem exists to prevent.
+        if ($this->scope !== null) {
+            return $this->scope->forPage($page);
+        }
+
+        foreach ($page->scope as $column => $value) {
+            if ($value instanceof Placeholder) {
+                // Said here rather than left to the driver. An INSERT hands
+                // the placeholder's text to the database and comes back with
+                // "incorrect integer value '{{workspace.tenant_id}}'", which
+                // is loud but names nothing anybody can act on.
+                throw new \LogicException(\sprintf(
+                    "Page '%s' scopes '%s' to %s, and this handler was built without a RequestScope, "
+                    . 'so there is nothing to bind it from. Pass one, or the write would be unscoped.',
+                    $page->name,
+                    (string) $column,
+                    (string) $value,
+                ));
+            }
+        }
+
+        return $page->scope;
     }
 
     /**
