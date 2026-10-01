@@ -156,3 +156,60 @@ twenty-two column grid actually exists.
 6. Toasts visible, and no toast covers a navigation link.
 7. Contrast measured on the live page, both the demo and the real project.
 8. Everything works with JavaScript disabled.
+
+---
+
+## Where it ended up (2026-10-01)
+
+All seven tasks are done and committed. What the plan did not predict is
+worth recording, because all of it was the same mistake in different places.
+
+**One mistake, five times.** Bootstrap hid a component until a class said to
+show it; the design system shows a component because it is in the document.
+Every component whose visibility used to be Bootstrap's business came out
+visible when Bootstrap went:
+
+- the offcanvas, as a 420px panel down the right of every page;
+- the modal, as a band across the top;
+- the submenu, hanging open under every parent item that had children;
+- and, going the other way a milestone earlier, the toast that nobody could
+  see for a milestone because Bootstrap was hiding it.
+
+The markup is identical in both systems and says nothing about which. There
+is no test for this; the only thing that found any of them was looking at the
+page.
+
+**Two class lists were composed in PHP, so no test saw them.** The page
+header's buttons rendered `btn btn-primary`, 16px tall, and a menu item
+carried `nav-link`. `ButtonModifierTest` reads templates. It now has a second
+test that calls `ButtonView::classes()` directly.
+
+**`ra-ra-input`.** A doubled prefix from a bad mechanical edit, in five
+control templates. It names nothing, so those five inputs were drawn by the
+browser alone, and nothing failed.
+
+**Sizes are modifiers, not defaults.** `.ra-btn` has no height, `.ra-modal`
+no max-width, and `.ra-input` needs its wrapper for `appearance: none` to not
+leave a hole. Three separate symptoms -- a flat button, a full-width dialog,
+a select with no arrow -- all of them "the component class alone is not the
+component".
+
+**What the design system has no opinion about** turned out to be a real list,
+and all of it is layout rather than components: how a column of form fields
+is spaced and how wide it is, how a block of filters arranges itself, what a
+preview's definition list looks like, what an error page looks like with no
+stylesheet at all. Those live in `rockadmin.css` and read the design system's
+own tokens rather than choosing second numbers.
+
+### Still open
+
+**Dark mode.** `theme.dark` writes `data-ra-theme` (it used to write
+Bootstrap's `data-bs-theme`). The design system ships one palette and not a
+single dark rule, so nothing bundled answers the attribute. The key is kept,
+and the schema says so. Writing a dark palette is a decision about the design
+system, not about this code.
+
+**Narrow viewports are unverified.** Window resizing did not reach the page
+viewport through the tooling available, so nothing below 1568px has actually
+been looked at. The design system's own media queries are in place and
+untested here.
