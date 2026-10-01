@@ -7,6 +7,7 @@ namespace RockAdmin\Http;
 use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
@@ -94,6 +95,20 @@ final class ActionHandler implements Handler
          * writes anything.
          */
         private readonly RowReader $reader,
+        /**
+         * The workspace boundary this request writes inside.
+         *
+         * Every write below passes it. Specification 9.3 puts the scope on
+         * update and delete as well as on reads, for the reason it gives
+         * about filters: a boundary that can be edited out of a request is
+         * not a boundary, and `_id` in a posted body is exactly that kind of
+         * edit.
+         *
+         * Optional only because a great many tests build this handler to
+         * exercise one write and have no workspaces at all; `NoScope` is the
+         * admin that never had any, and it answers `[]`.
+         */
+        private readonly ?RequestScope $scope,
         /**
          * The seam milestone 7 recorded and declined to open.
          *
@@ -204,6 +219,20 @@ final class ActionHandler implements Handler
         // audit rows for one row's one change would make the log lie about
         // what happened.
         return array_values(array_unique($keys));
+    }
+
+    /**
+     * The scope every write on this page happens inside.
+     *
+     * One method, so the five write call sites below cannot disagree -- and
+     * so that an admin with no workspaces gets `[]` from the same place
+     * rather than from five separate conditions.
+     *
+     * @return array<string, mixed>
+     */
+    private function scopeFor(PageDefinition $page): array
+    {
+        return $this->scope?->forPage($page) ?? [];
     }
 
     /**
@@ -320,9 +349,10 @@ final class ActionHandler implements Handler
 
         $applied = 0;
         $skipped = [];
+        $scope = $this->scopeFor($page);
 
         try {
-            $this->connection->transaction(function () use ($page, $action, $keys, &$applied, &$skipped): void {
+            $this->connection->transaction(function () use ($page, $action, $keys, $scope, &$applied, &$skipped): void {
                 foreach ($keys as $key) {
                     $refusal = $this->bulkRefusal($page, $action, $key);
 
@@ -333,8 +363,8 @@ final class ActionHandler implements Handler
                     }
 
                     $write = $action->isDelete()
-                        ? $this->writes->delete($page->entity, $key)
-                        : $this->writes->update($page->entity, $key, $action->set);
+                        ? $this->writes->delete($page->entity, $key, $scope)
+                        : $this->writes->update($page->entity, $key, $action->set, $scope);
 
                     $this->record($action->key, $page, $write);
                     $applied++;
@@ -490,7 +520,7 @@ final class ActionHandler implements Handler
         }
 
         try {
-            $write = $this->writes->update($page->entity, $key, $action->set);
+            $write = $this->writes->update($page->entity, $key, $action->set, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
@@ -596,7 +626,7 @@ final class ActionHandler implements Handler
     private function delete(PageDefinition $page, string $returnTo, string $key): Response
     {
         try {
-            $write = $this->writes->delete($page->entity, $key);
+            $write = $this->writes->delete($page->entity, $key, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             // Somebody deleted it between this page being drawn and the
             // button being pressed. That is a row that is gone, not a server
@@ -656,7 +686,7 @@ final class ActionHandler implements Handler
         try {
             $write = $isCreate
                 ? $this->writes->insert($page->entity, $values)
-                : $this->writes->update($page->entity, (string) $key, $values);
+                : $this->writes->update($page->entity, (string) $key, $values, $this->scopeFor($page));
         } catch (NoSuchRowException $e) {
             // The row went away while this form was open. Redrawing the form
             // would offer to save into nothing; the honest answer is that

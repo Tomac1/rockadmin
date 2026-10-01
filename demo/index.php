@@ -29,8 +29,11 @@ use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
+use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
 use RockAdmin\Auth\SqlAuthenticator;
+use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
@@ -209,6 +212,13 @@ $authenticator = $connection !== null
 
 $identity = new Identity($session, $authenticator);
 $gate = Gate::fromConfig($config, $pages);
+
+// Workspaces (spec 9.3). The demo declares none, so `Workspaces::fromConfig()`
+// returns the empty set and nothing is scoped -- which is the single-tenant
+// case and is meant to cost nothing. The wiring is here rather than absent so
+// that adding `workspaces.php` is the only change a second tenant needs.
+$workspaces = Workspaces::fromConfig($config->workspaces(), $pages);
+$activeWorkspace = new SessionWorkspace($session, $workspaces);
 
 // One `Csrf` for the whole request, wired before the handlers because three of
 // them need it: the login form, the logout button in the navbar, and the write
@@ -446,6 +456,10 @@ if ($connection !== null) {
         new FieldValidator(),
         new SqlWriteHandler($connection),
         $reader,
+        // The demo declares no workspaces, so this answers [] for every page
+        // -- but it is wired rather than left null, because the day the demo
+        // grows a second workspace the wiring should already be right.
+        new RequestScope($activeWorkspace, $identity),
         $connection,
         $forms,
         $csrf,

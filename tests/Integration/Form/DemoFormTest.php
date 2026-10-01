@@ -165,6 +165,7 @@ final class DemoFormTest extends DatabaseTestCase
             new FieldValidator(),
             new SqlWriteHandler($connection),
             new RowReader(new SqlRowSource($connection)),
+            null,
             $connection,
             $this->forms($connection),
             $csrf,

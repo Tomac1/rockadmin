@@ -582,6 +582,7 @@ final class CustomActionTest extends TestCase
             $this->writes,
             $reader,
             null,
+            null,
             new FormHandler(
                 $this->repository(),
                 $region,

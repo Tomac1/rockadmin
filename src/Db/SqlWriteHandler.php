@@ -41,7 +41,12 @@ final class SqlWriteHandler implements WriteHandler
                 ? $this->insertWithGivenKey($entity, $values)
                 : $this->insertWithGeneratedKey($entity, $this->withoutKey($entity, $values));
 
-            $after = $this->find($entity, $key);
+            // No scope: an insert has no WHERE, and the row was just written
+            // with whatever workspace columns the caller put in $values. Re-
+            // reading it through a scope would ask whether the write landed
+            // where it was told to, which is a question about the caller
+            // rather than about this row.
+            $after = $this->find($entity, $key, []);
 
             if ($after === null) {
                 throw new DbException(
@@ -163,24 +168,32 @@ final class SqlWriteHandler implements WriteHandler
      *
      * @param array<string, mixed> $values
      */
-    public function update(Entity $entity, string $key, array $values): WriteResult
+    public function update(Entity $entity, string $key, array $values, array $scope): WriteResult
     {
-        return $this->connection->transaction(function () use ($entity, $key, $values): WriteResult {
-            $before = $this->find($entity, $key);
+        return $this->connection->transaction(function () use ($entity, $key, $values, $scope): WriteResult {
+            // Scoped, so a row in another workspace is simply not found --
+            // which from the asker's side is exactly what it is, and is why
+            // the refusal is the one a missing row already gets rather than a
+            // new kind of forbidden that would confirm the row exists.
+            $before = $this->find($entity, $key, $scope);
 
             if ($before === null) {
                 throw NoSuchRowException::for($entity->table, $key, 'update');
             }
 
             if ($values !== []) {
-                $this->connection->execute($this->updateSql($entity, $key, $values));
+                // Scoped again, and not only for the read above. Between the
+                // two there is a moment, and the UPDATE is the statement that
+                // actually changes something -- a boundary enforced only by
+                // the read before it is a boundary with a gap in it.
+                $this->connection->execute($this->updateSql($entity, $key, $values, $scope));
             }
 
             $resolvedKey = \array_key_exists($entity->key, $values) && $values[$entity->key] !== null
                 ? $this->stringKey($entity, $values[$entity->key])
                 : $key;
 
-            $after = $this->find($entity, $resolvedKey);
+            $after = $this->find($entity, $resolvedKey, $scope);
 
             if ($after === null) {
                 // Not "the row vanished" in the ordinary sense -- the write
@@ -195,7 +208,9 @@ final class SqlWriteHandler implements WriteHandler
                 throw new DbException(
                     "Updated '{$entity->table}' but could not read the row back under key "
                     . "'{$resolvedKey}'. If the update changed '{$entity->key}', check that the new "
-                    . 'value is the one the row was actually stored under.',
+                    . 'value is the one the row was actually stored under; if it changed a column '
+                    . 'the scope matches on, it moved the row out of the workspace it was written '
+                    . 'from, which is not something an update may do.',
                 );
             }
 
@@ -203,16 +218,16 @@ final class SqlWriteHandler implements WriteHandler
         });
     }
 
-    public function delete(Entity $entity, string $key): WriteResult
+    public function delete(Entity $entity, string $key, array $scope): WriteResult
     {
-        return $this->connection->transaction(function () use ($entity, $key): WriteResult {
-            $before = $this->find($entity, $key);
+        return $this->connection->transaction(function () use ($entity, $key, $scope): WriteResult {
+            $before = $this->find($entity, $key, $scope);
 
             if ($before === null) {
                 throw NoSuchRowException::for($entity->table, $key, 'delete');
             }
 
-            $this->connection->execute($this->deleteSql($entity, $key));
+            $this->connection->execute($this->deleteSql($entity, $key, $scope));
 
             return new WriteResult($key, $before, []);
         });
@@ -238,7 +253,11 @@ final class SqlWriteHandler implements WriteHandler
     }
 
     /** @param array<string, mixed> $values */
-    private function updateSql(Entity $entity, string $key, array $values): Sql
+    /**
+     * @param array<string, mixed> $values
+     * @param array<string, mixed> $scope
+     */
+    private function updateSql(Entity $entity, string $key, array $values, array $scope): Sql
     {
         $dialect = $this->connection->dialect();
 
@@ -250,25 +269,63 @@ final class SqlWriteHandler implements WriteHandler
             $bindings[] = $value;
         }
 
-        $bindings[] = $key;
+        [$where, $whereBindings] = $this->where($entity, $key, $scope);
 
         return new Sql(
             'UPDATE ' . $dialect->quoteIdentifier($entity->table)
             . ' SET ' . implode(', ', $assignments)
-            . ' WHERE ' . $dialect->quoteIdentifier($entity->key) . ' = ?',
+            . ' WHERE ' . $where,
+            [...$bindings, ...$whereBindings],
+        );
+    }
+
+    /** @param array<string, mixed> $scope */
+    private function deleteSql(Entity $entity, string $key, array $scope): Sql
+    {
+        [$where, $bindings] = $this->where($entity, $key, $scope);
+
+        return new Sql(
+            'DELETE FROM ' . $this->connection->dialect()->quoteIdentifier($entity->table)
+            . ' WHERE ' . $where,
             $bindings,
         );
     }
 
-    private function deleteSql(Entity $entity, string $key): Sql
+    /**
+     * The key, and every column the scope pins.
+     *
+     * One place builds it, so the read, the UPDATE and the DELETE cannot
+     * disagree about what "this row" means -- which is the way a boundary
+     * ends up enforced on two statements out of three.
+     *
+     * A scope value of null becomes `IS NULL` rather than `= ?`, because
+     * `= NULL` is never true in SQL and a page scoped to `['archived_at' =>
+     * null]` would quietly match nothing.
+     *
+     * @param  array<string, mixed>              $scope
+     * @return array{0: string, 1: list<mixed>} the clause, its bindings
+     */
+    private function where(Entity $entity, string $key, array $scope): array
     {
         $dialect = $this->connection->dialect();
 
-        return new Sql(
-            'DELETE FROM ' . $dialect->quoteIdentifier($entity->table)
-            . ' WHERE ' . $dialect->quoteIdentifier($entity->key) . ' = ?',
-            [$key],
-        );
+        $clauses = [$dialect->quoteIdentifier($entity->key) . ' = ?'];
+        $bindings = [$key];
+
+        foreach ($scope as $column => $value) {
+            $quoted = $dialect->quoteIdentifier((string) $column);
+
+            if ($value === null) {
+                $clauses[] = $quoted . ' IS NULL';
+
+                continue;
+            }
+
+            $clauses[] = $quoted . ' = ?';
+            $bindings[] = $value;
+        }
+
+        return [implode(' AND ', $clauses), $bindings];
     }
 
     /**
@@ -278,17 +335,19 @@ final class SqlWriteHandler implements WriteHandler
      *
      * @return ?array<string, mixed>
      */
-    private function find(Entity $entity, string $key): ?array
+    /**
+     * @param  array<string, mixed>     $scope
+     * @return array<string, mixed>|null
+     */
+    private function find(Entity $entity, string $key, array $scope): ?array
     {
-        $dialect = $this->connection->dialect();
+        [$where, $bindings] = $this->where($entity, $key, $scope);
 
-        $sql = new Sql(
-            'SELECT * FROM ' . $dialect->quoteIdentifier($entity->table)
-            . ' WHERE ' . $dialect->quoteIdentifier($entity->key) . ' = ?',
-            [$key],
-        );
-
-        $rows = $this->connection->select($sql);
+        $rows = $this->connection->select(new Sql(
+            'SELECT * FROM ' . $this->connection->dialect()->quoteIdentifier($entity->table)
+            . ' WHERE ' . $where,
+            $bindings,
+        ));
 
         return $rows[0] ?? null;
     }
