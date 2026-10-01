@@ -36,7 +36,82 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\Migrator;
 use RockAdmin\Db\Sql;
+
+/**
+ * The three administrators the demo signs in as, one per role in
+ * `demo/config/roles.php`.
+ *
+ * They exist so the difference a role makes is something you can look at
+ * rather than something you read about: the superadmin sees every control, the
+ * editor sees everything except Delete, and the viewer sees the grid with no
+ * create button, no edit links and no actions column at all.
+ *
+ * One password for all three, printed by this script, because this is a demo
+ * against a throwaway fixture database. A real installation creates its first
+ * administrator through `_setup` (specification 11.4) and never has a password
+ * in a file that ships.
+ *
+ * `roles` and `workspaces` are JSON columns holding lists of strings —
+ * `SqlAuthenticator` refuses anything else rather than coercing it, so a
+ * `{"editor":true}` here would stop the login with an explanation instead of
+ * quietly producing a user with no permissions. Workspaces are the next
+ * milestone's, so the lists are empty; an empty list is "no workspace scope",
+ * which is what every page in this demo is.
+ */
+const DEMO_PASSWORD = 'rockadmin';
+
+/** @return list<array{email: string, name: string, roles: list<string>}> */
+function demoUsers(): array
+{
+    return [
+        ['email' => 'super@example.com', 'name' => 'Alena Superadmin', 'roles' => ['superadmin']],
+        ['email' => 'editor@example.com', 'name' => 'Bohdan Editor', 'roles' => ['editor']],
+        ['email' => 'viewer@example.com', 'name' => 'Cecilie Viewer', 'roles' => ['viewer']],
+    ];
+}
+
+/**
+ * Creates the `ra_*` tables and puts the three administrators in `ra_users`.
+ *
+ * `Migrator` first, because nothing below has a table to write to otherwise,
+ * and it is the same class `bin/ra-migrate.php` calls — the demo does not get
+ * its own DDL, or the shipped schema would have two spellings.
+ *
+ * Re-runnable, like the rest of this script: the three rows are deleted by
+ * address and inserted again, so a second run replaces them rather than
+ * failing on the unique index. `ra_login_attempts` is emptied with them,
+ * because the throttle is a table and a run of failed attempts from an earlier
+ * session would otherwise refuse a correct password on a freshly seeded
+ * database — which reads exactly like a broken seed.
+ */
+function seedAdministrators(Connection $connection): void
+{
+    (new Migrator($connection))->migrate();
+
+    foreach (demoUsers() as $user) {
+        $connection->execute(new Sql('DELETE FROM ra_users WHERE email = ?', [$user['email']]));
+        $connection->execute(new Sql('DELETE FROM ra_login_attempts WHERE email = ?', [$user['email']]));
+
+        $connection->execute(new Sql(
+            'INSERT INTO ra_users (email, password, name, is_active, roles, workspaces, created_at) '
+                . 'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+                $user['email'],
+                // Argon2id, and PHP itself: `password_hash()` with
+                // PASSWORD_ARGON2ID is the whole of it, which is why rule 1
+                // holds without a package.
+                password_hash(DEMO_PASSWORD, PASSWORD_ARGON2ID),
+                $user['name'],
+                true,
+                json_encode($user['roles'], JSON_THROW_ON_ERROR),
+                json_encode([], JSON_THROW_ON_ERROR),
+                gmdate('Y-m-d H:i:s'),
+            ],
+        ));
+    }
+}
 
 /** @return array{dsn: string, user: ?string, password: ?string}|null */
 function seedServerConfig(string $prefix): ?array
@@ -154,7 +229,14 @@ function seedOneServer(string $label, array $server): void
         ? 'ALTER TABLE ra_test_ads AUTO_INCREMENT = ' . $adId
         : 'ALTER TABLE ra_test_ads ALTER COLUMN id RESTART WITH ' . $adId));
 
-    echo "Seeded {$label}: " . count($titles) . " ads.\n";
+    seedAdministrators($connection);
+
+    echo "Seeded {$label}: " . count($titles) . ' ads, ' . count(demoUsers()) . " administrators.\n";
+
+    foreach (demoUsers() as $user) {
+        echo '  ' . $user['email'] . ' / ' . DEMO_PASSWORD
+            . ' (' . implode(', ', $user['roles']) . ")\n";
+    }
 }
 
 $found = false;

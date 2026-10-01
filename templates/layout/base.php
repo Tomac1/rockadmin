@@ -66,6 +66,13 @@ $theme = $view->shell->themeAttribute();
                     <?php } ?>
                     <?php if ($view->shell->logoutUrl !== null) { ?>
                         <form class="ra-logout-form" method="post" action="<?= $href($view->shell->logoutUrl) ?>">
+                            <?php // LogoutHandler refuses a post without a token: a page anywhere
+                                  // on the internet could otherwise sign an administrator out
+                                  // mid-edit, as often as it liked, and they would read that as a
+                                  // broken installation rather than as an attack. ?>
+                            <?php if ($view->shell->csrfToken !== null) { ?>
+                                <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->shell->csrfToken) ?>">
+                            <?php } ?>
                             <button class="ra-logout-button btn btn-link" type="submit">Log out</button>
                         </form>
                     <?php } ?>

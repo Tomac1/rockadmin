@@ -24,18 +24,31 @@
     --bs-body-font-size: 0.9rem;
     --bs-body-line-height: 1.4;
 
-    /* Shape: restrained radius and no default shadow. Bootstrap's own
-       defaults are exactly what makes a page read as "stock Bootstrap". */
-    --bs-border-radius: 0.25rem;
-    --bs-border-radius-sm: 0.2rem;
-    --bs-border-radius-lg: 0.3rem;
+    /* Shape: almost no radius, and no shadow by default. A radius large
+       enough to notice is a decision about every corner on the page at once,
+       and Bootstrap's own defaults are exactly what makes a page read as
+       stock. 2px is enough to stop a corner looking cut, and not enough to
+       soften a dense table into a stack of pills. */
+    --bs-border-radius: 0.125rem;
+    --bs-border-radius-sm: 0.125rem;
+    --bs-border-radius-lg: 0.1875rem;
     --bs-box-shadow: none;
     --bs-box-shadow-sm: none;
 
-    /* Palette: RockAdmin's own, not Bootstrap's blue. Desaturated slate for
-       primary actions, a neutral gray scale for the shell. */
-    --bs-primary: #3a5470;
-    --bs-primary-rgb: 58, 84, 112;
+    /* The only shadow in the theme, and it is for one job: saying that a
+       surface sits above the page. Cards and modals, nothing else -- a shadow
+       under every element is the SaaS-card default and reads as decoration
+       rather than as depth. */
+    --ra-shadow-raised: 0 1px 2px rgba(16, 24, 28, 0.08);
+
+    /* Palette: one dominant colour, and it is deliberately not blue. Blue is
+       the default state of the administrative world, which makes it a poor
+       choice for the one colour that has to be recognisably this product's.
+       Teal-ink is dark enough to carry white text at 7:1, desaturated enough
+       to sit on screen all day, and cold enough that the warm state colours
+       (amber for pending, rust for danger) read as exceptions beside it. */
+    --bs-primary: #0e5a66;
+    --bs-primary-rgb: 14, 90, 102;
     --bs-secondary: #6c757d;
     --bs-secondary-rgb: 108, 117, 125;
     --bs-success: #2e7d5b;
@@ -51,11 +64,27 @@
     --bs-dark: #22262b;
     --bs-dark-rgb: 34, 38, 43;
 
-    --bs-body-color: #22262b;
-    --bs-body-bg: #ffffff;
+    --bs-body-color: #1a1f22;
+    /* The page is a tinted neutral and a card is white, so a card reads as a
+       surface laid on the page rather than as an outlined region of it. The
+       tint is barely there -- enough that white has something to be white
+       against, not enough to look like a colour choice. */
+    --bs-body-bg: #f1f3f4;
+    --ra-surface: #ffffff;
     --bs-border-color: #dee1e4;
+    /* The boundary of a control you can type in, which is a different
+       requirement from the boundary of a card. WCAG 1.4.11 asks 3:1 of
+       anything that identifies a component, and --bs-border-color measured
+       1.31:1 against the body here (1.57:1 in dark) — it is tuned to divide a
+       table's rows without drawing attention, which is exactly right for a
+       divider and not nearly enough for the one line that says "this is a
+       field". So inputs read their own token: 4.2:1 light, 4.5:1 dark,
+       measured from computed styles on the live page rather than reasoned
+       about here. Cards, tables and the sidebar keep --bs-border-color; they
+       are decoration, and darkening them would make every page look caged. */
+    --ra-input-border: #767c84;
     --bs-link-color: var(--bs-primary);
-    --bs-link-hover-color: #2c405a;
+    --bs-link-hover-color: #0a454e;
     /* `a` and `a:hover` are written in Bootstrap's own CSS as
        rgba(var(--bs-link-color-rgb), …) and rgba(var(--bs-link-hover-color-rgb), …),
        never as var(--bs-link-color) directly, so the hex tokens above are not
@@ -99,8 +128,35 @@
        to name. Templates and this stylesheet are the only readers. */
     --ra-sidebar-width: 15rem;
     --ra-header-height: 3rem;
-    --ra-grid-row-padding: 0.35rem;
+    --ra-grid-row-padding: 0.25rem;
+    --ra-grid-cell-inline-padding: 0.5rem;
     --ra-grid-gap: 0.5rem;
+
+    /*
+     * A table's two kinds of line do two different jobs, so they are not the
+     * same line. The horizontal rule separates records: it has to be followed
+     * across twenty columns, so it is the solid one. The vertical rule
+     * separates fields within one record, which the eye already groups by
+     * alignment and by the gap -- drawing it at the same weight produces a
+     * grid of boxes, and the row stops reading as one thing. So it is the
+     * same hue at roughly a third of the strength: present enough to stop two
+     * numeric columns running together, faint enough to disappear when
+     * reading down.
+     */
+    --ra-rule: var(--bs-border-color);
+    --ra-rule-faint: #eaedef;
+
+    /*
+     * Three row states, and they must not be confusable. Hover is the
+     * lightest and is a neutral tint, because it follows the mouse and means
+     * nothing. Active is the primary at low strength -- the row you chose.
+     * Edited is deliberately warm rather than a lighter primary: "this row
+     * has unsaved changes" is a different kind of fact from "this row is
+     * selected", and two tints of one hue would make them a matter of degree.
+     */
+    --ra-row-hover: #eef0f1;
+    --ra-row-active: color-mix(in srgb, var(--bs-primary) 9%, transparent);
+    --ra-row-edited: color-mix(in srgb, var(--bs-warning) 14%, transparent);
 
     /* The shell's own colours. Deliberately not --bs-light and --bs-dark:
        those flip with the page theme, and the navbar does not. It is the
@@ -108,7 +164,7 @@
        background are stated once here and never redefined in a theme block.
        Tying them to --bs-light was how the menu came to render near-black
        text on a near-black bar the moment dark mode arrived. */
-    --ra-shell-bg: #22262b;
+    --ra-shell-bg: #161b1d;
     --ra-shell-fg: #f5f6f7;
     --ra-shell-fg-rgb: 245, 246, 247;
 }
@@ -120,13 +176,131 @@
  */
 .ra-grid-cell,
 .table > :not(caption) > * > * {
-    padding-top: var(--ra-grid-row-padding);
-    padding-bottom: var(--ra-grid-row-padding);
+    padding: var(--ra-grid-row-padding) var(--ra-grid-cell-inline-padding);
 }
 
 .table {
     --bs-table-color: var(--bs-body-color);
     font-size: 0.85rem;
+
+    /*
+     * Digits of equal width, so a column of prices or counts lines up on its
+     * own without being told to. Applied to the whole table rather than to
+     * the numeric columns: it changes nothing but digits, and keying it to a
+     * column type would mean a second place that has to agree about which
+     * types are numbers.
+     */
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The grid proper. Everything below is about reading many rows at once, which
+ * is what this admin is for -- 47,000 of them in the first real project.
+ */
+.ra-grid-table {
+    --bs-table-border-color: var(--ra-rule);
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* The vertical rule, drawn on the cell rather than between rows, and never
+   after the last column where it would box the table in. */
+.ra-grid-table > thead > tr > *:not(:last-child),
+.ra-grid-table > tbody > tr > *:not(:last-child) {
+    border-inline-end: 1px solid var(--ra-rule-faint);
+}
+
+/*
+ * The header stays while the body scrolls. At fifty rows this is a
+ * convenience; at a filtered page of several hundred it is the difference
+ * between a readable table and one you have to scroll back up to interpret.
+ * The background is the surface rather than transparent, or rows show
+ * through it as they pass underneath.
+ */
+.ra-grid-table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--ra-surface);
+    border-bottom: 1px solid var(--ra-rule);
+    font-weight: 600;
+}
+
+/*
+ * Row states, highlighted across the whole row rather than per cell.
+ * Bootstrap's own striping is off: a tint on every other row spends the one
+ * device that could mean something on a thing that means nothing.
+ */
+.ra-grid-row:hover > * {
+    background-color: var(--ra-row-hover);
+}
+
+.ra-grid-row-active > *,
+.ra-grid-row[aria-selected="true"] > * {
+    background-color: var(--ra-row-active);
+}
+
+.ra-grid-row-edited > * {
+    background-color: var(--ra-row-edited);
+}
+
+/*
+ * A card is the white surface the tinted page is there to set off, and the
+ * only thing in the theme that casts a shadow. The border stays as well as
+ * the shadow: at this strength the shadow alone is not enough to define an
+ * edge on a light page, and a card whose edge you have to look for is worse
+ * than a card with a visible line around it.
+ */
+.card {
+    --bs-card-bg: var(--ra-surface);
+    --bs-card-border-color: var(--bs-border-color);
+    box-shadow: var(--ra-shadow-raised);
+}
+
+/*
+ * A region is the card here. Nothing in the templates carries Bootstrap's
+ * .card class -- styling that alone left every grid transparent on the tinted
+ * page while its own sticky header was white, which is the join that made the
+ * tint look like a mistake rather than a choice. The surface is the region,
+ * so the page tint is only ever visible around content and never behind it.
+ */
+.ra-region {
+    background-color: var(--ra-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: var(--ra-shadow-raised);
+    /* Deliberately not clipped. A 2px radius gains almost nothing from
+       clipping, and a grid wider than its column -- twenty-two columns over a
+       domain table, in the first real project -- would be cut off inside the
+       card with no way to reach the rest. The page scrolls instead, which is
+       the behaviour that was already there. */
+}
+
+/* The toolbar belongs to the surface it filters, so it loses the gap that
+   made it look like a separate floating strip. */
+.ra-region-list {
+    gap: 0;
+}
+
+.ra-grid-toolbar,
+.ra-grid-header {
+    padding: var(--ra-grid-gap);
+    border-bottom: 1px solid var(--ra-rule);
+}
+
+.ra-grid-pagination {
+    padding: var(--ra-grid-gap);
+    border-top: 1px solid var(--ra-rule);
+}
+
+/* The last row's rule would otherwise sit directly on the region's own
+   border, drawing the same line twice. */
+.ra-grid-table > tbody > tr:last-child > * {
+    border-bottom: 0;
+}
+
+.modal-content {
+    box-shadow: var(--ra-shadow-raised);
 }
 
 .form-control,
@@ -135,6 +309,25 @@
     padding-top: 0.25rem;
     padding-bottom: 0.25rem;
     font-size: 0.85rem;
+}
+
+/*
+ * The one line that says "this is a field".
+ *
+ * Bootstrap writes `border: var(--bs-border-width) solid var(--bs-border-color)`
+ * into `.form-control`, `.form-select` and `.form-check-input` themselves, so
+ * this cannot be done by redefining a custom property the way the rest of this
+ * file does: a declaration on an element is never overridden by a rule on
+ * `:root`, which only reaches it by inheritance. It has to be a rule on the
+ * same selectors, and it wins because this stylesheet loads after Bootstrap's.
+ *
+ * `:focus` and `:checked` below restate the border deliberately — they come
+ * later in this file and at equal specificity, so they still win.
+ */
+.form-control,
+.form-select,
+.form-check-input {
+    border-color: var(--ra-input-border);
 }
 
 .form-label {
@@ -153,16 +346,41 @@
  * below exists for. Found by looking at the form in a browser, not by
  * reading this file.
  */
+/*
+ * Focus and the ticked state read --ra-fg-primary, the accent as *ink*, and
+ * not --bs-primary or a mix of it with white.
+ *
+ * Measured on the live page, which is the only way this was going to be found:
+ * `color-mix(in srgb, var(--bs-primary) 55%, white)` computes to
+ * rgb(147, 161, 176) and stands at 2.64:1 against the input's own white
+ * background, so focusing a field made its boundary *worse* than the 4.21:1 it
+ * has at rest, and the 0.25-alpha ring around it composites to about 1.3:1 and
+ * cannot carry the indication on its own. A state is covered by WCAG 1.4.11
+ * exactly as the resting component is. `--bs-primary` itself is no answer
+ * either: it is 7.83:1 on the light page and 2.27:1 on the dark one, which is
+ * the same trap the --ra-fg-* tokens were introduced for. Those are redefined
+ * per theme, so this reads them: 8.87:1 light, 8.25:1 dark.
+ *
+ * The ring stays, at the same alpha. It is not what identifies the state any
+ * more, it is what makes the state obvious at a glance, and those are
+ * different jobs.
+ */
 .form-control:focus,
 .form-select:focus,
 .form-check-input:focus {
-    border-color: color-mix(in srgb, var(--bs-primary) 55%, white);
+    border-color: var(--ra-fg-primary);
     box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
 }
 
+/*
+ * A ticked box keeps the accent as its fill — the white glyph on it needs a
+ * dark enough surface, and --bs-primary gives 7.83:1 for that — but takes its
+ * border from the ink token, because the fill alone is 2.27:1 against the dark
+ * page and the edge of the control would disappear into it.
+ */
 .form-check-input:checked {
     background-color: var(--bs-primary);
-    border-color: var(--bs-primary);
+    border-color: var(--ra-fg-primary);
 }
 
 .btn {
@@ -291,6 +509,54 @@
     font-weight: 600;
 }
 
+/*
+ * The account area: who is signed in, and the way out.
+ *
+ * Nothing drew it until milestone 5 wired a `ShellAccount` into every handler,
+ * and the first phone-width screenshot of it showed exactly why that matters.
+ * Two faults, neither visible in the markup and neither caught by a test:
+ *
+ * `.navbar-expand` sets `flex-wrap: nowrap`, which `container-fluid` inherits,
+ * so brand plus menu plus account came to 417px inside a 375px bar and the
+ * name and the Log out button were painted *outside* the dark background, on
+ * the white page, half cut off at the top-right corner. `wrap` puts the
+ * account on a second row inside the bar instead, and `margin-left: auto`
+ * keeps it hard right wherever there is room for one row. This is the same
+ * family as the menu that stood on end: a flex rule inherited from a Bootstrap
+ * class nobody re-read.
+ *
+ * And `.btn-link` reads --bs-link-color, which is the theme's slate — 1.53:1
+ * against this bar, which never follows the page theme. Every other foreground
+ * in here is --ra-shell-fg for that exact reason, so the button takes it too,
+ * through Bootstrap's own button tokens rather than a `color` declaration a
+ * hover state would then have to fight.
+ */
+.ra-navbar-inner {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+}
+
+.ra-user-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.ra-user-name {
+    color: var(--ra-shell-fg);
+    font-size: 0.85rem;
+}
+
+.ra-profile-link,
+.ra-logout-button {
+    --bs-btn-color: var(--ra-shell-fg);
+    --bs-btn-hover-color: var(--ra-shell-fg);
+    --bs-btn-active-color: var(--ra-shell-fg);
+    color: var(--ra-shell-fg);
+    font-size: 0.85rem;
+}
+
 .ra-page-header {
     display: flex;
     align-items: flex-start;
@@ -328,6 +594,14 @@
     flex: 0 0 var(--ra-sidebar-width);
 }
 
+/*
+ * The main column fills what is left, in every layout. It was declared only
+ * for the two-column layouts, so a single-layout page sized itself to its
+ * content: a grid measured 968px of an 1885px window and the rest of the
+ * screen stayed empty. On a table of twenty-two columns that is the
+ * difference between reading it and scrolling it.
+ */
+.ra-layout-main,
 .ra-layout-two-column .ra-layout-main,
 .ra-layout-sidebar-detail .ra-layout-detail {
     flex: 1 1 auto;
@@ -501,7 +775,7 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  */
 .ra-region-preview,
 .ra-preview {
-    background-color: var(--bs-body-bg);
+    background-color: var(--ra-surface);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1rem 1.25rem;
@@ -617,7 +891,10 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     display: block;
     max-width: 46rem;
     margin: 1rem;
-    background-color: var(--bs-body-bg);
+    /* The surface, not the page. These read --bs-body-bg back when the page
+       was white and the two were the same colour; once the page gained a tint
+       a form and a sign-in box went grey while every other card stayed white. */
+    background-color: var(--ra-surface);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     padding: 1rem 1.25rem 1.25rem;
@@ -742,6 +1019,104 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 }
 
 /*
+ * The login page. It is the first thing anybody sees and the only page drawn
+ * without the shell, so it has no navbar, no region card and no grid rules to
+ * borrow shape from -- every rule it needs is here. Milestone 7 shipped a form
+ * whose every .ra-form-* class had no CSS at all: it drew flush against the
+ * viewport edge and every test passed, because structure and escaping are both
+ * true of unstyled markup.
+ *
+ * The card is centred by a flex main filling the viewport rather than by
+ * margin:auto on the form, because the vertical half of "centred" needs a box
+ * with a height and `body` does not reliably have one.
+ */
+.ra-login {
+    min-height: 100vh;
+    /* The same tint as every other page. It used to reach for Bootstrap's
+       tertiary background to get a shade off white, which was right while the
+       admin's own pages were white and is a second, slightly different grey
+       now that they are not -- and the sign-in page is the first thing anyone
+       sees of this product. */
+    background-color: var(--bs-body-bg);
+}
+
+.ra-login-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    /* The side padding is the gutter the card keeps on a phone, where its
+       max-width stops applying and it would otherwise touch both edges. */
+    padding: 2rem 1rem;
+}
+
+.ra-login-form {
+    /* Narrower than the form region's 46rem: two short fields in a 46rem card
+       read as a mostly empty page, and a sign-in box is the one place in an
+       admin where being small is what makes it look deliberate. */
+    width: 100%;
+    max-width: 23rem;
+    /* The surface, not the page. These read --bs-body-bg back when the page
+       was white and the two were the same colour; once the page gained a tint
+       a form and a sign-in box went grey while every other card stayed white. */
+    background-color: var(--ra-surface);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1.5rem;
+}
+
+.ra-login-brand {
+    margin-bottom: 0.15rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+/*
+ * "Sign in" is a subtitle under the brand, so it is secondary ink -- but
+ * --bs-secondary-color is a 75% alpha over the body colour in dark mode, and
+ * an alpha this page cannot measure is an alpha nobody checks. The opaque
+ * --ra-fg-secondary is the token this stylesheet already keeps legible as ink
+ * in both themes.
+ */
+.ra-login-title {
+    margin-bottom: 1.25rem;
+    color: var(--ra-fg-secondary);
+}
+
+.ra-login-message {
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.ra-login-message-text {
+    margin-bottom: 0;
+    font-weight: 600;
+}
+
+.ra-login-message-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+.ra-login-field {
+    margin-bottom: 0.85rem;
+}
+
+.ra-login-actions {
+    margin-top: 1.25rem;
+}
+
+/*
+ * One button, and the only thing to do on the page, so it takes the width of
+ * the card. A 5rem "Sign in" floating at the left edge of a 23rem box is the
+ * shape of a form somebody forgot to finish.
+ */
+.ra-login-submit {
+    width: 100%;
+}
+
+/*
  * Dark mode ships now. The media-query block only applies when the document
  * carries no explicit data-bs-theme, so an operator's choice always wins
  * over the operating system's.
@@ -771,12 +1146,18 @@ th[aria-sort="descending"] .ra-grid-sort::after {
  */
 @media (prefers-color-scheme: dark) {
     :root:not([data-bs-theme]) {
+    --ra-surface: #1d2023;
+        --ra-rule-faint: #292e33;
+        --ra-row-hover: #212529;
+        --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+
         color-scheme: dark;
         --bs-body-color: #dfe3e6;
         --bs-body-color-rgb: 223, 227, 230;
         --bs-body-bg: #16181b;
         --bs-body-bg-rgb: 22, 24, 27;
         --bs-border-color: #363b41;
+        --ra-input-border: #7a828c;
         --bs-light: #22262b;
         --bs-light-rgb: 34, 38, 43;
         --bs-dark: #0e1012;
@@ -833,11 +1214,16 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 
 [data-bs-theme="dark"] {
     color-scheme: dark;
+    --ra-surface: #1d2023;
+    --ra-rule-faint: #292e33;
+    --ra-row-hover: #212529;
+    --ra-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
     --bs-body-color: #dfe3e6;
     --bs-body-color-rgb: 223, 227, 230;
     --bs-body-bg: #16181b;
     --bs-body-bg-rgb: 22, 24, 27;
     --bs-border-color: #363b41;
+    --ra-input-border: #7a828c;
     --bs-light: #22262b;
     --bs-light-rgb: 34, 38, 43;
     --bs-dark: #0e1012;

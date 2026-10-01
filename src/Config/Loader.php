@@ -52,9 +52,17 @@ final class Loader
 
         $enums = $definitions->expand($this->read('enums.php'));
         $resolvedEnums = $resolver->resolve($enums);
+
+        // Roles load exactly the way enumerations do -- shared definitions
+        // expanded, placeholders resolved -- but they are not interpreted
+        // here. Which permissions exist is decided by the pages, and the
+        // loader has no page repository; `Roles::fromConfig()` is given the
+        // catalogue by whoever has one.
+        $roles = $resolver->resolve($definitions->expand($this->read('roles.php')));
+
         $this->warnings = $resolver->warnings();
 
-        return new Config($resolved, Enums::fromConfig($resolvedEnums));
+        return new Config($resolved, Enums::fromConfig($resolvedEnums), $roles);
     }
 
     /** @return list<string> */

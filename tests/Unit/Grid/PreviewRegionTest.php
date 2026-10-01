@@ -22,6 +22,7 @@ use RockAdmin\Page\Display;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 use RockAdmin\Tests\Support\ThrowingRowSource;
 
@@ -188,6 +189,8 @@ final class PreviewRegionTest extends TestCase
             new QueryFactory(),
             new CellFormatter(),
             new UrlGenerator('/admin'),
+            Access::gate([$this->page()]),
+            Access::identity(),
         );
         $listView = $listRegion->render(
             $this->page(),

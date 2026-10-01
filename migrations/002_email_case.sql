@@ -1,0 +1,40 @@
+-- One address, one account -- on both servers.
+--
+-- `UNIQUE (email)` in 001 does not give that. MySQL's default collation
+-- compares text without regard to case, so it refuses `JANA@example.com`
+-- beside `jana@example.com`; PostgreSQL's does not, so it accepts it. Two
+-- rows for one human's address is not cosmetic: each carries its own roles,
+-- and before `SqlAuthenticator` folded the case for its lookup they carried
+-- separate login-throttle budgets as well, which made the throttle avoidable
+-- on one of the two servers by typing the address differently.
+--
+-- The functional unique index below is what closes the schema half of that.
+-- It is spelled once for both servers: MySQL takes a functional key part from
+-- 8.0.13 (this project requires no older MySQL for anything else either), and
+-- both accept the expression wrapped in its own parentheses. So there is no
+-- {{ddl.*}} placeholder here and nothing new in `Dialect` -- the difference
+-- between the servers is in what the index *adds*, not in how it is written:
+-- redundant on MySQL, where the collation already folds case, and the actual
+-- fix on PostgreSQL.
+--
+-- `UNIQUE (email)` in 001 stays, and is not dropped as redundant. Three
+-- reasons, in order of weight. It cannot be dropped once: MySQL names that
+-- constraint's index `email` and PostgreSQL names it `ra_users_email_key`, so
+-- a `DROP INDEX` would need a `Dialect` difference to express something whose
+-- only benefit is tidiness. A plain unique constraint is also what a person
+-- reading the schema -- or a tool introspecting it -- expects to find on an
+-- email column, and finding only a functional index reads as though exact
+-- duplicates were permitted. And it is the constraint that keeps MySQL
+-- correct without depending on the functional index at all.
+--
+-- **An installation already holding two case variants cannot apply this**:
+-- creating the index fails, naming the duplicate rows, and the migration is
+-- not recorded. That is the right failure. Merging two admin accounts is a
+-- judgement about which roles, which workspaces and which id survive, and a
+-- migration is not in a position to make it -- doing it silently would hand
+-- somebody permissions nobody granted them. No such installation exists
+-- today, because nothing has shipped; this is the same argument the checksum
+-- column in `Migrator` rests on, and it is worth saying out loud that it
+-- stops being available the moment a release does ship.
+
+CREATE UNIQUE INDEX ra_users_email_lower ON ra_users ((LOWER(email)));

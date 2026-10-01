@@ -132,4 +132,22 @@ final class LoaderTest extends TestCase
 
         $this->assertSame(['/css/local.css'], $config->get('assets.css'));
     }
+
+    public function testRolesLoadTheWayEnumerationsDo(): void
+    {
+        // Expanded and resolved, but not interpreted: which permissions exist
+        // is decided by the pages, and the loader has no page repository.
+        $config = $this->loader('valid', ['EDITOR_SCOPE' => 'ads.*'])->load();
+
+        $this->assertSame(['permissions' => ['*']], $config->roles()['superadmin'] ?? null);
+        $this->assertSame(
+            ['label' => 'Editor', 'permissions' => ['ads.*', '!ads.delete']],
+            $config->roles()['editor'] ?? null,
+        );
+    }
+
+    public function testAConfigurationWithNoRolesFileHasNoRoles(): void
+    {
+        $this->assertSame([], $this->loader('defaults')->load()->roles());
+    }
 }

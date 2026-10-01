@@ -4,6 +4,7 @@
 *.css   text
 *.js    text
 *.md    text
+*.sql   text
 
 # Development files are not shipped in the Composer package.
 # docs/ deliberately is: configuration is written largely by AI agents, and

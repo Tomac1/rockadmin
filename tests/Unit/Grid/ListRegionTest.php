@@ -29,6 +29,7 @@ use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 
 /**
@@ -138,9 +139,25 @@ final class ListRegionTest extends TestCase
         return new Result($rows, $total, [new Sql('SELECT 1')]);
     }
 
-    private function listRegion(RowSource $rows): ListRegion
+    /**
+     * $page is the page whose permissions exist at all, not the page the
+     * caller then renders -- they are always the same page, and the gate has
+     * to be built from it because a page with no form region generates no
+     * write permission for anybody to hold. See `HiddenWhenForbiddenTest` for
+     * what rendering does with the answer.
+     */
+    private function listRegion(RowSource $rows, ?PageDefinition $page = null): ListRegion
     {
-        return new ListRegion($rows, new QueryFactory(), new CellFormatter(), $this->urls());
+        $page ??= $this->page();
+
+        return new ListRegion(
+            $rows,
+            new QueryFactory(),
+            new CellFormatter(),
+            $this->urls(),
+            Access::gate([$page]),
+            Access::identity(),
+        );
     }
 
     /**
@@ -192,7 +209,8 @@ final class ListRegionTest extends TestCase
         $region = $this->region();
         $rows = new FakeRowSource([$this->fetchResult([['id' => 7, 'title' => 'A']], 1)]);
 
-        $view = $this->listRegion($rows)->render($this->writablePage(), $region, GridState::fromQuery([], 'grid', $region));
+        $writable = $this->writablePage();
+        $view = $this->listRegion($rows, $writable)->render($writable, $region, GridState::fromQuery([], 'grid', $region));
 
         $this->assertNotNull($view->createUrl);
         $this->assertTrue($view->hasRowActions());

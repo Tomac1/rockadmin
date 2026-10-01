@@ -6,6 +6,7 @@ namespace RockAdmin\Tests\Unit\Form;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Auth\Gate;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\Query;
@@ -27,6 +28,7 @@ use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\Page\RegionType;
+use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\FakeRowSource;
 
 /**
@@ -112,7 +114,23 @@ final class FormRegionTest extends TestCase
 
     private function formRegion(RowSource $rows): FormRegion
     {
-        return new FormRegion($rows, new UrlGenerator('/admin'), new Csrf(new ArraySessionStore()));
+        return new FormRegion(
+            $rows,
+            new UrlGenerator('/admin'),
+            new Csrf(new ArraySessionStore()),
+            $this->gate(),
+            Access::identity(),
+        );
+    }
+
+    /**
+     * A gate over a page that has a form, granting everything that page
+     * generates -- these tests are about what a form contains, not about who
+     * may see it, and `HiddenWhenForbiddenTest` covers the refusals.
+     */
+    private function gate(): Gate
+    {
+        return Access::gate([$this->page($this->region(['title' => $this->field('title')]))]);
     }
 
     private function fieldView(FormView $view, string $key): FormFieldView
@@ -295,6 +313,8 @@ final class FormRegionTest extends TestCase
             new FakeRowSource([$this->fetchResult([])]),
             new UrlGenerator('/admin'),
             $csrf,
+            $this->gate(),
+            Access::identity(),
         );
         $definition = $this->region(['title' => $this->field('title')]);
 

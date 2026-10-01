@@ -54,6 +54,39 @@ final class CacheTest extends TestCase
         $this->assertNull((new Cache($this->file))->read());
     }
 
+    public function testACacheWrittenByAnOlderRockAdminIsRebuiltRatherThanReadPartially(): void
+    {
+        // A cache file predates a constructor argument -- `roles`, here, but
+        // it will be something else next time. var_export() wrote no such key,
+        // so __set_state() restores an object that is valid and quietly
+        // incomplete: a configuration reporting no roles at all, which once
+        // the gate is in place means nobody may do anything and nothing says
+        // why. Read as absent so the caller rebuilds it.
+        file_put_contents($this->file, <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            return \RockAdmin\Config\Config::__set_state([
+                'data' => ['per_page' => 50],
+                'enums' => \RockAdmin\Config\Enums::__set_state(['enums' => [], 'sources' => []]),
+            ]);
+            PHP);
+
+        $this->assertNull((new Cache($this->file))->read(), 'a cache without a version is from before versions existed');
+    }
+
+    public function testACacheWrittenByThisVersionIsRead(): void
+    {
+        $cache = new Cache($this->file);
+        $cache->write($this->config());
+
+        $restored = $cache->read();
+
+        $this->assertNotNull($restored);
+        $this->assertTrue($restored->isCurrent());
+    }
+
     public function testAWrittenConfigurationComesBackIdentical(): void
     {
         $cache = new Cache($this->file);
