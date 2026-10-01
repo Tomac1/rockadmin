@@ -51,6 +51,22 @@ final class ActionView
          * verify.
          */
         public readonly string $token = '',
+        /**
+         * The key of the row this control acts on, or null when there is no
+         * row behind it — a page header button, a bulk control.
+         *
+         * `POST /a/{page}/{verb}` names the page and the verb and not the
+         * row, so a row's key travels in the body as `FormFields::ID`, the
+         * same way a form's does. It is on the view because only
+         * `ActionBuilder` has the row, and a template cannot ask for it.
+         *
+         * Without it every row-level `post` answered 404 — "this request
+         * names no row to write" — which is the correct refusal to a request
+         * that genuinely named none. The control was drawn, it was gated, it
+         * carried a token and a confirmation, and it could not work. Four
+         * tests passed over it because each one posted the key by hand.
+         */
+        public readonly ?string $rowKey = null,
     ) {
     }
 

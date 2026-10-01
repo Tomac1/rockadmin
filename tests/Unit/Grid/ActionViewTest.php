@@ -14,6 +14,7 @@ use RockAdmin\Auth\Gate;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\Sql;
+use RockAdmin\Form\FormFields;
 use RockAdmin\Grid\ActionBuilder;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\GridState;
@@ -173,6 +174,39 @@ final class ActionViewTest extends TestCase
         $this->assertSame(
             ['Archive this ad?'],
             $this->attributes($html, '//button[@data-ra-confirm]', 'data-ra-confirm'),
+        );
+
+        // Which row. `POST /a/{page}/{verb}` names the page and the verb and
+        // not the row, so the key travels in the body. Without it every
+        // row-level post answered 404 -- "this request names no row to write"
+        // -- while the control looked entirely correct: drawn, gated,
+        // confirmed, carrying a token. Four tests passed over it, because
+        // each one posted the key by hand.
+        $keys = $xpath->query('.//input[@name="' . FormFields::ID . '"]', $form);
+
+        $this->assertNotFalse($keys);
+        $this->assertSame(1, $keys->length, 'A post action that names no row is a button that 404s.');
+
+        $key = $keys->item(0);
+
+        $this->assertInstanceOf(DOMElement::class, $key);
+        $this->assertSame('7', $key->getAttribute('value'), 'The control posts about a different row.');
+    }
+
+    public function testEachRowsPostActionNamesThatRowAndNotAnother(): void
+    {
+        // The failure this guards is a loop variable read outside the loop:
+        // every control posting the first row's key, which looks right until
+        // somebody archives the wrong ad.
+        $html = $this->render($this->grid(['ads.*'], [
+            ['id' => 7, 'state' => 'active'],
+            ['id' => 8, 'state' => 'active'],
+            ['id' => 9, 'state' => 'active'],
+        ]));
+
+        $this->assertSame(
+            ['7', '8', '9'],
+            $this->attributes($html, '//td[contains(@class, "ra-grid-cell-tools")]//input[@name="' . FormFields::ID . '"]', 'value'),
         );
     }
 

@@ -29,6 +29,21 @@
 <?php if ($view->isPost) { ?>
     <form class="ra-action-form ra-action-form-<?= $e($view->key) ?>" method="post" action="<?= $href($view->url) ?>">
         <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->token) ?>">
+        <?php
+        /*
+         * Which row. `POST /a/{page}/{verb}` names the page and the verb and
+         * not the row, so the key travels in the body exactly as a form's
+         * does. Without it every row-level `post` answered 404 — "this
+         * request names no row to write" — and the control looked perfectly
+         * correct: gated, confirmed, and carrying a token.
+         *
+         * Absent for a control with no row behind it: a page header button, a
+         * bulk action. Those are not posting about a row.
+         */
+        ?>
+        <?php if ($view->rowKey !== null) { ?>
+            <input type="hidden" name="<?= $e(\RockAdmin\Form\FormFields::ID) ?>" value="<?= $e($view->rowKey) ?>">
+        <?php } ?>
         <button
             class="ra-btn ra-btn--outline ra-btn--sm <?= $e($view->classes()) ?>"
             type="submit"

@@ -623,3 +623,24 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/*
+ * The controls in an action cell, in a row rather than a column.
+ *
+ * A `post` action is a `<form>` and a `<form>` is a block element, so three
+ * controls in one cell stacked and made every row three times taller. The
+ * form is there because the action must work with no JavaScript -- it carries
+ * the token and the method -- so it is the layout that gives way, not the
+ * markup.
+ */
+.ra-grid-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1, 0.25rem);
+    flex-wrap: wrap;
+}
+
+.ra-grid-actions .ra-action-form {
+    display: contents;
+}

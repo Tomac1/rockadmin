@@ -223,7 +223,7 @@ final class ListRegion
 
             foreach ($region->columns as $column) {
                 $cells[] = $column->type->isActions()
-                    ? $this->actionCell($page->name, $column, $row)
+                    ? $this->actionCell($page->name, $column, $row, $page->entity->key)
                     : $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
             }
 
@@ -269,9 +269,13 @@ final class ListRegion
      *
      * @param array<string, mixed> $row
      */
-    private function actionCell(string $pageName, ColumnDefinition $column, array $row): CellView
-    {
-        $actions = $this->actions->forRow($pageName, $column->actions, $row);
+    private function actionCell(
+        string $pageName,
+        ColumnDefinition $column,
+        array $row,
+        string $keyColumn,
+    ): CellView {
+        $actions = $this->actions->forRow($pageName, $column->actions, $row, $keyColumn);
 
         $extra = ['ra-align-' . $column->align];
 

@@ -264,7 +264,7 @@ final class DemoFormTest extends DatabaseTestCase
 
         // The select's options come from demo/config/enums.php, through the
         // same @enum: reference the grid's badge and filter read.
-        $this->assertSame(['active', 'draft', 'sold'], array_keys($form->field('state')->options));
+        $this->assertSame(['active', 'draft', 'sold', 'archived'], array_keys($form->field('state')->options));
     }
 
     #[DataProvider('connections')]

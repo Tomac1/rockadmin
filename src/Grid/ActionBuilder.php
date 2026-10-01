@@ -60,10 +60,13 @@ final class ActionBuilder
      * The actions one row of a grid draws.
      *
      * @param  list<ActionDefinition> $actions
-     * @param  array<string, mixed>   $row      the row being rendered, as the RowSource gave it
+     * @param  array<string, mixed>   $row       the row being rendered, as the RowSource gave it
+     * @param  string                 $keyColumn the entity's key column, for the hidden `_id` a
+     *                                           `post` submits: `POST /a/{page}/{verb}` names the
+     *                                           page and the verb and not the row
      * @return list<ActionView>
      */
-    public function forRow(string $pageName, array $actions, array $row): array
+    public function forRow(string $pageName, array $actions, array $row, string $keyColumn): array
     {
         $views = [];
 
@@ -75,10 +78,27 @@ final class ActionBuilder
             $views[] = $this->view(
                 $action,
                 $this->urls->reference(RowPlaceholders::reference($action->to, $row), $pageName),
+                $this->rowKey($row, $keyColumn),
             );
         }
 
         return $views;
+    }
+
+    /**
+     * The row's own key, for the hidden input a `post` submits.
+     *
+     * A row that came back without one gets null rather than an empty string:
+     * an empty `_id` is a request naming a row called "", which is a
+     * different and more confusing refusal than naming none at all.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function rowKey(array $row, string $keyColumn): ?string
+    {
+        $key = $row[$keyColumn] ?? null;
+
+        return \is_scalar($key) ? (string) $key : null;
     }
 
     /**
@@ -106,12 +126,13 @@ final class ActionBuilder
         return $views;
     }
 
-    private function view(ActionDefinition $action, string $url): ActionView
+    private function view(ActionDefinition $action, string $url, ?string $rowKey = null): ActionView
     {
         return new ActionView(
             key: $action->key,
             label: $action->label,
             url: $url,
+            rowKey: $rowKey,
             isPost: $action->type->isWrite(),
             confirm: $action->confirm,
             icon: $action->icon === '' ? null : $action->icon,
