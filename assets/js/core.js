@@ -33,7 +33,7 @@
 
     /**
      * A confirmation in front of anything carrying data-ra-confirm — the
-     * delete button on an edit form, and whatever else asks for one later.
+     * delete button on an edit form, every `post` action, every bulk control.
      *
      * Bound in the capture phase, before the action dispatcher below and
      * before any submit handler, so declining actually stops the event rather
@@ -41,10 +41,24 @@
      * same reason everything else here is: a button that arrived with an AJAX
      * fragment must behave exactly like one that was in the first response.
      *
+     * **It is a dialog, not `window.confirm()`.** The native one looks
+     * nothing like the rest of the admin, cannot carry the action's own
+     * wording or weight, and blocks the whole page — including anything
+     * driving the browser, which is how it came to freeze a tab twice while
+     * milestone 8's actions were being checked.
+     *
+     * That makes it asynchronous, and asynchronous is the whole difficulty:
+     * `window.confirm()` answers before the event finishes, a dialog answers
+     * minutes later. So the event is *always* cancelled, and on a yes the
+     * same control is triggered again with a flag saying the question has
+     * been asked. The second pass through here sees the flag, clears it, and
+     * lets the event go.
+     *
      * This is a courtesy, not a check. The server never looks for evidence
      * that it ran, because an attribute in a document the reader can edit is
      * not evidence of anything; ActionHandler verifies the CSRF token and the
-     * method, which is all that can be verified.
+     * method, which is all that can be verified. With no script there is no
+     * confirmation at all, which was equally true before.
      *
      * @param {Event} event
      */
@@ -56,16 +70,132 @@
             return;
         }
 
-        if (window.confirm(trigger.getAttribute('data-ra-confirm') || 'Are you sure?')) {
+        // The second pass: this control has already been asked about.
+        if (trigger._raConfirmed) {
+            trigger._raConfirmed = false;
+
             return;
         }
 
         event.preventDefault();
         event.stopPropagation();
+
+        askConfirmation(trigger.getAttribute('data-ra-confirm') || 'Are you sure?', function () {
+            trigger._raConfirmed = true;
+
+            // Re-fired as whatever it was. A click on a submit button is a
+            // click, and letting the browser do it means the form submits the
+            // way it would have, with the right submitter -- which is what
+            // `formaction` on a bulk button depends on.
+            if (event.type === 'submit' && trigger.form) {
+                trigger.form.requestSubmit(trigger);
+            } else if (typeof trigger.click === 'function') {
+                trigger.click();
+            }
+        });
     }
 
     document.addEventListener('click', confirmFirst, true);
     document.addEventListener('submit', confirmFirst, true);
+
+    /** The dialog's answer, while it is open. */
+    var pendingConfirm = null;
+
+    /**
+     * Asks the question and calls back only on a yes.
+     *
+     * There is no "no" callback: declining means nothing happens, and the
+     * only thing that has to happen is what already did — the original event
+     * was cancelled before this was called.
+     *
+     * @param {string} question
+     * @param {function(): void} accepted
+     */
+    function askConfirmation(question, accepted) {
+        var el = document.getElementById('ra-confirm');
+
+        if (!el) {
+            // No dialog in this document. Rather than silently doing the
+            // thing nobody confirmed, nothing happens and the console says
+            // why -- a missing dialog must not turn a confirmed action into
+            // an unconfirmed one.
+            // eslint-disable-next-line no-console
+            console.warn('RockAdmin: no confirmation dialog in this document, so nothing was done.');
+
+            return;
+        }
+
+        var body = el.querySelector('.ra-confirm-question');
+
+        if (body) {
+            body.textContent = question;
+        }
+
+        pendingConfirm = accepted;
+        confirmOpener = document.activeElement !== document.body ? document.activeElement : null;
+        el.hidden = false;
+
+        // Cancel, not Confirm. The question in front of a destructive action
+        // should not be dismissed by the Enter somebody was already pressing.
+        var no = el.querySelector('.ra-confirm-no');
+
+        if (no && no.focus) {
+            no.focus();
+        }
+    }
+
+    var confirmOpener = null;
+
+    /**
+     * Closes it, and runs the callback only when it was accepted.
+     *
+     * @param {boolean} accepted
+     */
+    function closeConfirmation(accepted) {
+        var el = document.getElementById('ra-confirm');
+
+        if (!el || el.hidden) {
+            return;
+        }
+
+        var run = pendingConfirm;
+
+        pendingConfirm = null;
+        el.hidden = true;
+
+        var back = confirmOpener;
+
+        confirmOpener = null;
+
+        if (back && back.focus && document.contains(back)) {
+            back.focus();
+        }
+
+        if (accepted && typeof run === 'function') {
+            run();
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+
+        if (!target || !target.closest) {
+            return;
+        }
+
+        if (target.closest('.ra-confirm-yes')) {
+            closeConfirmation(true);
+
+            return;
+        }
+
+        // The backdrop counts only when it is what was clicked, the same rule
+        // the other overlays use: a click inside the dialog finds it by
+        // walking up and would cancel the question being read.
+        if (target.closest('.ra-confirm-no') || target === document.getElementById('ra-confirm')) {
+            closeConfirmation(false);
+        }
+    });
 
     /**
      * Dismissing a thing that announces itself — a toast, an alert.
@@ -260,9 +390,13 @@
             return;
         }
 
-        var open = ['modal', 'offcanvas'].map(overlay).filter(function (el) {
-            return el && !el.hidden;
-        })[0];
+        // The confirmation is checked first, because it is the one on top.
+        var confirming = document.getElementById('ra-confirm');
+        var open = (confirming && !confirming.hidden)
+            ? confirming
+            : ['modal', 'offcanvas'].map(overlay).filter(function (el) {
+                return el && !el.hidden;
+            })[0];
 
         if (!open) {
             return;
@@ -320,6 +454,17 @@
      */
     document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') {
+            return;
+        }
+
+        // The confirmation first and alone: it sits over whatever is behind
+        // it, so Escape is answering the question rather than closing the
+        // panel the question is about.
+        var confirming = document.getElementById('ra-confirm');
+
+        if (confirming && !confirming.hidden) {
+            closeConfirmation(false);
+
             return;
         }
 

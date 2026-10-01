@@ -118,6 +118,8 @@ $theme = $view->shell->themeAttribute();
 
     <?= $partial('ui/modal') ?>
 
+    <?= $partial('ui/confirm') ?>
+
     <?php
     /*
      * The shared offcanvas, in the same two parts as the modal: the dark

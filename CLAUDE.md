@@ -53,7 +53,10 @@ Status: design agreed, implementation not started.
    attributes and bound by delegation, so it survives AJAX insertion. No
    hardcoded URLs — use `UrlGenerator`, because the admin also runs in
    query-string mode. Escape everything with `$e()`; `$raw()` is the explicit
-   exception.
+   exception. **No native browser dialogs anywhere** — never `confirm()`,
+   `alert()` or `prompt()`. Every confirmation is `templates/ui/confirm.php`,
+   which looks like the admin, carries the action's own question, and does
+   not freeze the page. `ConfirmationTest` enforces this.
 7. **One write path.** Inline editing, forms and bulk actions all go through
    the same `WriteHandler`, transaction and audit log.
 8. **No query inside a row loop.** Related columns are JOINs; one-to-many

@@ -677,3 +677,26 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-offcanvas-body .ra-form-title {
     display: none;
 }
+
+/*
+ * The confirmation dialog.
+ *
+ * Above the other overlays, because it can be asked about something inside
+ * one: a Delete button in a panel that was itself opened into the shared
+ * modal. `--z-popover` is the design system's own next step up from
+ * `--z-modal`, so this does not invent a number — and it stays below
+ * `--z-toast`, since the toast reporting what happened should not end up
+ * behind the question that caused it.
+ */
+.ra-confirm-backdrop {
+    z-index: var(--z-popover, 600);
+}
+
+/*
+ * The question itself reads as a sentence rather than as a form label: it is
+ * the only text in the dialog and the thing being decided about.
+ */
+.ra-confirm-question {
+    font-size: var(--text-md, 0.8125rem);
+    color: var(--text-primary, #0f172a);
+}
