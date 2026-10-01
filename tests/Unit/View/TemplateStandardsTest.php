@@ -440,6 +440,14 @@ final class TemplateStandardsTest extends TestCase
             return true;
         }
 
+        // A stylesheet partial names its ra- classes as selectors, because
+        // it has no elements of its own to put them on. `error/style` is the
+        // whole of that category: the error pages cannot link the design
+        // system, so they carry it.
+        if (str_contains($contents, '<style>') && preg_match('/\.ra-[a-z0-9-]+/', $contents) === 1) {
+            return true;
+        }
+
         // A class attribute that is nothing but a call to something named
         // `classes` has delegated the job to whatever assembled them, and
         // that is the arrangement this project prefers. Demanding a literal

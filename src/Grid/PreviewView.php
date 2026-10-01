@@ -24,6 +24,9 @@ final class PreviewView
 
     public function classes(): string
     {
-        return Classes::of('preview', $this->key);
+        // A card, which is what the design system calls a white surface laid
+        // on the page -- the same thing a form region already is, and the
+        // same thing a preview has to be if it is to sit beside one.
+        return 'ra-card ' . Classes::of('preview', $this->key);
     }
 }

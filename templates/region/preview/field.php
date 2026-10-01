@@ -28,7 +28,7 @@
  */
 ?>
 <div class="<?= $e($view->classes()) ?>">
-    <dt class="ra-field-label"><?= $e($view->label) ?></dt>
+    <dt class="ra-field-label ra-field__label"><?= $e($view->label) ?></dt>
     <dd class="ra-field-value">
         <?php if ($view->cell->value === null) { ?>
             <?= $partial('region/preview/missing', $view) ?>

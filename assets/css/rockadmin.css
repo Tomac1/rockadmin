@@ -419,3 +419,61 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-form-delete {
     margin-left: auto;
 }
+
+/*
+ * The preview region: a row's fields read rather than edited.
+ *
+ * The design system has no component for this -- it is a definition list,
+ * and the vocabulary stops at the form field. So the label borrows
+ * `.ra-field__label`, which is the right size and weight for exactly this
+ * job, and the layout is written here.
+ *
+ * Two columns, because a preview of a row with a dozen fields in one column
+ * is a page of scrolling for a thing meant to be glanced at. A field marked
+ * wide -- long text, JSON -- takes both.
+ */
+.ra-preview {
+    padding: var(--space-5, 1.25rem);
+}
+
+.ra-preview-title {
+    font-size: var(--text-lg, 1rem);
+    font-weight: var(--font-semibold, 600);
+    margin: 0 0 var(--space-4, 1rem);
+}
+
+.ra-preview-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-4, 1rem) var(--space-6, 1.5rem);
+    margin: 0;
+}
+
+.ra-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 0.25rem);
+    min-width: 0;
+}
+
+.ra-field-wide {
+    grid-column: 1 / -1;
+}
+
+.ra-field-value {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* An absent value, as against an empty one. The grid draws the same dash in
+   the same colour, and the two screens disagreeing about what "no value"
+   looks like would be worse than either choice. */
+.ra-field-missing {
+    color: var(--text-muted, #64748b);
+}
+
+.ra-preview-empty {
+    margin: 0;
+    color: var(--text-muted, #64748b);
+}
