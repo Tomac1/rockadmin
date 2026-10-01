@@ -57,6 +57,8 @@ The data source and entity being shown.
 
 ## `entity.relations.*`
 
+Relationships to other tables, for joining.
+
 Every entry of `entity.relations`.
 
 | Key | Type | Default | Example | What it does |
@@ -75,6 +77,8 @@ Optional content shown at the top of the page.
 
 ## `actions.*`
 
+The actions this page offers, each defined once and referenced wherever it should appear — a grid column, the page header. A region renders content; an action decides where that content appears, which is why the two are configured separately.
+
 Every entry of `actions`.
 
 | Key | Type | Default | Example | What it does |
@@ -89,6 +93,8 @@ Every entry of `actions`.
 | `refresh` | array | — | `['grid']` | Which regions of this page re-render once the action completes, as a list of region keys. Without it the page reloads. Set it when the action changes what one region shows and nothing else. |
 
 ## `regions.*`
+
+The regions of the page, each showing data in a different way.
 
 Every entry of `regions`.
 
@@ -108,6 +114,8 @@ Presentation for the region's search box. Which columns it searches is decided p
 | `placeholder` | string | — | `Search...` | Placeholder text shown in the empty search box. |
 
 ## `regions.*.columns.*`
+
+The columns shown in this region, each described by the column schema.
 
 Every entry of `regions.*.columns`.
 
@@ -156,6 +164,8 @@ The fields this form reads and writes, and how copying a row differs from editin
 
 
 ## `regions.*.form.fields.*`
+
+The fields of this form, each described by the field schema.
 
 Every entry of `regions.*.form.fields`.
 

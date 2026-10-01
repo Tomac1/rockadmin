@@ -55,7 +55,17 @@ final class Reference
             }
 
             if ($key->each !== null) {
-                $out .= "\n## `{$path}.*`\n\nEvery entry of `{$path}`.\n\n"
+                // The key's own description first, then what an entry is. It
+                // used to print only the second sentence, so `actions`,
+                // `regions` and `entity.relations` each had a description
+                // written in the schema that nothing ever rendered -- rule 5
+                // satisfied in letter and not in fact, since the reference is
+                // what somebody writing configuration actually reads.
+                $described = self::describe($key);
+
+                $out .= "\n## `{$path}.*`\n\n"
+                    . ($described === '' ? '' : rtrim($described) . "\n\n")
+                    . "Every entry of `{$path}`.\n\n"
                     . self::section($key->each, $path . '.*');
             }
         }
