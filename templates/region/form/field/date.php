@@ -10,6 +10,7 @@
  * a round trip could break.
  *
  * @var \RockAdmin\Form\FormFieldView $view
+ * @var \Closure(mixed): string $e
  * @var \Closure(array<int|string, scalar|null>): string $attrs
  */
 
@@ -18,4 +19,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'value' => \is_string($view->value) ? $view->value : '',
 ];
 ?>
-<input class="ra-ra-input ra-form-control-date form-control"<?= $attrs($attributes) ?>>
+<input class="<?= $e(\RockAdmin\Form\FormControl::classes($view, 'ra-input')) ?>"<?= $attrs($attributes) ?>>

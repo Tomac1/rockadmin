@@ -18,6 +18,12 @@
  * `readonly` renders as `disabled` on each input: a radio has no `readonly`
  * a browser honours.
  *
+ * The dot is drawn, not native, the same way the checkbox's box is: the
+ * design system hides the real input and styles the span beside it. Which
+ * means `ra-radio-input` belongs on the `<input>` and nowhere else -- it was
+ * on the group `<div>`, and `opacity: 0; width: 0` applied to the group is
+ * every option at once, so the whole control was invisible.
+ *
  * @var \RockAdmin\Form\FormFieldView $view
  * @var \Closure(mixed): string $e
  * @var \Closure(array<int|string, scalar|null>): string $attrs
@@ -34,12 +40,12 @@ $group = [
     'aria-describedby' => \RockAdmin\Form\FormControl::describedBy($view),
 ];
 ?>
-<div class="ra-radio-input ra-form-control ra-form-control-radio"<?= $attrs($group) ?>>
+<div class="ra-form-control ra-form-control-radio ra-radio-group ra-radio-group--horizontal"<?= $attrs($group) ?>>
     <?php foreach ($view->options as $option) { ?>
         <?php $optionId = \RockAdmin\Form\FormControl::optionId($view, $index); ?>
-        <div class="ra-radio-group ra-form-radio">
+        <label class="ra-form-radio ra-radio-label" for="<?= $e($optionId) ?>">
             <input
-                class="ra-form-radio-input ra-checkbox-input"
+                class="ra-form-radio-input ra-radio-input"
                 type="radio"
                 <?= $attrs([
                     'id' => $optionId,
@@ -50,8 +56,9 @@ $group = [
                     'disabled' => $view->readonly,
                 ]) ?>
             >
-            <label class="ra-radio-label ra-form-radio-label" for="<?= $e($optionId) ?>"><?= $e($option->label) ?></label>
-        </div>
+            <span class="ra-form-radio-dot ra-radio-dot" aria-hidden="true"></span>
+            <span class="ra-form-radio-label"><?= $e($option->label) ?></span>
+        </label>
         <?php ++$index; ?>
     <?php } ?>
 </div>

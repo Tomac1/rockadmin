@@ -17,8 +17,16 @@
  * project has no way to tell "unbound in this build" from "the binding
  * failed".
  *
+ * Every single-choice select sits inside `.ra-select-wrap` and is followed
+ * by `ui/select-caret`. `.ra-select` sets `appearance: none`, so the
+ * browser's own arrow is gone and the design system's chevron is markup; a
+ * select without the wrapper is a box with 32px of reserved space on its
+ * right and nothing in it. The multiselect is the exception and keeps no
+ * wrapper: a list box has no arrow to draw.
+ *
  * @var \RockAdmin\Grid\ListView $view
  * @var \Closure(mixed): string $e
+ * @var \Closure(string, mixed=): string $partial
  */
 ?>
 <div class="ra-grid-filters">
@@ -28,20 +36,23 @@
             $id = 'ra-grid-filter-' . $view->key . '-' . $filter->key;
         ?>
         <div class="ra-grid-filter ra-grid-filter-<?= $e($filter->key) ?>" data-ra-filter="<?= $e($filter->key) ?>">
-            <label class="ra-grid-filter-label form-label" for="<?= $e($id) ?>"><?= $e($filter->label) ?></label>
+            <label class="ra-grid-filter-label ra-field__label" for="<?= $e($id) ?>"><?= $e($filter->label) ?></label>
 
             <?php if ($filter->type === 'select') { ?>
-                <select class="ra-grid-filter-input form-select" id="<?= $e($id) ?>" name="<?= $e($name) ?>">
-                    <option value=""><?= $e($filter->placeholder ?? 'Any') ?></option>
-                    <?php foreach ($filter->options as $option) { ?>
-                        <option value="<?= $e($option->value) ?>"<?= $e($filter->value === $option->value ? ' selected' : '') ?>>
-                            <?= $e($option->label) ?>
-                        </option>
-                    <?php } ?>
-                </select>
+                <div class="ra-grid-filter-wrap ra-select-wrap">
+                    <select class="ra-grid-filter-input ra-select ra-select--sm" id="<?= $e($id) ?>" name="<?= $e($name) ?>">
+                        <option value=""><?= $e($filter->placeholder ?? 'Any') ?></option>
+                        <?php foreach ($filter->options as $option) { ?>
+                            <option value="<?= $e($option->value) ?>"<?= $e($filter->value === $option->value ? ' selected' : '') ?>>
+                                <?= $e($option->label) ?>
+                            </option>
+                        <?php } ?>
+                    </select>
+                    <?= $partial('ui/select-caret') ?>
+                </div>
             <?php } elseif ($filter->type === 'multiselect') { ?>
                 <?php $selected = \is_array($filter->value) && array_is_list($filter->value) ? $filter->value : []; ?>
-                <select class="ra-grid-filter-input form-select" id="<?= $e($id) ?>" name="<?= $e($name) ?>[]" multiple>
+                <select class="ra-grid-filter-input ra-select ra-select--sm" id="<?= $e($id) ?>" name="<?= $e($name) ?>[]" multiple>
                     <?php foreach ($filter->options as $option) { ?>
                         <option value="<?= $e($option->value) ?>"<?= $e(\in_array($option->value, $selected, true) ? ' selected' : '') ?>>
                             <?= $e($option->label) ?>
@@ -57,7 +68,7 @@
                 ?>
                 <div class="ra-grid-filter-range">
                     <input
-                        class="ra-grid-filter-input ra-grid-filter-from form-control"
+                        class="ra-grid-filter-input ra-grid-filter-from ra-input ra-input--sm"
                         type="<?= $e($inputType) ?>"
                         id="<?= $e($id) ?>"
                         name="<?= $e($name) ?>[from]"
@@ -65,7 +76,7 @@
                         placeholder="From"
                     >
                     <input
-                        class="ra-grid-filter-input ra-grid-filter-to form-control"
+                        class="ra-grid-filter-input ra-grid-filter-to ra-input ra-input--sm"
                         type="<?= $e($inputType) ?>"
                         name="<?= $e($name) ?>[to]"
                         value="<?= $e($to) ?>"
@@ -74,14 +85,17 @@
                     >
                 </div>
             <?php } elseif ($filter->type === 'boolean') { ?>
-                <select class="ra-grid-filter-input form-select" id="<?= $e($id) ?>" name="<?= $e($name) ?>">
-                    <option value="">Any</option>
-                    <option value="1"<?= $e($filter->value === '1' ? ' selected' : '') ?>>Yes</option>
-                    <option value="0"<?= $e($filter->value === '0' ? ' selected' : '') ?>>No</option>
-                </select>
+                <div class="ra-grid-filter-wrap ra-select-wrap">
+                    <select class="ra-grid-filter-input ra-select ra-select--sm" id="<?= $e($id) ?>" name="<?= $e($name) ?>">
+                        <option value="">Any</option>
+                        <option value="1"<?= $e($filter->value === '1' ? ' selected' : '') ?>>Yes</option>
+                        <option value="0"<?= $e($filter->value === '0' ? ' selected' : '') ?>>No</option>
+                    </select>
+                    <?= $partial('ui/select-caret') ?>
+                </div>
             <?php } else { ?>
                 <input
-                    class="ra-grid-filter-input form-control"
+                    class="ra-grid-filter-input ra-input ra-input--sm"
                     type="text"
                     id="<?= $e($id) ?>"
                     name="<?= $e($name) ?>"

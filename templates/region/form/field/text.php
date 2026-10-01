@@ -11,6 +11,7 @@
  * actually counts, since the browser's is a hint anybody can switch off.
  *
  * @var \RockAdmin\Form\FormFieldView $view
+ * @var \Closure(mixed): string $e
  * @var \Closure(array<int|string, scalar|null>): string $attrs
  */
 
@@ -23,4 +24,4 @@ $attributes = \RockAdmin\Form\FormControl::attributes($view) + [
     'pattern' => $view->pattern,
 ];
 ?>
-<input class="ra-ra-input ra-form-control-text form-control"<?= $attrs($attributes) ?>>
+<input class="<?= $e(\RockAdmin\Form\FormControl::classes($view, 'ra-input')) ?>"<?= $attrs($attributes) ?>>

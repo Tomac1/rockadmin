@@ -18,14 +18,14 @@
  */
 ?>
 <header class="ra-page-header">
-    <div class="ra-page-header-text">
-        <h1 class="ra-page-title"><?= $e($view->title) ?></h1>
+    <div class="ra-page-header-text ra-page-header__left">
+        <h1 class="ra-page-title ra-page-header__title"><?= $e($view->title) ?></h1>
         <?php if ($view->description !== '') { ?>
-            <p class="ra-page-description"><?= $e($view->description) ?></p>
+            <p class="ra-page-description ra-page-header__desc"><?= $e($view->description) ?></p>
         <?php } ?>
     </div>
     <?php if ($view->buttons !== [] || $view->actions !== []) { ?>
-        <div class="ra-page-actions">
+        <div class="ra-page-actions ra-page-header__right">
             <?php foreach ($view->buttons as $button) { ?>
                 <?= $partial('ui/button', $button) ?>
             <?php } ?>

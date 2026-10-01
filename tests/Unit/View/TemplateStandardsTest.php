@@ -440,12 +440,19 @@ final class TemplateStandardsTest extends TestCase
             return true;
         }
 
-        // A class attribute that is nothing but a prepared view's own classes
-        // has delegated the job to the object which assembled them, and that
-        // is the arrangement this project prefers. Demanding a literal token
-        // here forced one template to repeat the very class the view already
-        // carried, purely to satisfy this check.
-        if (preg_match('/\bclass\s*=\s*(["\'])\s*<\?=\s*\$\w+\(\$\w+->classes\b/', $contents) === 1) {
+        // A class attribute that is nothing but a call to something named
+        // `classes` has delegated the job to whatever assembled them, and
+        // that is the arrangement this project prefers. Demanding a literal
+        // token here forced one template to repeat the very class the view
+        // already carried, purely to satisfy this check.
+        //
+        // Two spellings, because there are two owners. A prepared view
+        // carries its own -- `$e($view->classes())`. A control's classes
+        // depend on the field *and* on which design-system element draws it,
+        // which no view object knows, so `FormControl::classes($view, ...)`
+        // assembles them for all nine control templates at once. Both end in
+        // Classes::of(); neither writes `ra-` where this can see it.
+        if (preg_match('/\bclass\s*=\s*(["\'])\s*<\?=\s*\$\w+\([^)"\']*classes\(/', $contents) === 1) {
             return true;
         }
 

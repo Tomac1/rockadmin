@@ -74,7 +74,7 @@ $passwordId = 'ra-login-password';
             </div>
 
             <div class="ra-login-field ra-login-field-password">
-                <label class="ra-login-label form-label" for="<?= $e($passwordId) ?>">Password</label>
+                <label class="ra-login-label ra-field__label" for="<?= $e($passwordId) ?>">Password</label>
                 <?php // No value attribute is written at all, and the view has
                       // no property that could fill one. See LoginView. ?>
                 <input class="ra-input ra-login-control" type="password" id="<?= $e($passwordId) ?>" name="<?= $e(\RockAdmin\Http\LoginHandler::PASSWORD_FIELD) ?>" value="" autocomplete="current-password" required>

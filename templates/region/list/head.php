@@ -26,7 +26,7 @@
     <tr class="ra-grid-head-row">
         <?php foreach ($view->columns as $column) { ?>
             <th
-                class="<?= $e($column->classes . ' text-' . $column->align) ?>"
+                class="<?= $e($column->classes . ' ra-align-' . $column->align) ?>"
                 scope="col"
                 <?php if ($column->width !== null) { ?>style="width: <?= $e($column->width) ?>;"<?php } ?>
                 <?php if ($column->sortDirection !== null) { ?>aria-sort="<?= $e($column->sortDirection) ?>"<?php } ?>
@@ -42,7 +42,7 @@
         <?php } ?>
         <?php if ($view->hasRowActions()) { ?>
             <th class="ra-grid-head-actions" scope="col">
-                <span class="ra-grid-head-label visually-hidden">Actions</span>
+                <span class="ra-grid-head-label ra-visually-hidden">Actions</span>
             </th>
         <?php } ?>
     </tr>

@@ -19,7 +19,7 @@
 $selected = \is_array($view->value) ? $view->value : [];
 $attributes = \RockAdmin\Form\FormControl::attributes($view, disableWhenReadonly: true) + ['multiple' => true];
 ?>
-<select class="ra-form-control ra-form-control-multiselect ra-select"<?= $attrs($attributes) ?>>
+<select class="<?= $e(\RockAdmin\Form\FormControl::classes($view, 'ra-select')) ?>"<?= $attrs($attributes) ?>>
     <?php foreach ($view->options as $option) { ?>
         <option value="<?= $e($option->value) ?>"<?= $attrs(['selected' => \in_array($option->value, $selected, true)]) ?>><?= $e($option->label) ?></option>
     <?php } ?>

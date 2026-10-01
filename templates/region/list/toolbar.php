@@ -33,7 +33,7 @@
     <form class="ra-table-toolbar ra-grid-toolbar" method="get" action="<?= $href($view->pageUrl) ?>" data-ra-behavior="grid-toolbar">
         <?php if ($view->searchable) { ?>
             <div class="ra-table-search ra-grid-search">
-                <label class="ra-grid-search-label visually-hidden" for="ra-grid-search-<?= $e($view->key) ?>">Search</label>
+                <label class="ra-grid-search-label ra-visually-hidden" for="ra-grid-search-<?= $e($view->key) ?>">Search</label>
                 <input
                     class="ra-input ra-grid-search-input"
                     type="search"

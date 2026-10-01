@@ -249,7 +249,7 @@ final class ListRegion
     {
         $actions = $this->actions->forRow($pageName, $column->actions, $row);
 
-        $extra = ['text-' . $column->align];
+        $extra = ['ra-align-' . $column->align];
 
         if ($column->class !== '') {
             $extra[] = $column->class;

@@ -10,6 +10,6 @@
  * @var \Closure(mixed): string $e
  */
 ?>
-<div class="ra-grid-cell-progress progress" role="progressbar" aria-valuenow="<?= $e($view->percent) ?>" aria-valuemin="0" aria-valuemax="100">
-    <div class="ra-grid-cell-progress-bar progress-bar" style="width: <?= $e($view->percent) ?>%"><?= $e($view->text) ?></div>
+<div class="ra-grid-cell-progress" role="progressbar" aria-valuenow="<?= $e($view->percent) ?>" aria-valuemin="0" aria-valuemax="100">
+    <div class="ra-grid-cell-progress-bar" style="width: <?= $e($view->percent) ?>%"><?= $e($view->text) ?></div>
 </div>

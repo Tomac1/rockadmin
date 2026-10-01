@@ -23,23 +23,23 @@
                 <?php if ($view->hasPrevious && $view->previousUrl !== null) { ?>
                     <a class="ra-page-btn ra-grid-pagination-link" href="<?= $href($view->previousUrl) ?>" data-ra-action="paginate" rel="prev">Previous</a>
                 <?php } else { ?>
-                    <span class="ra-grid-pagination-link page-link">Previous</span>
+                    <span class="ra-page-btn ra-grid-pagination-link">Previous</span>
                 <?php } ?>
             </li>
             <?php foreach ($view->pages as $page) { ?>
                 <li class="ra-grid-pagination-item<?= $e($page['current'] ? ' ra-is-current' : '') ?>">
                     <?php if ($page['current']) { ?>
-                        <span class="ra-grid-pagination-link page-link" aria-current="page"><?= $e($page['number']) ?></span>
+                        <span class="ra-page-btn ra-page-btn--active ra-grid-pagination-link" aria-current="page"><?= $e($page['number']) ?></span>
                     <?php } else { ?>
-                        <a class="ra-grid-pagination-link page-link" href="<?= $href($page['url']) ?>" data-ra-action="paginate"><?= $e($page['number']) ?></a>
+                        <a class="ra-page-btn ra-grid-pagination-link" href="<?= $href($page['url']) ?>" data-ra-action="paginate"><?= $e($page['number']) ?></a>
                     <?php } ?>
                 </li>
             <?php } ?>
             <li class="ra-grid-pagination-item ra-grid-pagination-next<?= $e($view->hasNext ? '' : ' ra-is-disabled') ?>">
                 <?php if ($view->hasNext && $view->nextUrl !== null) { ?>
-                    <a class="ra-grid-pagination-link page-link" href="<?= $href($view->nextUrl) ?>" data-ra-action="paginate" rel="next">Next</a>
+                    <a class="ra-page-btn ra-grid-pagination-link" href="<?= $href($view->nextUrl) ?>" data-ra-action="paginate" rel="next">Next</a>
                 <?php } else { ?>
-                    <span class="ra-grid-pagination-link page-link">Next</span>
+                    <span class="ra-page-btn ra-grid-pagination-link">Next</span>
                 <?php } ?>
             </li>
         </ul>

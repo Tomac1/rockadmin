@@ -149,7 +149,7 @@ final class CellFormatter
 
     private function classes(ColumnDefinition $column, bool $isEmpty): string
     {
-        $extra = ['text-' . $column->align];
+        $extra = ['ra-align-' . $column->align];
 
         if ($column->class !== '') {
             $extra[] = $column->class;

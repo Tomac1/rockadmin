@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RockAdmin\Form;
 
+use RockAdmin\View\Classes;
+
 /**
  * The identity and the shared attributes of one form control.
  *
@@ -136,6 +138,47 @@ final class FormControl
             'aria-invalid' => $field->hasError() ? 'true' : null,
             'aria-describedby' => self::describedBy($field),
         ];
+    }
+
+    /**
+     * The class attribute of one control.
+     *
+     * Three classes in one string, because a control needs all three and a
+     * template assembling them by hand needs an unescaped echo to do it --
+     * `class="ra-input<?= $view->hasError() ? ' ra-input--error' : '' ?>"`
+     * is nine templates writing conditional markup past `$e()`, which is the
+     * one thing rule 6 says a template may not do.
+     *
+     * - `ra-form-control` says what it is, so one selector reaches every
+     *   control in the admin.
+     * - `ra-form-control-<type>` says which kind it is, so another reaches
+     *   every date input and nothing else. The type, not the field's key:
+     *   the key already names the wrapper that `field.php` draws.
+     * - the design system's own class, `ra-input` or `ra-select` or
+     *   `ra-textarea`, which is what actually draws it, plus its `--error`
+     *   modifier when the field has one.
+     *
+     * The caller names the design system class rather than this deriving it,
+     * because the mapping is not one-to-one: `multiselect` and `select` are
+     * both `ra-select`, and `date`, `datetime`, `number`, `password` and
+     * `text` are all `ra-input`.
+     *
+     * @param list<string> $extra appended as written, for a size modifier or
+     *                            a template's own second identity
+     */
+    public static function classes(FormFieldView $field, string $designSystemClass, array $extra = []): string
+    {
+        $classes = [$designSystemClass];
+
+        if ($field->hasError()) {
+            $classes[] = $designSystemClass . '--error';
+        }
+
+        foreach ($extra as $class) {
+            $classes[] = $class;
+        }
+
+        return Classes::of('form-control', $field->type->value, $classes);
     }
 
     /** The template that draws this field's control. */

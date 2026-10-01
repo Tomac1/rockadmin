@@ -212,7 +212,12 @@ final class ListTemplatesTest extends TestCase
 
         $html = $this->renderer()->render('region/list/head', $view);
 
-        $this->assertStringContainsString('text-end', $html);
+        // `ra-align-end`, not Bootstrap's `text-end`. The alignment values
+        // themselves are unchanged -- `start` and `end` are what a page file
+        // writes and what PageRepository validates -- so this is the prefix
+        // moving into this project's own vocabulary, not the configuration
+        // changing under anyone.
+        $this->assertStringContainsString('ra-align-end', $html);
     }
 
     // --- row.php / cell dispatch ---

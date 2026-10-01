@@ -271,12 +271,6 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     padding: 0;
 }
 
-.ra-grid-pagination-item.ra-is-current .ra-page-btn {
-    background: var(--color-primary-600, #2563eb);
-    border-color: var(--color-primary-600, #2563eb);
-    color: #fff;
-}
-
 .ra-grid-pagination-item.ra-is-disabled .ra-page-btn {
     opacity: 0.48;
     pointer-events: none;
@@ -300,4 +294,128 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-modal[hidden],
 .ra-offcanvas[hidden] {
     display: none !important;
+}
+
+/*
+ * The checkbox's tick.
+ *
+ * The design system draws its checkbox as a hidden input and a styled span,
+ * and inserts the tick when React re-renders. There is no React here and no
+ * JavaScript either, so the tick ships in the markup and CSS decides whether
+ * it is seen -- which is exactly what the design system itself does one rule
+ * above, for the radio's dot.
+ */
+.ra-checkbox-box > svg {
+    opacity: 0;
+    transition: opacity 100ms;
+}
+
+.ra-checkbox-input:checked + .ra-checkbox-box > svg {
+    opacity: 1;
+}
+
+/*
+ * Three things Bootstrap supplied that the design system has no opinion
+ * about, so they are this project's own rather than borrowed from a third
+ * vocabulary.
+ *
+ * Alignment is a column's own property -- `align: 'end'` in a page file --
+ * and it was being written as Bootstrap's `text-end`. The values stay
+ * `start` and `end` because that is what configuration says and what
+ * `PageRepository` validates; only the prefix changes.
+ */
+.ra-align-start {
+    text-align: start;
+}
+
+.ra-align-end {
+    text-align: end;
+}
+
+.ra-align-center {
+    text-align: center;
+}
+
+/*
+ * A label that exists for a screen reader and not for the eye: the search
+ * box's label, the actions column's heading. `display: none` would take it
+ * out of the accessibility tree too, which is the opposite of the point.
+ */
+.ra-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* A progress cell. The design system has no progress component at all. */
+.ra-grid-cell-progress {
+    height: 1rem;
+    border-radius: var(--radius-sm, 0.25rem);
+    background: var(--color-neutral-100, #f1f5f9);
+    overflow: hidden;
+}
+
+.ra-grid-cell-progress-bar {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary-600, #2563eb);
+    color: #fff;
+    font-size: var(--text-xs, 0.6875rem);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/*
+ * The form's own layout.
+ *
+ * The design system styles every control and the wrapper around one field,
+ * and stops there: how a column of fields is spaced, and how wide the column
+ * is, is a decision about a screen rather than about a component. It has a
+ * token for the width -- `--content-form-width`, 640px, the same number its
+ * `.ra-container--form` uses -- so this reads that rather than choosing a
+ * second number.
+ *
+ * Without the width the inputs were as wide as the window: a 2500px text
+ * field on the monitor this was built on. Without the gap the fields had
+ * none at all, because `.ra-field` spaces a label from its control and
+ * nothing spaces one field from the next.
+ */
+.ra-form {
+    max-width: var(--content-form-width, 640px);
+    padding: var(--space-5, 1.25rem);
+}
+
+.ra-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+}
+
+.ra-form-title {
+    font-size: var(--text-lg, 1rem);
+    font-weight: var(--font-semibold, 600);
+    margin: 0 0 var(--space-4, 1rem);
+}
+
+.ra-form-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    margin-top: var(--space-5, 1.25rem);
+    padding-top: var(--space-4, 1rem);
+    border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* The delete button sits apart from save and cancel: it is not the third
+   thing you might do next, it is the one that cannot be undone. */
+.ra-form-delete {
+    margin-left: auto;
 }
