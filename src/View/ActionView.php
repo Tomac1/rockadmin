@@ -67,7 +67,39 @@ final class ActionView
          * tests passed over it because each one posted the key by hand.
          */
         public readonly ?string $rowKey = null,
+        /**
+         * For an `open`: the fragment URL, where to put it, how wide, and
+         * what to call it while it loads. Empty on anything else.
+         *
+         * `$url` stays what it has always been — where the control goes — and
+         * for an `open` that is the standalone page showing the same thing,
+         * not the fragment. The control is an anchor that script upgrades,
+         * never a button that script replaces: 8.6's own example is a button,
+         * and a button does nothing at all with JavaScript off, which every
+         * milestone in this project has been held against.
+         */
+        public readonly string $fragmentUrl = '',
+        /** `modal` or `offcanvas`. */
+        public readonly string $in = '',
+        /** The overlay's width modifier, empty for the overlay's own default. */
+        public readonly string $size = '',
+        /** The heading shown while the fragment is in flight. */
+        public readonly string $title = '',
+        /**
+         * The region keys that re-render once a `post` completes, instead of
+         * the page reloading. Empty means reload, which is what every action
+         * did before and what every action still does with no script.
+         *
+         * @var list<string>
+         */
+        public readonly array $refresh = [],
     ) {
+    }
+
+    /** Whether this control opens a region in an overlay. */
+    public function isOpen(): bool
+    {
+        return $this->in !== '';
     }
 
     public function classes(): string

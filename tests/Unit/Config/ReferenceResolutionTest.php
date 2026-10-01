@@ -11,6 +11,7 @@ use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\ConfigException;
 use RockAdmin\Config\EnumReference;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RockAdmin\Config\Resolver;
 
 /**
@@ -89,16 +90,52 @@ final class ReferenceResolutionTest extends TestCase
         $this->assertInstanceOf(PageReference::class, $edit['to']);
     }
 
-    public function testARegionReferenceIsRefusedWithTheMilestoneThatBuildsIt(): void
+    public function testARegionOfThisPageCarriesNoPage(): void
     {
-        foreach (['@region:detail', '@region:users.detail'] as $value) {
+        // Null, not the current page's name. The resolver does not know which
+        // page it is resolving -- it is handed an array -- and inventing one
+        // here is how a reference comes to address the wrong page's region
+        // when the same shared definition is read from two page files.
+        $reference = $this->resolve('@region:detail');
+
+        $this->assertInstanceOf(RegionReference::class, $reference);
+        $this->assertSame('detail', $reference->region);
+        $this->assertNull($reference->page);
+        $this->assertSame('@region:detail', (string) $reference);
+    }
+
+    public function testARegionOfAnotherPageCarriesBoth(): void
+    {
+        $reference = $this->resolve('@region:users.detail');
+
+        $this->assertInstanceOf(RegionReference::class, $reference);
+        $this->assertSame('users', $reference->page);
+        $this->assertSame('detail', $reference->region);
+        $this->assertSame('@region:users.detail', (string) $reference);
+    }
+
+    public function testASecondDotSaysWhichTwoPartsThereAre(): void
+    {
+        // `a.b.c` is not a deeper path, it is a mistake, and the syntax has
+        // exactly two parts. Saying which two is more use than refusing the
+        // whole string as unparseable.
+        try {
+            $this->resolve('@region:users.detail.rows');
+            $this->fail('A three-part region reference was accepted.');
+        } catch (ConfigException $e) {
+            $this->assertStringContainsString('more than one dot', $e->getMessage());
+            $this->assertStringContainsString('@region:users.detail', $e->getMessage());
+        }
+    }
+
+    public function testAMalformedRegionReferenceIsRefused(): void
+    {
+        foreach (['@region:Detail', '@region:users.', '@region:.detail', '@region:a-b'] as $value) {
             try {
                 $this->resolve($value);
                 $this->fail("Expected {$value} to be refused.");
             } catch (ConfigException $e) {
                 $this->assertStringContainsString($value, $e->getMessage());
-                $this->assertStringContainsString('open', $e->getMessage());
-                $this->assertStringContainsString('later milestone', $e->getMessage());
             }
         }
     }

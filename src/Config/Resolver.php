@@ -163,8 +163,11 @@ final class Resolver
      * is *well formed*, because that is a property of the syntax, and because
      * this is the string that becomes a URL.
      */
-    private function reference(string $namespace, string $key, string $original): PageReference|ActionReference
-    {
+    private function reference(
+        string $namespace,
+        string $key,
+        string $original,
+    ): PageReference|ActionReference|RegionReference {
         // Case is not a spelling choice. The namespaces are three lower-case
         // words, and a reference that works in two spellings is two things to
         // remember -- so '@Page:ads' is refused by name rather than accepted
@@ -176,24 +179,59 @@ final class Resolver
             );
         }
 
-        if ($namespace === 'region') {
+        if ($key === '') {
+            throw new ConfigException(match ($namespace) {
+                'page' => "'{$original}' names no page. Write '@page:users', or '@page:users/{id}/edit' "
+                    . 'to address one of its rows.',
+                'region' => "'{$original}' names no region. Write '@region:detail' for a region of this "
+                    . "page, or '@region:users.detail' for one of another page's.",
+                default => "'{$original}' names no action. Write '@action:archive', naming an action of "
+                    . 'this page.',
+            });
+        }
+
+        return match ($namespace) {
+            'page' => $this->pageReference($key, $original),
+            'region' => $this->regionReference($key, $original),
+            default => $this->actionReference($key, $original),
+        };
+    }
+
+    /**
+     * `@region:detail`, or `@region:users.detail` for another page's.
+     *
+     * One dot, and only one: the syntax has exactly two parts, so `a.b.c` is
+     * not a deeper path but a mistake, and saying which half is wrong is more
+     * use than refusing the whole thing as unparseable.
+     *
+     * No row placeholders here, unlike `@page:`. A region is addressed by
+     * page and key, both of which are fixed at load; which *row* it shows
+     * travels as `params`, which is where the placeholders are.
+     */
+    private function regionReference(string $key, string $original): RegionReference
+    {
+        $parts = explode('.', $key);
+
+        if (\count($parts) > 2) {
             throw new ConfigException(
-                "'{$original}' addresses a region, which only an 'open' action can display. 'open' actions "
-                . 'arrive in a later milestone, with the modal and offcanvas they need; until then an action '
-                . "is a 'link' or a 'post'.",
+                "'{$original}' has more than one dot. A region reference has two parts at most — the "
+                . "page, then the region: '@region:users.detail'. A region of this page needs no page at "
+                . "all: '@region:detail'.",
             );
         }
 
-        if ($key === '') {
-            throw new ConfigException($namespace === 'page'
-                ? "'{$original}' names no page. Write '@page:users', or '@page:users/{id}/edit' to address "
-                    . 'one of its rows.'
-                : "'{$original}' names no action. Write '@action:archive', naming an action of this page.");
+        $page = \count($parts) === 2 ? $parts[0] : null;
+        $region = \count($parts) === 2 ? $parts[1] : $parts[0];
+
+        if (($page !== null && preg_match(self::NAME, $page) !== 1) || preg_match(self::NAME, $region) !== 1) {
+            throw new ConfigException(
+                "'{$original}' is not a valid region reference. The page is a file in pages/ and the "
+                . 'region is a key in its `regions` block, so both are lower-case snake_case: '
+                . "'@region:detail', '@region:users.detail'.",
+            );
         }
 
-        return $namespace === 'page'
-            ? $this->pageReference($key, $original)
-            : $this->actionReference($key, $original);
+        return new RegionReference($region, $page);
     }
 
     private function pageReference(string $key, string $original): PageReference

@@ -7,6 +7,7 @@ namespace RockAdmin\Grid;
 use InvalidArgumentException;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
+use RockAdmin\Config\RegionReference;
 use RockAdmin\Http\Csrf;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\ActionDefinition;
@@ -75,14 +76,71 @@ final class ActionBuilder
                 continue;
             }
 
-            $views[] = $this->view(
-                $action,
-                $this->urls->reference(RowPlaceholders::reference($action->to, $row), $pageName),
-                $this->rowKey($row, $keyColumn),
-            );
+            $views[] = $action->type->isOpen()
+                ? $this->openView($action, $pageName, $row)
+                : $this->view(
+                    $action,
+                    $this->urls->reference(RowPlaceholders::reference($action->to, $row), $pageName),
+                    $this->rowKey($row, $keyColumn),
+                );
         }
 
         return $views;
+    }
+
+    /**
+     * An `open`, which needs two URLs rather than one.
+     *
+     * The fragment URL is what script fetches. The control's own `href` is
+     * where it goes without any — the standalone page showing the same thing,
+     * so somebody with JavaScript off lands on a real page with navigation
+     * rather than on a bare fragment.
+     *
+     * Which standalone page is decided the same way `RegionHandler` decides
+     * which row a preview is about: by `id` in the query. A region fetched
+     * with one is about that row, so the page is `/p/{page}/{id}`; without
+     * one it is about the page, so it is `/p/{page}`. One convention, read in
+     * two places, rather than a second rule here about what a region "is".
+     *
+     * @param array<string, mixed> $row
+     */
+    private function openView(ActionDefinition $action, string $pageName, array $row): ActionView
+    {
+        $reference = $action->to;
+
+        if (!$reference instanceof RegionReference) {
+            // `PageRepository` refuses an `open` whose target is anything
+            // else, so this cannot happen from configuration. It is here
+            // because the type says it could, and a silent wrong URL is worse
+            // than a message naming the action.
+            throw new InvalidArgumentException(\sprintf(
+                "The action '%s' is an 'open' pointing at %s rather than a region.",
+                $action->key,
+                get_debug_type($reference),
+            ));
+        }
+
+        $params = RowPlaceholders::params($action->params, $row, (string) $reference);
+        $page = $reference->page ?? $pageName;
+        $id = $params['id'] ?? null;
+
+        return new ActionView(
+            key: $action->key,
+            label: $action->label,
+            url: $this->urls->route(
+                $id === null ? 'page.index' : 'page.detail',
+                $id === null ? ['page' => $page] : ['page' => $page, 'id' => $id],
+            ),
+            rowKey: null,
+            isPost: false,
+            confirm: '',
+            icon: $action->icon === '' ? null : $action->icon,
+            token: '',
+            fragmentUrl: $this->urls->reference($reference, $pageName, $params),
+            in: $action->in,
+            size: $action->size,
+            title: RowPlaceholders::text($action->title, $row, (string) $reference),
+        );
     }
 
     /**
@@ -120,7 +178,14 @@ final class ActionBuilder
                 continue;
             }
 
-            $views[] = $this->view($action, $this->urls->reference($action->to, $pageName));
+            // An empty row, not a special case. `PageRepository` has already
+            // refused a row placeholder on a rowless control, in `to`, in
+            // `params` and in `when`, so nothing here has anything to
+            // substitute — and passing `[]` means the one `open` path is the
+            // same code whether a row is behind the control or not.
+            $views[] = $action->type->isOpen()
+                ? $this->openView($action, $pageName, [])
+                : $this->view($action, $this->urls->reference($action->to, $pageName));
         }
 
         return $views;
@@ -137,6 +202,7 @@ final class ActionBuilder
             confirm: $action->confirm,
             icon: $action->icon === '' ? null : $action->icon,
             token: $action->type->isWrite() ? $this->token($action) : '',
+            refresh: $action->refresh,
         );
     }
 

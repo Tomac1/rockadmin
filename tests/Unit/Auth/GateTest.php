@@ -94,6 +94,17 @@ final class GateTest extends TestCase
         yield 'index wants view' => [new Route('page.index', ['page' => 'ads']), 'ads.view'];
         yield 'detail wants view' => [new Route('page.detail', ['page' => 'ads', 'id' => '1']), 'ads.view'];
         yield 'region wants view' => [new Route('region', ['page' => 'ads', 'region' => 'grid']), 'ads.view'];
+        // `@region:users.detail` opened from the ads page requests
+        // /r/users/detail, and what it costs is the *users* page's view
+        // permission — the page in the URL, never the page the control was
+        // drawn on. That is 8.5's whole argument for a cross-page `open`
+        // being sound: it is an ordinary region request, governed by the page
+        // that owns the region, with nothing special-cased and nothing to
+        // permission separately.
+        yield 'another page\'s region wants that page\'s view' => [
+            new Route('region', ['page' => 'users', 'region' => 'detail']),
+            'users.view',
+        ];
         yield 'create wants create' => [new Route('page.create', ['page' => 'ads']), 'ads.create'];
         yield 'edit wants update' => [new Route('page.edit', ['page' => 'ads', 'id' => '1']), 'ads.update'];
         // Copy saves as a new row, so it asks for the permission its own

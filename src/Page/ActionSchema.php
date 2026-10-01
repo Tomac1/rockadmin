@@ -63,6 +63,48 @@ final class ActionSchema
                     . 'a page.',
                 example: '@page:ads/{id}/edit',
             ),
+            'target' => new SchemaKey(
+                ValueType::Mixed,
+                description: 'What an `open` shows, always as a `@region:` reference and never as a bare '
+                    . 'URL: `@region:detail` for a region of this page, `@region:users.detail` for one of '
+                    . "another page's, which then loads under *that* page's permissions. A raw URL is "
+                    . 'refused because it cannot be permission-checked against a page, and would become '
+                    . 'the obvious way to smuggle content into the admin frame. Required on an `open` and '
+                    . 'refused on anything else, which uses `to`.',
+                example: '@region:detail',
+            ),
+            'in' => new SchemaKey(
+                ValueType::String,
+                description: 'Where an `open` puts what it loads: `modal` for a dialog over the page, '
+                    . '`offcanvas` for a panel sliding in from the side. Required on an `open` — there is '
+                    . 'no sensible default, and guessing one means finding out which you got by clicking. '
+                    . 'Refused on a `link` or a `post`, neither of which opens anything.',
+                example: 'offcanvas',
+            ),
+            'size' => new SchemaKey(
+                ValueType::String,
+                description: 'How wide the overlay is: `sm`, `md`, `lg` or `xl` for a modal, `sm` or `lg` '
+                    . 'for an offcanvas. A size the stylesheet has no rule for is refused at load rather '
+                    . 'than quietly drawing the default. Optional; each overlay has its own default.',
+                example: 'lg',
+            ),
+            'title' => new SchemaKey(
+                ValueType::String,
+                description: 'The heading on the overlay, with row placeholders: `Ad #{id}`. Shown while '
+                    . 'the fragment is still loading; once it arrives, a `data-ra-title` on its root wins, '
+                    . 'because by then the answer knows which row it is about.',
+                example: 'Ad #{id}',
+            ),
+            'params' => new SchemaKey(
+                ValueType::Array,
+                description: 'The query the fragment is fetched with, as a map of parameter to value, '
+                    . 'where a value may be a `{column}` of the row the control was drawn on: '
+                    . "`['id' => '{user_id}']` on an ads grid means that ad's seller. URL-encoded on "
+                    . 'substitution, exactly as a `to` is. Not to be confused with `{{user.id}}`, which '
+                    . 'resolves once at load to the signed-in administrator — a mistake that looks '
+                    . 'correct in testing, because the developer is usually looking at their own records.',
+                example: ['id' => '{id}'],
+            ),
             'permission' => new SchemaKey(
                 ValueType::String,
                 description: 'The permission a reader needs before the action is drawn for them at all, and '

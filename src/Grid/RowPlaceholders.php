@@ -7,6 +7,7 @@ namespace RockAdmin\Grid;
 use InvalidArgumentException;
 use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\PageReference;
+use RockAdmin\Config\RegionReference;
 use RuntimeException;
 
 /**
@@ -72,17 +73,22 @@ final class RowPlaceholders
     /**
      * Substitutes every row placeholder a reference carries.
      *
-     * An `ActionReference` carries none by construction — it is one verb — and
-     * is returned as it came, so a caller drawing a mixed list of actions does
-     * not have to ask which kind it is holding.
+     * An `ActionReference` carries none by construction — it is one verb. Nor
+     * does a `RegionReference`: a region is addressed by page and key, both
+     * fixed at load, and which *row* it shows travels as `params`, which is
+     * where the placeholders are. Both are returned as they came, so a caller
+     * drawing a mixed list of actions does not have to ask which kind it is
+     * holding.
      *
      * @param array<string, mixed> $row the row being rendered, as the RowSource gave it
      *
-     * @return ($reference is PageReference ? PageReference : ActionReference)
+     * @return ($reference is PageReference ? PageReference : ($reference is ActionReference ? ActionReference : RegionReference))
      */
-    public static function reference(PageReference|ActionReference $reference, array $row): PageReference|ActionReference
-    {
-        if ($reference instanceof ActionReference || !str_contains($reference->suffix, '{')) {
+    public static function reference(
+        PageReference|ActionReference|RegionReference $reference,
+        array $row,
+    ): PageReference|ActionReference|RegionReference {
+        if (!$reference instanceof PageReference || !str_contains($reference->suffix, '{')) {
             return $reference;
         }
 
@@ -93,11 +99,70 @@ final class RowPlaceholders
     }
 
     /**
+     * The same substitution, for a piece of text rather than a URL.
+     *
+     * An overlay's title is the one place a row placeholder lands somewhere
+     * that is never parsed as a route — `Ad #{id}` becomes a heading — so it
+     * is the one caller that does not want the path refusals. A title may
+     * hold a slash, a dot or a brace and still be a perfectly good heading.
+     * Everything else is the same: the same refusal for a column the row has
+     * not got, and the same `{{` check.
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function text(string $template, array $row, string $subject): string
+    {
+        if (!str_contains($template, '{')) {
+            return $template;
+        }
+
+        return self::substitute($template, $row, $subject, inPath: false);
+    }
+
+    /**
+     * The same substitution, for the query an `open` fetches its fragment
+     * with.
+     *
+     * `params` is the only place a row placeholder reaches a query rather
+     * than a path, and it goes through the same code: the refusal of a column
+     * the row has not got, and the `{{` check that catches somebody writing a
+     * configuration placeholder where a row one was meant. Two spellings of
+     * "substitute a row placeholder" is how one of them comes to miss the
+     * guard the other has.
+     *
+     * It keeps the path refusals even though a query is not a path. A `/` or
+     * a `..` in a parameter is not a routing hazard here, but a value that
+     * cannot address a row in a path cannot address one in a query either --
+     * and `id` in a query is exactly what `/p/{page}/{id}` is in a path, for
+     * the same row. One rule about what may identify a row, not two.
+     *
+     * @param  array<string, string> $params
+     * @param  array<string, mixed>  $row
+     * @return array<string, string>
+     */
+    public static function params(array $params, array $row, string $subject): array
+    {
+        $resolved = [];
+
+        foreach ($params as $name => $value) {
+            $resolved[$name] = str_contains($value, '{')
+                ? self::substitute($value, $row, $subject)
+                : $value;
+        }
+
+        return $resolved;
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @param string               $subject what is being built, for the refusals to name
      */
-    private static function substitute(string $template, array $row, string $subject): string
-    {
+    private static function substitute(
+        string $template,
+        array $row,
+        string $subject,
+        bool $inPath = true,
+    ): string {
         // Checked before anything is substituted, and checked on the whole
         // template rather than on one match, because '{{' is the mistake
         // itself: whatever follows it, the string was written as a
@@ -113,7 +178,7 @@ final class RowPlaceholders
 
         return preg_replace_callback(
             self::CANDIDATE,
-            static function (array $match) use ($row, $subject): string {
+            static function (array $match) use ($row, $subject, $inPath): string {
                 $token = $match[0];
                 $name = substr($token, 1, -1);
 
@@ -138,7 +203,7 @@ final class RowPlaceholders
                     );
                 }
 
-                return self::value($row[$name], $name, $subject);
+                return self::value($row[$name], $name, $subject, $inPath);
             },
             $template,
         ) ?? throw new RuntimeException("Failed to substitute the row placeholders of '{$subject}'.");
@@ -152,8 +217,12 @@ final class RowPlaceholders
      * addressing a *different* row, or no row — which is the one thing a row
      * placeholder must never do.
      */
-    private static function value(mixed $value, string $name, string $subject): string
-    {
+    private static function value(
+        mixed $value,
+        string $name,
+        string $subject,
+        bool $inPath = true,
+    ): string {
         $prefix = "Cannot build the URL for '{$subject}': the row's '{$name}' ";
 
         // NULL is refused rather than substituted empty, and this is a decision
@@ -199,6 +268,15 @@ final class RowPlaceholders
             throw new InvalidArgumentException(
                 $prefix . "is an empty string, which would produce an empty path segment: '/p/ads//edit'.",
             );
+        }
+
+        // From here down, every refusal is about surviving as a path segment,
+        // and a title is not one. `Ad #{title}` may hold a slash, a dot or a
+        // brace and still be a perfectly good heading -- it is escaped into
+        // text, not parsed as a route -- so refusing it would be refusing
+        // data for the shape of a URL it never becomes.
+        if (!$inPath) {
+            return $text;
         }
 
         // Refused for the reason UrlGenerator::route() gives: the host decodes

@@ -644,3 +644,36 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-grid-actions .ra-action-form {
     display: contents;
 }
+
+/*
+ * What an overlay shows when its fragment could not be fetched.
+ *
+ * Said inside the overlay rather than by closing it: an overlay that opens
+ * and closes again is indistinguishable from a control that did nothing, and
+ * leaves nobody anything to read or retry. The link in it is the same
+ * standalone page the control would have gone to with no script at all.
+ */
+.ra-overlay-error {
+    margin: 0;
+    color: var(--text-secondary, #475569);
+}
+
+.ra-overlay-error-link {
+    color: var(--text-link, #2563eb);
+}
+
+/*
+ * A region drawn inside an overlay does not repeat its own heading.
+ *
+ * The fragment carries `data-ra-title` on its root (8.6.3) and `core.js`
+ * puts that in the overlay's header, so the region's own `<h2>` would be the
+ * same words twice, eight pixels apart. It stays in the markup because the
+ * fragment has to stand alone — it is what somebody with no script lands on,
+ * and what 8.6 means by opening it directly in a browser to debug.
+ */
+.ra-modal-content .ra-preview-title,
+.ra-offcanvas-body .ra-preview-title,
+.ra-modal-content .ra-form-title,
+.ra-offcanvas-body .ra-form-title {
+    display: none;
+}

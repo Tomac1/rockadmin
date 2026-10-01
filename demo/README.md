@@ -90,6 +90,12 @@ action can be:
   already has, so nothing has to spell out what deleting means, and the URL
   is `/a/ads/delete` rather than `/a/ads/bin` -- the action key and the verb
   are separate things.
+- **`peek` and `peek_modal`** are `open` actions showing the *same* region,
+  one in an offcanvas and one in a modal. 8.5 calls `preview` "only
+  shorthand" for a region plus an `open` action; the region shipped in
+  milestone 6 and these are the other half, spelled out. Two controls, one
+  region, no second copy of anything -- which is the whole argument for
+  configuring regions and actions separately.
 
 They appear in a `tools` column, which is an ordinary column placed among the
 others. Declaring one takes away the grid's own trailing **Edit** cell: a page
@@ -123,6 +129,23 @@ Things worth doing once, in a browser:
 - Look at `ra_activity_log` afterwards. A bulk action over three rows leaves
   three rows there, not one: the log answers "what happened to this row", and
   a row whose change is recorded only in a summary cannot answer it.
+- Press **Preview**, then **Modal**, on the same row. The same region, drawn
+  twice, in two different places.
+- Open a preview and press Escape. Focus goes back to the control you opened
+  it from, not to the top of the page -- and while it is open, Tab does not
+  reach the grid behind it.
+- Open row 2's preview, close it, then open row 4's. The second one never
+  flashes the first: the overlay is emptied on close, because a panel showing
+  the previous row for 200ms is indistinguishable from a data leak in a
+  screenshot.
+- Press **Archive**. The grid re-renders where it stands and the toast
+  arrives, with no page reload -- that is `refresh: ['grid']`, and it works by
+  making the same request a reload would have made and putting only the named
+  region back.
+- Middle-click or ctrl-click **Preview**. It opens `/p/ads/{id}` in a new tab,
+  because it is an anchor with a real `href` and not a button pretending to be
+  one. With no JavaScript at all, a plain click does the same thing in this
+  tab.
 
 ## Identity and permission
 
