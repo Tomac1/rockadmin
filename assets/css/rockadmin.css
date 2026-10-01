@@ -502,3 +502,66 @@ th[aria-sort="descending"] .ra-grid-sort::after {
 .ra-snav-item:focus-within > .ra-snav-dd {
     display: block;
 }
+
+/*
+ * The filter row.
+ *
+ * `.ra-table-toolbar` is a wrapping flex row and the design system's own
+ * table has nothing in it but a search box and two buttons, so it has no
+ * opinion about what a block of filters looks like. Without one each filter
+ * was a block element: eight of them became a column pinned to the right of
+ * a 340px band of nothing, with the search box stranded beside it. That is
+ * what a real page with eight filters looked like, and the demo's two did
+ * not show it.
+ *
+ * A wrapping row of label-over-control pairs instead, aligned on their
+ * bottoms so the controls line up whether or not a label wrapped to two
+ * lines.
+ */
+.ra-grid-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    min-width: 0;
+}
+
+.ra-grid-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ra-grid-filter-label {
+    white-space: nowrap;
+}
+
+/* A range is two controls for one filter, side by side rather than stacked:
+   a from and a to that are not next to each other read as two filters. */
+.ra-grid-filter-range {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1, 0.25rem);
+}
+
+.ra-grid-filter-range .ra-input {
+    width: 7.5rem;
+}
+
+.ra-grid-filter .ra-select,
+.ra-grid-filter > .ra-input {
+    width: 9rem;
+}
+
+/* The search box leads the row and takes what is left of it. */
+.ra-grid-search {
+    order: -1;
+}
+
+/* Apply goes last whatever order the markup puts it in, and keeps to the end
+   of the row so it does not sit between two filters. */
+.ra-grid-toolbar-submit {
+    order: 1;
+    margin-left: auto;
+}
