@@ -160,7 +160,16 @@ final class Gate
      */
     public static function fromConfig(Config $config, PageRepository $pages): self
     {
-        return new self(Roles::fromConfig($config->roles(), Permission::catalogue($pages)));
+        $catalogue = Permission::catalogue($pages);
+
+        // An action's declared permission (spec 8.5) is refused in the same
+        // breath, and for the same reason: a typo in it would deny that action
+        // forever, to everybody, with nothing anywhere saying why. The page
+        // layer cannot check it — the catalogue is generated from every page
+        // by this namespace, and `Page` depending back on `Auth` is a cycle.
+        Permission::assertActionsAreGrantable($pages, $catalogue);
+
+        return new self(Roles::fromConfig($config->roles(), $catalogue));
     }
 
     /** Whether this route has an access decision at all. */

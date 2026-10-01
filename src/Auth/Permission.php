@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RockAdmin\Auth;
 
+use RockAdmin\Config\ConfigException;
+use RockAdmin\Config\Schema;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageRepository;
 
@@ -65,6 +67,47 @@ final class Permission
         sort($names);
 
         return $names;
+    }
+
+    /**
+     * Refuses an action whose `permission` no page generates.
+     *
+     * An action declares the permission a reader needs (spec 8.5), and a
+     * typo in it would deny the action forever, silently, to everybody —
+     * exactly the failure `Roles::fromConfig()` refuses for a role pattern.
+     *
+     * It is checked here rather than in `PageRepository`, where every other
+     * refusal about a page lives, because the catalogue is generated from
+     * *all* the pages and this class is what generates it. `Auth` depends on
+     * `Page`; a page repository that checked the catalogue itself would have
+     * to depend back on `Auth`, and that is a cycle. So the rule is the same
+     * one the rest of the project follows — parse where the syntax is,
+     * validate where the knowledge is — and the knowledge is here.
+     *
+     * @param  list<string>    $catalogue every permission name that exists
+     * @throws ConfigException naming the page, the action and the nearest real permission
+     */
+    public static function assertActionsAreGrantable(PageRepository $pages, array $catalogue): void
+    {
+        foreach ($pages->names() as $name) {
+            foreach ($pages->get($name)->actions as $action) {
+                if ($action->permission === '' || \in_array($action->permission, $catalogue, true)) {
+                    continue;
+                }
+
+                $nearest = Schema::nearestOf($catalogue, $action->permission);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new ConfigException(\sprintf(
+                    "Page '%s': action '%s' needs the permission '%s', which no page generates, so nobody "
+                    . 'could ever be granted it and the action would never be drawn for anybody.%s',
+                    $name,
+                    $action->key,
+                    $action->permission,
+                    $suffix,
+                ));
+            }
+        }
     }
 
     /**

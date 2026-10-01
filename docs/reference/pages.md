@@ -73,6 +73,21 @@ Optional content shown at the top of the page.
 | --- | --- | --- | --- | --- |
 | `description` | string | — | `All orders, past and present.` | A short description of what this page shows. |
 
+## `actions.*`
+
+Every entry of `actions`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `type` | string | `link` | `post` | What activating the action does: `link` navigates to it, `post` submits to it and changes data. `open` loads a region into a modal or an offcanvas; it is in the specification and refused at load until the milestone that builds it. |
+| `label` | string | — | `Archive` | The text on the control. Defaults at load to the key, first letter upper-cased, underscores turned to spaces — so `archive` needs no label and `send_to_review` probably wants one. |
+| `icon` | string | — | `archive` | An icon name shown before the label, or instead of it in a narrow action column. Set it when the action appears in a grid row, where there is rarely room for words. |
+| `to` | mixed | — | `@page:ads/{id}/edit` | Where the action goes, always as a reference and never as a bare URL: `@page:ads/{id}/edit` for a `link`, `@action:archive` for a `post`. A `{column}` in it is substituted per row while rendering, URL-encoded, from that row's own data — not to be confused with `{{user.id}}`, which resolves once at load from the signed-in administrator. A raw URL is refused because it cannot be permission-checked against a page. |
+| `permission` | string | — | `ads.update` | The permission a reader needs before the action is drawn for them at all, and before a `post` to it is accepted. One of the generated `page.action` names; anything outside that catalogue is refused when the gate is built. Set it on every action that changes data. |
+| `confirm` | string | — | `Archive this ad?` | The question asked before a `post` runs. Required on every `post` — one that changes data and asks nothing is a mis-click away from a deletion — and refused on a `link`, because confirming something that only navigates teaches people to dismiss confirmations. |
+| `when` | array | — | `['state' => 'active']` | Row conditions deciding whether the action is offered: a map of column key to the one value that column must hold. Every key must name a column the list region declares. It decides what is *offered*, so it is re-checked on the server when the action is performed — a client that was never shown it can still post it. |
+| `refresh` | array | — | `['grid']` | Which regions of this page re-render once the action completes, as a list of region keys. Without it the page reloads. Set it when the action changes what one region shows and nothing else. |
+
 ## `regions.*`
 
 Every entry of `regions`.

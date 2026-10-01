@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Page;
 
 use Closure;
+use RockAdmin\Config\ActionReference;
 use RockAdmin\Config\ConfigException;
 use RockAdmin\Config\Defaults;
 use RockAdmin\Config\Definitions;
@@ -309,7 +310,262 @@ final class PageRepository
             );
         }
 
-        return new PageDefinition($name, $title, $layout, $description, $entity, $scope, $regions);
+        /** @var array<string, mixed> $actionsConfig */
+        $actionsConfig = \is_array($config['actions'] ?? null) ? $config['actions'] : [];
+        $actions = [];
+
+        foreach ($actionsConfig as $actionKey => $actionConfig) {
+            if (!\is_array($actionConfig)) {
+                continue;
+            }
+
+            /** @var array<string, mixed> $actionConfig */
+            $actions[(string) $actionKey] = $this->buildAction(
+                $name,
+                (string) $actionKey,
+                $actionConfig,
+                $regions,
+                $grid,
+            );
+        }
+
+        return new PageDefinition($name, $title, $layout, $description, $entity, $scope, $regions, $actions);
+    }
+
+    /**
+     * One action, with everything about it a page file may get wrong.
+     *
+     * Three of the refusals are about the action alone and could live
+     * anywhere; two are not. A `when` names a column, and only the region
+     * knows its columns; a `refresh` names a region, and only the page knows
+     * its regions. Both are here for the same reason `@page:` is validated in
+     * this class and not in `Resolver`: parse where the syntax is, validate
+     * where the knowledge is. The permission catalogue is the third of that
+     * kind and is *not* here — see `Permission::assertActionsAreGrantable()`,
+     * which lives in `Auth` because `Auth` depends on `Page` and the reverse
+     * would be a cycle.
+     *
+     * @param array<string, mixed>            $actionConfig
+     * @param array<string, RegionDefinition> $regions
+     */
+    private function buildAction(
+        string $pageName,
+        string $actionKey,
+        array $actionConfig,
+        array $regions,
+        ?RegionDefinition $grid,
+    ): ActionDefinition {
+        $where = "Page '{$pageName}': action '{$actionKey}'";
+        $typeValue = \is_string($actionConfig['type'] ?? null) ? $actionConfig['type'] : 'link';
+
+        try {
+            $type = ActionType::parse($typeValue);
+        } catch (PageException $e) {
+            throw new PageException("{$where}: {$e->getMessage()}", previous: $e);
+        }
+
+        $to = $this->actionTarget($where, $type, $actionConfig);
+        $confirm = \is_string($actionConfig['confirm'] ?? null) ? $actionConfig['confirm'] : '';
+
+        if ($type->isWrite() && $confirm === '') {
+            throw new PageException(
+                "{$where} is a 'post' with no 'confirm'. A POST that changes data and asks nothing is one "
+                . 'mis-click from a deletion, so specification 8.5 confirms every one. Give it the question '
+                . "to ask, such as 'confirm' => 'Archive this ad?'.",
+            );
+        }
+
+        if (!$type->isWrite() && $confirm !== '') {
+            throw new PageException(
+                "{$where} is a 'link' with a 'confirm'. It only navigates, and a confirmation in front of "
+                . 'something that changes nothing teaches people to dismiss confirmations — including the '
+                . "ones in front of a 'post'. Remove it, or make the action a 'post'.",
+            );
+        }
+
+        $label = \is_string($actionConfig['label'] ?? null) && $actionConfig['label'] !== ''
+            ? $actionConfig['label']
+            : $this->labelFromKey($actionKey);
+
+        return new ActionDefinition(
+            key: $actionKey,
+            label: $label,
+            type: $type,
+            to: $to,
+            icon: \is_string($actionConfig['icon'] ?? null) ? $actionConfig['icon'] : '',
+            permission: \is_string($actionConfig['permission'] ?? null) ? $actionConfig['permission'] : '',
+            confirm: $confirm,
+            when: $this->actionConditions($where, $actionConfig, $grid),
+            refresh: $this->actionRefresh($where, $actionConfig, $regions),
+        );
+    }
+
+    /**
+     * Where the action goes: a reference, never a bare URL.
+     *
+     * Specification 8.5 gives the reason and it is a security one — a raw URL
+     * cannot be permission-checked against a page, and would become the
+     * obvious way to smuggle content into the admin frame. So the test is not
+     * a pattern applied here: `Resolver` turns a well-formed reference into a
+     * `PageReference` or an `ActionReference` the way it already turns
+     * `@enum:` into an `EnumReference`, and anything that arrives as a plain
+     * string is, by that fact alone, not a reference. A `@region:` never
+     * arrives at all — the resolver refuses it, with the news that `open`
+     * actions come later — which is why there is no branch for it here.
+     *
+     * The reference is kept as the object, not flattened back to its text. A
+     * row's URL is built from it by a renderer, and handing that renderer a
+     * string to re-parse would be the second parsing mechanism this whole
+     * arrangement exists to avoid.
+     *
+     * @param array<string, mixed> $actionConfig
+     */
+    private function actionTarget(
+        string $where,
+        ActionType $type,
+        array $actionConfig,
+    ): PageReference|ActionReference {
+        $to = $actionConfig['to'] ?? null;
+
+        if ($to === null || $to === '') {
+            throw new PageException(
+                "{$where} has no 'to'. An action must say where it goes, as a '@page:' or '@action:' "
+                . "reference — 'to' => '@page:ads/{id}/edit'.",
+            );
+        }
+
+        if (!$to instanceof PageReference && !$to instanceof ActionReference) {
+            throw new PageException(\sprintf(
+                "%s has 'to' => %s, which is not a reference. An action points at a page or at an action "
+                . "handler — '@page:ads/{id}/edit', '@action:archive' — never at a bare URL: a raw URL "
+                . 'cannot be permission-checked against a page, and would become the obvious way to smuggle '
+                . 'content into the admin frame.',
+                $where,
+                \is_string($to) ? "'{$to}'" : get_debug_type($to),
+            ));
+        }
+
+        $namespace = $to instanceof PageReference ? 'page' : 'action';
+
+        if ($namespace !== $type->referenceNamespace()) {
+            throw new PageException(\sprintf(
+                "%s is a '%s' pointing at '%s'. A 'link' navigates, so it points at '@page:...'; a 'post' "
+                . "submits, so it points at '@action:...'. The other way round is a GET to something that "
+                . 'only answers POST, or a POST to a page with no handler — invisible at load and a 404 when '
+                . 'somebody clicks it.',
+                $where,
+                $type->value,
+                (string) $to,
+            ));
+        }
+
+        if ($to instanceof PageReference) {
+            $this->assertPageExists($to, $where);
+        }
+
+        return $to;
+    }
+
+    /**
+     * The row conditions deciding whether the action is offered.
+     *
+     * A condition compares one column to one value, so a list of values is
+     * refused rather than quietly compared against the array. Every column
+     * must be one the grid declares: a condition on a column nobody selected
+     * can never be true, so the action would silently never appear.
+     *
+     * @param  array<string, mixed>                 $actionConfig
+     * @return array<string, bool|float|int|string>
+     */
+    private function actionConditions(string $where, array $actionConfig, ?RegionDefinition $grid): array
+    {
+        $when = $actionConfig['when'] ?? null;
+
+        if (!\is_array($when) || $when === []) {
+            return [];
+        }
+
+        if ($grid === null) {
+            throw new PageException(
+                "{$where} has a 'when', which tests the values of a row, and this page has no list region "
+                . 'for a row to come from. Remove it, or give the page a list region.',
+            );
+        }
+
+        $conditions = [];
+
+        foreach ($when as $column => $value) {
+            $column = (string) $column;
+
+            if (!\is_scalar($value)) {
+                throw new PageException(\sprintf(
+                    "%s has 'when' => ['%s' => ...], which is a %s. A row condition compares one column to "
+                    . 'one value.',
+                    $where,
+                    $column,
+                    get_debug_type($value),
+                ));
+            }
+
+            if (!$grid->hasColumn($column)) {
+                $nearest = Schema::nearestOf(array_keys($grid->columns), $column);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new PageException(
+                    "{$where} has a 'when' on '{$column}', which the region '{$grid->key}' does not "
+                    . "declare, so the condition could never be true and the action would never appear.{$suffix}",
+                );
+            }
+
+            $conditions[$column] = $value;
+        }
+
+        return $conditions;
+    }
+
+    /**
+     * Which regions re-render once the action completes.
+     *
+     * A key naming no region would quietly refresh nothing, which looks
+     * exactly like an action that did not run.
+     *
+     * @param  array<string, mixed>            $actionConfig
+     * @param  array<string, RegionDefinition> $regions
+     * @return list<string>
+     */
+    private function actionRefresh(string $where, array $actionConfig, array $regions): array
+    {
+        $refresh = $actionConfig['refresh'] ?? null;
+
+        if (!\is_array($refresh)) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ($refresh as $entry) {
+            if (!\is_string($entry) || $entry === '') {
+                throw new PageException(\sprintf(
+                    "%s has a 'refresh' entry that is a %s. It is a list of region keys.",
+                    $where,
+                    get_debug_type($entry),
+                ));
+            }
+
+            if (!isset($regions[$entry])) {
+                $nearest = Schema::nearestOf(array_keys($regions), $entry);
+                $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+                throw new PageException(
+                    "{$where} refreshes the region '{$entry}', which this page does not have, so it would "
+                    . "refresh nothing — which looks exactly like an action that did not run.{$suffix}",
+                );
+            }
+
+            $keys[] = $entry;
+        }
+
+        return $keys;
     }
 
     /** @param array<string, RegionDefinition> $regions */

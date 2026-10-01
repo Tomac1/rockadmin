@@ -93,6 +93,13 @@ final class PageSchema
                     ),
                 ]),
             ),
+            'actions' => new SchemaKey(
+                ValueType::Array,
+                description: 'The actions this page offers, each defined once and referenced wherever it '
+                    . 'should appear — a grid column, the page header. A region renders content; an action '
+                    . 'decides where that content appears, which is why the two are configured separately.',
+                each: ActionSchema::create(),
+            ),
             'regions' => new SchemaKey(
                 ValueType::Array,
                 required: true,
