@@ -11,6 +11,7 @@ use RockAdmin\Config\Definitions;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Config\EnumReference;
 use RockAdmin\Config\Enums;
+use RockAdmin\Config\PageReference;
 use RockAdmin\Config\Resolver;
 use RockAdmin\Config\Schema;
 use RockAdmin\Config\ValidationError;
@@ -116,6 +117,39 @@ final class PageRepository
         sort($names);
 
         return $names;
+    }
+
+    /**
+     * Refuses a `@page:` reference naming a page this directory does not hold.
+     *
+     * `Resolver` parsed the reference, because the syntax lives in `Config`;
+     * it could not check it, because the catalogue of pages lives here and
+     * handing the configuration layer a page repository would have it reach
+     * into the layer that consumes its output — the same thing `Loader` could
+     * not do for a role name, resolved the same way.
+     *
+     * The nearest name is `Schema::nearestOf()`, as every other suggestion in
+     * this class is: a page reference is one more list of names somebody can
+     * mistype, not a reason for a fifth copy of the same Levenshtein call.
+     *
+     * @param string $where what carries the reference, e.g. "page 'ads': action 'edit'"
+     */
+    public function assertPageExists(PageReference $reference, string $where): void
+    {
+        if ($this->has($reference->page)) {
+            return;
+        }
+
+        $nearest = Schema::nearestOf($this->names(), $reference->page);
+        $suffix = $nearest === null ? '' : " Did you mean '{$nearest}'?";
+
+        throw new PageException(\sprintf(
+            "%s points at '%s', which is not a page in %s.%s",
+            $where,
+            (string) $reference,
+            $this->directory,
+            $suffix,
+        ));
     }
 
     private function load(string $name): PageDefinition
