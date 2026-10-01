@@ -121,7 +121,7 @@ final class ActionSchemaTest extends TestCase
     /** @return array<string, array{string}> */
     public static function actionKeys(): array
     {
-        $keys = ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'refresh'];
+        $keys = ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'set', 'refresh'];
 
         return array_combine($keys, array_map(static fn (string $key): array => [$key], $keys));
     }
@@ -139,7 +139,7 @@ final class ActionSchemaTest extends TestCase
     public function testTheActionSchemaDeclaresNothingElse(): void
     {
         $this->assertSame(
-            ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'refresh'],
+            ['type', 'label', 'icon', 'to', 'permission', 'confirm', 'when', 'set', 'refresh'],
             ActionSchema::create()->names(),
         );
     }
@@ -162,6 +162,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'icon' => 'archive',
                 'label' => 'Put away',
                 'permission' => 'ads.update',
@@ -284,7 +285,7 @@ final class ActionSchemaTest extends TestCase
     public function testAPostWithNoConfirmationIsRefused(): void
     {
         $message = $this->refusal(<<<'PHP'
-            'archive' => ['type' => 'post', 'to' => '@action:archive'],
+            'archive' => ['type' => 'post', 'to' => '@action:archive', 'set' => ['state' => 'archived']],
             PHP);
 
         $this->assertStringContainsString("action 'archive'", $message);
@@ -322,6 +323,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Archive?',
                 'when' => ['stat' => 'active'],
             ],
@@ -338,6 +340,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Archive?',
                 'refresh' => ['grd'],
             ],
@@ -352,6 +355,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Archive?',
                 'when' => ['state' => ['active', 'paused']],
             ],
@@ -376,6 +380,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Archive?',
                 'permission' => 'ads.updat',
             ],
@@ -409,6 +414,7 @@ final class ActionSchemaTest extends TestCase
             'publish' => [
                 'type' => 'post',
                 'to' => '@action:publish',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Publish?',
                 'permission' => 'ads.publish',
             ],
@@ -432,6 +438,7 @@ final class ActionSchemaTest extends TestCase
             'archive' => [
                 'type' => 'post',
                 'to' => '@action:archive',
+                'set' => ['state' => 'archived'],
                 'confirm' => 'Archive?',
                 'permission' => 'ads.update',
             ],

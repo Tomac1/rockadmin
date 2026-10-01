@@ -67,7 +67,10 @@ final class Access
         PageRepository $pages,
         array $roles = [self::ROLE => ['permissions' => ['*']]],
     ): Gate {
-        return new Gate(Roles::fromConfig($roles, Permission::catalogue($pages)));
+        // The repository is handed over, not only its catalogue: a page may
+        // declare `post` actions of its own, and the permission one of those
+        // needs is read from the action rather than derived from the URL.
+        return new Gate(Roles::fromConfig($roles, Permission::catalogue($pages)), $pages);
     }
 
     /** The navigation a handler test needs: these items, and one role over them. */

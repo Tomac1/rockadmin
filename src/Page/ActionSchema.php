@@ -87,6 +87,16 @@ final class ActionSchema
                     . 'action is performed — a client that was never shown it can still post it.',
                 example: ['state' => 'active'],
             ),
+            'set' => new SchemaKey(
+                ValueType::Array,
+                description: 'What a `post` writes: a map of column key to the one value to store, applied '
+                    . 'to the row the action was drawn for. This is what makes `archive` mean something — '
+                    . "`'set' => ['state' => 'archived']` — and every `post` needs it except one pointing "
+                    . 'at `@action:delete`, which deletes instead. Values are literals, never expressions '
+                    . 'and never row placeholders: an action that computes what it writes is a form, and '
+                    . 'forms already exist. Refused on a `link`, which writes nothing.',
+                example: ['state' => 'archived'],
+            ),
             'refresh' => new SchemaKey(
                 ValueType::Array,
                 description: 'Which regions of this page re-render once the action completes, as a list of '

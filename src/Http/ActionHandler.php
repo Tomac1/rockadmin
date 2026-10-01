@@ -8,6 +8,7 @@ use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\WriteHandler;
 use RockAdmin\Db\WriteResult;
 use RockAdmin\Form\DefaultValue;
@@ -16,6 +17,7 @@ use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Form\Submission;
 use RockAdmin\Form\ValidationError;
+use RockAdmin\Page\ActionDefinition;
 use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageRepository;
@@ -73,6 +75,13 @@ final class ActionHandler implements Handler
         private readonly FormRegion $region,
         private readonly FieldValidator $validator,
         private readonly WriteHandler $writes,
+        /**
+         * Reading the row an action is about to change, which happens only
+         * when the action carries `when` conditions to re-check. The write
+         * itself goes through `WriteHandler` as every write does; this never
+         * writes anything.
+         */
+        private readonly RowReader $reader,
         private readonly FormHandler $forms,
         private readonly Csrf $csrf,
         private readonly FlashBag $flashes,
@@ -92,30 +101,175 @@ final class ActionHandler implements Handler
             throw new NotFoundException("Page '{$name}' not found.");
         }
 
-        $action = $route->param('action');
-
-        if (!\in_array($action, self::VERBS, true)) {
-            throw new NotFoundException(
-                "Page '{$name}' has no action '{$action}'. This route accepts "
-                . implode(', ', self::VERBS) . '.',
-            );
-        }
-
         $page = $this->pages->get($name);
+        $verb = $route->param('action');
+        $performed = $this->resolve($page, $verb);
 
-        // Read once and passed down. `ActionHandler` must redraw a rejection
-        // from the region the submission came from -- a rejection drawn from
-        // another of the page's form regions would silently change the form
-        // under the person filling it in.
-        $region = FormHandler::formRegionOf($page);
         $returnTo = FormHandler::returnTo($request->input(FormFields::RETURN_TO), $this->urls)
             ?? $this->urls->route('page.index', ['page' => $page->name]);
 
-        if ($action === 'delete') {
-            return $this->delete($page, $returnTo, $this->requireKey($request, $page));
+        if ($performed->isSubmission()) {
+            // Resolved here rather than above, because only a submission has
+            // one. `formRegionOf()` refuses a page with no form region, and a
+            // page of a grid and some actions is an ordinary page that has
+            // none -- resolving it for every verb made a delete on such a page
+            // answer "no form region" when nothing had asked for a form.
+            //
+            // Read once and passed down. `ActionHandler` must redraw a
+            // rejection from the region the submission came from; a rejection
+            // drawn from another of the page's form regions would silently
+            // change the form under the person filling it in.
+            return $this->save($page, FormHandler::formRegionOf($page), $request, $performed->verb, $returnTo);
         }
 
-        return $this->save($page, $region, $request, $action, $returnTo);
+        $key = $this->requireKey($request, $page);
+
+        if ($performed->action !== null) {
+            return $this->perform($performed, $performed->action, $key, $returnTo);
+        }
+
+        return $this->delete($page, $returnTo, $key);
+    }
+
+    /**
+     * Which of the three kinds of thing this POST is.
+     *
+     * A verb that is neither built in nor declared by one of the page's own
+     * `post` actions is a 404, and the message lists both sets rather than
+     * only the three literals -- a page that declares `archive` and is posted
+     * `archvie` should say so, not imply that `archive` was never an option.
+     */
+    private function resolve(PageDefinition $page, string $verb): ActionRequest
+    {
+        if (\in_array($verb, self::VERBS, true)) {
+            return ActionRequest::builtIn($page, $verb);
+        }
+
+        $declared = ActionRequest::declaredBy($page, $verb);
+
+        if ($declared !== null) {
+            return ActionRequest::configured($page, $declared);
+        }
+
+        $offered = self::VERBS;
+
+        foreach ($page->actions as $action) {
+            $own = $action->type->isWrite() ? $action->verb() : null;
+
+            if ($own !== null && !\in_array($own, $offered, true)) {
+                $offered[] = $own;
+            }
+        }
+
+        throw new NotFoundException(
+            "Page '{$page->name}' has no action '{$verb}'. This route accepts "
+            . implode(', ', $offered) . '.',
+        );
+    }
+
+    /**
+     * A configured `post`: re-check what it is offered on, then write it.
+     *
+     * **`when` is re-checked here and that is the point of this method.** It
+     * decides whether an action is *offered*, which is a statement about a
+     * control that was drawn minutes ago on a row that may have changed since
+     * -- or was never drawn at all, by a client that posted the URL anyway. A
+     * condition enforced only where the button is drawn is not enforced.
+     *
+     * The row is read before the write for that check alone. It is the row the
+     * audit log would record as `before` in any case, so this costs a read
+     * that was already happening one layer down, and it is what lets the
+     * refusal say which column disagreed.
+     */
+    private function perform(
+        ActionRequest $performed,
+        ActionDefinition $action,
+        string $key,
+        string $returnTo,
+    ): Response {
+        $page = $performed->page;
+
+        if ($action->when !== []) {
+            $row = $this->reader->byKey(
+                $page->entity,
+                $key,
+                array_map(strval(...), array_keys($action->when)),
+                $page->scope,
+            );
+
+            if ($row === null) {
+                throw new NotFoundException(
+                    "No {$page->title} with key '{$key}' to {$action->key}.",
+                );
+            }
+
+            $refusal = $this->conditionRefusal($action, $row);
+
+            if ($refusal !== null) {
+                $this->flashes->danger($refusal);
+
+                return Response::redirect($returnTo);
+            }
+        }
+
+        if ($performed->isDelete()) {
+            return $this->delete($page, $returnTo, $key);
+        }
+
+        try {
+            $write = $this->writes->update($page->entity, $key, $action->set);
+        } catch (NoSuchRowException $e) {
+            throw new NotFoundException($e->getMessage(), previous: $e);
+        } catch (DbException $e) {
+            if ($e->sqlStateClass() !== '23') {
+                throw $e;
+            }
+
+            $this->flashes->danger($this->integrityMessage($e, 'saved'));
+
+            return Response::redirect($returnTo);
+        }
+
+        $this->record($action->key, $page, $write);
+
+        $this->flashes->success("{$action->label}: {$page->title} {$write->key}.");
+
+        return Response::redirect($returnTo);
+    }
+
+    /**
+     * Why this row does not qualify, or null when it does.
+     *
+     * Compared as text, the same way `ActionBuilder` compares them when it
+     * decides whether to draw the control. A page file writes `'state' =>
+     * 'active'` and a driver may hand back `1` where another hands back
+     * `'1'`; an action offered by the renderer and refused by the handler on a
+     * row nobody touched would be unexplainable from either side.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function conditionRefusal(ActionDefinition $action, array $row): ?string
+    {
+        foreach ($action->when as $column => $expected) {
+            $actual = $row[$column] ?? null;
+
+            if (\is_scalar($actual) || $actual === null) {
+                if ((string) $actual === (string) $expected) {
+                    continue;
+                }
+            }
+
+            return \sprintf(
+                '%s is only offered while %s is %s, and it is %s now. The row changed since the page '
+                . 'was drawn.',
+                $action->label,
+                $column,
+                var_export($expected, true),
+                \is_scalar($actual) || $actual === null ? var_export($actual, true) : get_debug_type($actual),
+            );
+        }
+
+        return null;
     }
 
     /**

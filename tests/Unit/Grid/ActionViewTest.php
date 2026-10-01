@@ -325,6 +325,7 @@ final class ActionViewTest extends TestCase
                     'archive' => [
                         'type' => 'post',
                         'to' => '@action:archive',
+                        'set' => ['state' => 'archived'],
                         'confirm' => 'Archive this ad?',
                         'permission' => 'ads.update',
                         'when' => ['state' => 'active'],

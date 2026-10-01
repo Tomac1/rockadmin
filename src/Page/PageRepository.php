@@ -545,6 +545,8 @@ final class PageRepository
             ? $actionConfig['label']
             : $this->labelFromKey($actionKey);
 
+        $set = $this->actionSet($where, $type, $to, $actionConfig);
+
         return new ActionDefinition(
             key: $actionKey,
             label: $label,
@@ -554,8 +556,106 @@ final class PageRepository
             permission: \is_string($actionConfig['permission'] ?? null) ? $actionConfig['permission'] : '',
             confirm: $confirm,
             when: $this->actionConditions($where, $actionConfig, $context, $rowless),
+            set: $set,
             refresh: $this->actionRefresh($where, $actionConfig, $context),
         );
+    }
+
+    /**
+     * What a `post` writes to the row it was drawn for.
+     *
+     * Specification 8.5 gives `archive` as its example of a `post` and never
+     * says what archiving does, which is the one thing the action has to know:
+     * `@action:archive` names a verb and the verb has no body. So `set` is
+     * that body — the columns to write and the values to write — and the three
+     * refusals here are what keep it from being a second, weaker form.
+     *
+     * A `post` that sets nothing and is not a delete is refused, because it
+     * would pass every check, write nothing, flash success and leave the
+     * person believing the row changed.
+     *
+     * A `link` with a `set` is refused for the reason a `link` with a
+     * `confirm` is: it says the action changes data, and it does not.
+     *
+     * A value that is not a scalar is refused rather than coerced. The
+     * temptation is an expression or a `{column}`, and both are forms wearing
+     * an action's clothes — a thing that computes what it writes already
+     * exists, with validation and a redraw on refusal, and it is the form
+     * region.
+     *
+     * @param  array<string, mixed>                 $actionConfig
+     * @return array<string, bool|float|int|string>
+     */
+    private function actionSet(
+        string $where,
+        ActionType $type,
+        PageReference|ActionReference $to,
+        array $actionConfig,
+    ): array {
+        $raw = $actionConfig['set'] ?? null;
+        $isDelete = $to instanceof ActionReference && $to->action === 'delete';
+
+        if (!$type->isWrite()) {
+            if ($raw !== null) {
+                throw new PageException(
+                    "{$where} is a 'link' with a 'set'. A link navigates and writes nothing, so the columns "
+                    . "it names would never be stored. Remove it, or make the action a 'post'.",
+                );
+            }
+
+            return [];
+        }
+
+        if ($raw === null || $raw === []) {
+            if ($isDelete) {
+                return [];
+            }
+
+            throw new PageException(
+                "{$where} is a 'post' with no 'set', so it would change nothing and still report success. "
+                . "Say what it writes — 'set' => ['state' => 'archived'] — or point it at "
+                . "'@action:delete', which deletes the row instead.",
+            );
+        }
+
+        if (!\is_array($raw)) {
+            throw new PageException(\sprintf(
+                "%s has 'set' => %s. It is a map of column key to the value to store, such as "
+                . "['state' => 'archived'].",
+                $where,
+                get_debug_type($raw),
+            ));
+        }
+
+        if ($isDelete) {
+            throw new PageException(
+                "{$where} points at '@action:delete' and also carries a 'set'. Deleting a row and writing "
+                . 'to it are two different things and only one of them can happen. Keep the delete, or '
+                . 'point the action at its own verb.',
+            );
+        }
+
+        $set = [];
+
+        foreach ($raw as $column => $value) {
+            $columnKey = (string) $column;
+
+            if (!\is_scalar($value)) {
+                throw new PageException(\sprintf(
+                    "%s sets '%s' to a %s. A 'set' stores literals — a string, a number, true or false — "
+                    . 'never an expression and never a {column} placeholder: an action that computes what '
+                    . 'it writes is a form, and a form region does that with validation and a redraw when '
+                    . 'the value is refused.',
+                    $where,
+                    $columnKey,
+                    get_debug_type($value),
+                ));
+            }
+
+            $set[$columnKey] = $value;
+        }
+
+        return $set;
     }
 
     /**

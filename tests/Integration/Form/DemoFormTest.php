@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
@@ -138,7 +139,7 @@ final class DemoFormTest extends DatabaseTestCase
         return new FormHandler(
             $this->repository(),
             new FormRegion(
-                new SqlRowSource($connection),
+                new RowReader(new SqlRowSource($connection)),
                 $urls,
                 new Csrf($this->session),
                 Access::gateFor($this->repository()),
@@ -160,9 +161,10 @@ final class DemoFormTest extends DatabaseTestCase
 
         return new ActionHandler(
             $this->repository(),
-            new FormRegion(new SqlRowSource($connection), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
+            new FormRegion(new RowReader(new SqlRowSource($connection)), $urls, $csrf, Access::gateFor($this->repository()), Access::identity()),
             new FieldValidator(),
             new SqlWriteHandler($connection),
+            new RowReader(new SqlRowSource($connection)),
             $this->forms($connection),
             $csrf,
             new FlashBag($this->session),

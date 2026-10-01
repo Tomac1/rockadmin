@@ -210,7 +210,7 @@ final class ActionColumnTest extends TestCase
     public static function inlineRefusals(): iterable
     {
         yield 'a post with no confirm' => [
-            "'wipe' => ['type' => 'post', 'to' => '@action:wipe']",
+            "'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'set' => ['state' => 'wiped']]",
             'confirm',
         ];
 
@@ -225,7 +225,7 @@ final class ActionColumnTest extends TestCase
         ];
 
         yield 'a when naming no column' => [
-            "'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Sure?', 'when' => ['stat' => 'a']]",
+            "'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Sure?', 'set' => ['state' => 'wiped'], 'when' => ['stat' => 'a']]",
             "Did you mean 'state'",
         ];
 
@@ -235,7 +235,7 @@ final class ActionColumnTest extends TestCase
         ];
 
         yield 'a refresh naming no region' => [
-            "'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Sure?', 'refresh' => ['grd']]",
+            "'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Sure?', 'set' => ['state' => 'wiped'], 'refresh' => ['grd']]",
             "Did you mean 'grid'",
         ];
     }
@@ -339,7 +339,7 @@ final class ActionColumnTest extends TestCase
             header: "'buttons' => [\n"
                 . "    'export',\n"
                 . "    ['use' => '@action:export', 'label' => 'Export all'],\n"
-                . "    'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Wipe everything?'],\n"
+                . "    'wipe' => ['type' => 'post', 'to' => '@action:wipe', 'confirm' => 'Wipe everything?', 'set' => ['state' => 'wiped']],\n"
                 . '],',
         );
 
@@ -364,7 +364,7 @@ final class ActionColumnTest extends TestCase
             actions: '',
             columns: "'title' => [], 'state' => [],",
             header: "'buttons' => ['wipe' => ['type' => 'post', 'to' => '@action:wipe', "
-                . "'confirm' => 'Sure?', 'when' => ['state' => 'active']]],",
+                . "'confirm' => 'Sure?', 'set' => ['state' => 'archived'], 'when' => ['state' => 'active']]],",
         );
 
         $this->assertStringContainsString('header button', $message);

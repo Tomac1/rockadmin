@@ -11,6 +11,7 @@ use RockAdmin\Config\EnumOption;
 use RockAdmin\Db\Entity;
 use RockAdmin\Db\Query;
 use RockAdmin\Db\Result;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\Sql;
 use RockAdmin\Form\FormFieldView;
@@ -115,7 +116,7 @@ final class FormRegionTest extends TestCase
     private function formRegion(RowSource $rows): FormRegion
     {
         return new FormRegion(
-            $rows,
+            new RowReader($rows),
             new UrlGenerator('/admin'),
             new Csrf(new ArraySessionStore()),
             $this->gate(),
@@ -310,7 +311,7 @@ final class FormRegionTest extends TestCase
     {
         $csrf = new Csrf(new ArraySessionStore());
         $region = new FormRegion(
-            new FakeRowSource([$this->fetchResult([])]),
+            new RowReader(new FakeRowSource([$this->fetchResult([])])),
             new UrlGenerator('/admin'),
             $csrf,
             $this->gate(),

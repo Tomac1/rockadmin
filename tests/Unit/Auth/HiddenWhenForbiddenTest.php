@@ -14,6 +14,7 @@ use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Result;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\Sql;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Form\FormView;
@@ -287,7 +288,7 @@ final class HiddenWhenForbiddenTest extends TestCase
         )]);
 
         $forms = new FormRegion(
-            $rows,
+            new RowReader($rows),
             new UrlGenerator('/admin'),
             new Csrf(new ArraySessionStore()),
             $gate,

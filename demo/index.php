@@ -34,6 +34,7 @@ use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\RowReader;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Form\FieldValidator;
@@ -421,7 +422,8 @@ if ($connection !== null) {
     // it accepts arrives as a POST to `a/{page}/{action}` carrying the token
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
-    $formRegion = new FormRegion($rows, $urls, $csrf, $gate, $identity);
+    $reader = new RowReader($rows);
+    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -443,6 +445,7 @@ if ($connection !== null) {
         $formRegion,
         new FieldValidator(),
         new SqlWriteHandler($connection),
+        $reader,
         $forms,
         $csrf,
         $flashes,
