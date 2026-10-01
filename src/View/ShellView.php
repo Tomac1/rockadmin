@@ -54,6 +54,15 @@ final class ShellView
          * @var list<WorkspaceView>
          */
         public readonly array $workspaces = [],
+        /**
+         * Where the switcher comes back to: the page being looked at.
+         *
+         * Carried on the shell rather than read from the request by the
+         * template, for the reason the token is -- a template has no request.
+         * Empty is the dashboard, which is also what the handler falls back
+         * to when the value is not an internal path.
+         */
+        public readonly string $currentUrl = '',
     ) {
         if (!\in_array($this->darkMode, self::ALLOWED_DARK_MODES, true)) {
             throw new ViewException(
