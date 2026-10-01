@@ -142,7 +142,7 @@ final class ThemeTest extends TestCase
     {
         $names = [];
 
-        foreach (['@media (prefers-color-scheme: dark)', '[data-bs-theme="dark"]'] as $marker) {
+        foreach (['@media (prefers-color-scheme: dark)', '[data-ra-theme="dark"]'] as $marker) {
             $offset = 0;
 
             while (($start = strpos($this->css, $marker, $offset)) !== false) {

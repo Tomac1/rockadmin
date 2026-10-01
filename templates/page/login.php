@@ -36,7 +36,7 @@ $emailId = 'ra-login-email';
 $passwordId = 'ra-login-password';
 ?>
 <!doctype html>
-<html class="ra-html" lang="en"<?= $attrs(['data-bs-theme' => $theme]) ?>>
+<html class="ra-html" lang="en"<?= $attrs(['data-ra-theme' => $theme]) ?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -91,21 +91,21 @@ final class DefaultTemplatesTest extends TestCase
         $this->assertStringContainsString('/c.js', $html);
     }
 
-    public function testDarkModeOnWritesBootstrapsThemeAttribute(): void
+    public function testDarkModeOnWritesTheThemeAttribute(): void
     {
         $html = $this->renderer()->render(
             'layout/base',
             $this->page(shell: new ShellView('RockAdmin', darkMode: 'on')),
         );
 
-        $this->assertStringContainsString('data-bs-theme="dark"', $html);
+        $this->assertStringContainsString('data-ra-theme="dark"', $html);
     }
 
     public function testDarkModeAutoLeavesTheDecisionToTheStylesheet(): void
     {
         $html = $this->renderer()->render('layout/base', $this->page());
 
-        $this->assertStringNotContainsString('data-bs-theme', $html);
+        $this->assertStringNotContainsString('data-ra-theme', $html);
     }
 
     public function testTheMenuMarksTheActiveItem(): void

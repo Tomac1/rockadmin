@@ -62,6 +62,20 @@ final class ShellView
         }
     }
 
+    /**
+     * The value of the document's `data-ra-theme`, or null for `auto`.
+     *
+     * It used to be spelled `data-bs-theme`, which was Bootstrap's own
+     * switch and worked because Bootstrap shipped a dark palette. The design
+     * system ships one palette and no dark rules at all, so today this
+     * attribute styles nothing by itself -- it is the hook a project's own
+     * stylesheet targets, and the place a dark palette would attach if one
+     * is ever written.
+     *
+     * Kept rather than deleted because the configuration key is public and
+     * what it means has not changed: the admin follows the operating system,
+     * or it does not. What changed is who answers.
+     */
     public function themeAttribute(): ?string
     {
         return match ($this->darkMode) {

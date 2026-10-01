@@ -65,4 +65,4 @@ The default look. Replace it wholesale with a stylesheet in assets.css.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `dark` | string | `auto` | `auto` | Dark mode: 'auto' follows the operating system, 'on' and 'off' decide. |
+| `dark` | string | `auto` | `auto` | Dark mode: 'auto' follows the operating system, 'on' and 'off' decide. Writes data-ra-theme on the document; the bundled stylesheets define no dark palette yet, so today this is a hook for a project's own CSS rather than a switch. |

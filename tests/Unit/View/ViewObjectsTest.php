@@ -161,10 +161,13 @@ final class ViewObjectsTest extends TestCase
     }
 
     #[DataProvider('darkModes')]
-    public function testDarkModeBecomesBootstrapsThemeAttribute(string $mode, ?string $expected): void
+    public function testDarkModeBecomesTheThemeAttribute(string $mode, ?string $expected): void
     {
-        // Bootstrap 5.3 reads data-bs-theme. 'auto' writes no attribute,
-        // leaving the media query in rockadmin.css to decide.
+        // The document carries data-ra-theme. 'auto' writes no attribute,
+        // which is the honest answer for 'follow the system': nothing here
+        // decides. Nothing else decides either at the moment -- the design
+        // system ships one palette and no dark rules -- so this attribute is
+        // a hook for a project's own stylesheet, not a switch that works.
         $this->assertSame($expected, (new ShellView('X', darkMode: $mode))->themeAttribute());
     }
 
