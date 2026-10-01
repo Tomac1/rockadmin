@@ -29,52 +29,85 @@ $theme = $view->shell->themeAttribute();
     <?php } ?>
 </head>
 <body class="<?= $e($view->bodyClasses()) ?>">
-    <?php // `navbar-expand` with no breakpoint, deliberately: Bootstrap's
-          // .navbar-nav is flex-direction:column until a .navbar-expand-*
-          // class turns it into a row, so without one the menu stands on end
-          // at every width. The breakpointed variants would fix that above
-          // the breakpoint and collapse the menu into a .navbar-collapse
-          // below it -- which this shell has no toggler to open, so the menu
-          // would simply disappear on a phone. Always horizontal, wrapping
-          // when it must, is the one option that is never wrong here. ?>
-    <nav class="ra-navbar navbar navbar-expand" data-ra-navbar>
-        <div class="ra-navbar-inner container-fluid">
-            <a class="ra-navbar-brand navbar-brand" href="<?= $href($route('dashboard')) ?>"><?= $e($view->shell->brand) ?></a>
+    <?php
+    /*
+     * Two bars, which is what the design system is: a dark top bar carrying
+     * identity -- brand, workspace, account -- and a darker second bar
+     * carrying the pages. Splitting them is not decoration. The top bar
+     * answers "where am I signed in and as whom", which does not change as
+     * you move around; the second answers "which page", which is the only
+     * thing that does. One bar made every page re-read both.
+     *
+     * Both are `position: sticky` in the design system's own CSS, the second
+     * offset by the first's height, so a long grid keeps its navigation.
+     */
+    ?>
+    <nav class="ra-topnav ra-navbar" data-ra-navbar>
+        <a class="ra-topnav__brand ra-navbar-brand" href="<?= $href($route('dashboard')) ?>">
+            <span class="ra-topnav__brand-mark" aria-hidden="true"></span>
+            <span class="ra-topnav__brand-name"><?= $e($view->shell->brand) ?></span>
+        </a>
 
-            <ul class="ra-menu navbar-nav">
-                <?php foreach ($view->shell->menu as $item) { ?>
-                    <li class="ra-menu-item-entry nav-item<?= $e($item->children !== [] ? ' dropdown' : '') ?>">
-                        <a class="<?= $e($item->classes()) ?>" href="<?= $href($item->url) ?>"><?= $e($item->label) ?></a>
-                        <?php if ($item->children !== []) { ?>
-                            <ul class="ra-submenu dropdown-menu">
-                                <?php foreach ($item->children as $child) { ?>
-                                    <li class="ra-submenu-entry">
-                                        <a class="<?= $e($child->classes()) ?>" href="<?= $href($child->url) ?>"><?= $e($child->label) ?></a>
-                                    </li>
-                                <?php } ?>
-                            </ul>
-                        <?php } ?>
-                    </li>
+        <?php
+        /*
+         * The workspace switcher. The design system draws one here and
+         * milestone 9 builds what it switches, so it renders only when a list
+         * is supplied -- nothing supplies one yet. Drawing a control that
+         * cannot do anything is the visible-button-that-does-nothing this
+         * project refuses, and the markup costs nothing while it waits.
+         */
+        ?>
+        <?php if ($view->shell->workspaces !== []) { ?>
+            <div class="ra-topnav__projects ra-workspaces">
+                <?php foreach ($view->shell->workspaces as $workspace) { ?>
+                    <a class="ra-topnav__proj-btn ra-workspace<?= $e($workspace->active ? ' ra-topnav__proj-btn--active' : '') ?>"
+                       href="<?= $href($workspace->url) ?>">
+                        <span class="ra-topnav__proj-dot" aria-hidden="true"></span><?= $e($workspace->label) ?>
+                    </a>
                 <?php } ?>
-            </ul>
+            </div>
+        <?php } ?>
 
-            <?php if ($view->shell->userName !== null) { ?>
-                <div class="ra-user-menu dropdown">
-                    <span class="ra-user-name"><?= $e($view->shell->userName) ?></span>
-                    <?php if ($view->shell->profileUrl !== null) { ?>
-                        <a class="ra-profile-link" href="<?= $href($view->shell->profileUrl) ?>">Profile</a>
-                    <?php } ?>
-                    <?php if ($view->shell->logoutUrl !== null) { ?>
-                        <form class="ra-logout-form" method="post" action="<?= $href($view->shell->logoutUrl) ?>">
-                            <?php // LogoutHandler refuses a post without a token: a page anywhere
-                                  // on the internet could otherwise sign an administrator out
-                                  // mid-edit, as often as it liked, and they would read that as a
-                                  // broken installation rather than as an attack. ?>
-                            <?php if ($view->shell->csrfToken !== null) { ?>
-                                <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->shell->csrfToken) ?>">
+        <span class="ra-topnav__spacer"></span>
+
+        <?php if ($view->shell->userName !== null) { ?>
+            <div class="ra-topnav__right ra-user-menu">
+                <span class="ra-topnav__trigger ra-user-name"><?= $e($view->shell->userName) ?></span>
+                <?php if ($view->shell->profileUrl !== null) { ?>
+                    <a class="ra-topnav__iconbtn ra-profile-link" href="<?= $href($view->shell->profileUrl) ?>">Profile</a>
+                <?php } ?>
+                <?php if ($view->shell->logoutUrl !== null) { ?>
+                    <form class="ra-logout-form" method="post" action="<?= $href($view->shell->logoutUrl) ?>">
+                        <?php // LogoutHandler refuses a post without a token: a page anywhere
+                              // on the internet could otherwise sign an administrator out
+                              // mid-edit, as often as it liked, and they would read that as a
+                              // broken installation rather than as an attack. ?>
+                        <?php if ($view->shell->csrfToken !== null) { ?>
+                            <input type="hidden" name="<?= $e(\RockAdmin\Http\Csrf::FIELD) ?>" value="<?= $e($view->shell->csrfToken) ?>">
+                        <?php } ?>
+                        <button class="ra-btn ra-btn--ghost ra-btn--sm ra-logout-button" type="submit">Log out</button>
+                    </form>
+                <?php } ?>
+            </div>
+        <?php } ?>
+    </nav>
+
+    <nav class="ra-secnav ra-menu-bar">
+        <div class="ra-secnav__inner ra-menu">
+            <?php foreach ($view->shell->menu as $item) { ?>
+                <div class="ra-snav-item ra-menu-item-entry">
+                    <a class="ra-snav-btn <?= $e($item->classes()) ?><?= $e($item->active ? ' ra-snav-btn--active' : '') ?>"
+                       href="<?= $href($item->url) ?>"><?= $e($item->label) ?><?php
+                        if ($item->count !== null) { ?><span class="ra-snav-badge"><?= $e((string) $item->count) ?></span><?php }
+                    ?></a>
+                    <?php if ($item->children !== []) { ?>
+                        <div class="ra-snav-dd ra-submenu">
+                            <?php foreach ($item->children as $child) { ?>
+                                <a class="ra-snav-dd__item ra-submenu-entry <?= $e($child->classes()) ?>" href="<?= $href($child->url) ?>">
+                                    <span class="ra-snav-dd__item-label"><?= $e($child->label) ?></span>
+                                </a>
                             <?php } ?>
-                            <button class="ra-logout-button btn btn-link" type="submit">Log out</button>
-                        </form>
+                        </div>
                     <?php } ?>
                 </div>
             <?php } ?>

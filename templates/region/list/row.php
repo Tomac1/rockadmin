@@ -34,9 +34,9 @@
         </td>
     <?php } ?>
     <?php if ($view->editUrl !== null) { ?>
-        <td class="ra-grid-cell-actions">
+        <td class="ra-td-actions ra-grid-cell-actions">
             <?php if ($view->editUrl !== '') { ?>
-                <a class="ra-grid-edit" href="<?= $href($view->editUrl) ?>">Edit</a>
+                <a class="ra-btn ra-btn--ghost ra-btn--xs ra-grid-edit" href="<?= $href($view->editUrl) ?>">Edit</a>
             <?php } ?>
         </td>
     <?php } ?>

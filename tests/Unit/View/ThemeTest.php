@@ -11,14 +11,19 @@ use PHPUnit\Framework\TestCase;
  * The theme, checked for the one class of mistake that reads as a styling bug
  * and is really a cascade bug.
  *
- * The shell's navbar keeps its dark background in both light and dark mode, so
- * it declares its own foreground tokens. A declaration on the element itself
- * can never be overridden by a rule targeting :root or <html>: that reaches
- * the element only by inheritance, and inheritance does not apply where the
- * element has its own value. So if those declarations reference a variable
- * that a dark-mode block redefines, the navbar silently follows the page
- * theme after all — which is how its menu came to be near-black text on a
- * near-black bar.
+ * The navigation bars are dark whatever the page behind them does, so their
+ * colours must not be drawn from a token the page's theme redefines. A
+ * declaration on the element itself can never be overridden by a rule
+ * targeting :root: that reaches the element only by inheritance, and
+ * inheritance does not apply where the element has its own value. So a navbar
+ * reading a theme-varying token follows the page theme anyway — which is how
+ * its menu came to be near-black text on a near-black bar, twice.
+ *
+ * The tokens moved when the design system arrived: `--ra-shell-*` became
+ * `--nav-primary-*` and `--nav-secondary-*`, declared in the vendored
+ * `ds/tokens/colors.css`. The property did not move, so neither did this
+ * test — it was re-pointed rather than deleted, because the mistake it
+ * catches is a property of cascades and not of one stylesheet.
  *
  * This cannot measure contrast; there is no browser here. It checks the
  * structural property that made the contrast wrong, which is the part a
@@ -31,25 +36,43 @@ final class ThemeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->css = file_get_contents(\dirname(__DIR__, 3) . '/assets/css/rockadmin.css') ?: '';
+        // Both sheets: the design system declares the navigation's colours,
+        // this project's own may still reference them.
+        $root = \dirname(__DIR__, 3) . '/assets/css/';
 
-        $this->assertNotSame('', $this->css, 'The theme stylesheet is missing or empty.');
+        $this->css = implode('
+', array_map(
+            static fn (string $file): string => file_get_contents($root . $file) ?: '',
+            ['ds/tokens/colors.css', 'ds/components.css', 'rockadmin.css'],
+        ));
+
+        $this->assertNotSame('', trim($this->css), 'The stylesheets are missing or empty.');
     }
 
-    public function testTheShellsOwnColoursAreNotRedefinedByAnyThemeBlock(): void
+    public function testTheNavigationsOwnColoursAreNotRedefinedByAnyThemeBlock(): void
     {
         $themed = $this->propertiesRedefinedInDarkMode();
 
-        // The guard against a vacuous run: dark mode must actually redefine
-        // something, or every assertion below passes by finding nothing.
-        $this->assertNotEmpty($themed, 'No dark-mode block redefines any custom property.');
+        // No dark-mode block means nothing to collide with, which is the
+        // state the design system arrived in: it ships one palette. Said out
+        // loud rather than asserted away, because the day a dark block is
+        // added this test starts doing its job again without being edited.
+        if ($themed === []) {
+            $this->assertStringNotContainsString(
+                'prefers-color-scheme: dark',
+                $this->css,
+                'A dark-mode block exists but redefines nothing — the parser has stopped seeing it.',
+            );
 
-        foreach (['--ra-shell-bg', '--ra-shell-fg', '--ra-shell-fg-rgb'] as $token) {
+            return;
+        }
+
+        foreach (['--nav-primary-bg', '--nav-primary-text', '--nav-secondary-bg', '--nav-secondary-text'] as $token) {
             $this->assertNotContains(
                 $token,
                 $themed,
-                "{$token} is redefined in a dark-mode block. The shell's colours are the same in both "
-                . 'themes on purpose; a theme-varying value here is what made the navbar menu illegible.',
+                "{$token} is redefined in a dark-mode block. The navigation is dark in both themes on "
+                . 'purpose; a theme-varying value here is what made its menu illegible, twice.',
             );
         }
     }
@@ -57,16 +80,15 @@ final class ThemeTest extends TestCase
     public function testTheNavbarsTokensDoNotFollowThePageTheme(): void
     {
         $themed = $this->propertiesRedefinedInDarkMode();
-        $block = $this->ruleBody('.ra-navbar');
+        $block = $this->ruleBody('.ra-topnav');
 
-        $this->assertNotSame('', $block, 'No .ra-navbar rule found in the theme.');
-        $this->assertStringContainsString('--bs-navbar-color', $block);
+        $this->assertNotSame('', $block, 'No .ra-topnav rule found in the stylesheets.');
 
         foreach ($this->variablesReferencedIn($block) as $reference) {
             $this->assertNotContains(
                 $reference,
                 $themed,
-                ".ra-navbar reads {$reference}, which a dark-mode block redefines. Declared on the "
+                ".ra-topnav reads {$reference}, which a dark-mode block redefines. Declared on the "
                 . 'element itself, these tokens cannot be overridden from :root — so the navbar would '
                 . 'follow the page theme while its background does not.',
             );

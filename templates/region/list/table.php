@@ -12,7 +12,7 @@
  * @var \Closure(string, mixed=): string $partial
  */
 ?>
-<table class="ra-grid-table table table-hover">
+<table class="ra-table ra-grid-table">
     <?= $partial('region/list/head', $view) ?>
     <?= $partial('region/list/body', $view) ?>
 </table>

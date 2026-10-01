@@ -22,6 +22,13 @@ final class MenuItemView
         public readonly bool $active = false,
         public readonly array $children = [],
         public readonly ?string $key = null,
+        /**
+         * A count drawn beside the label — 14 orders waiting, 3 products
+         * unpublished. Null draws nothing, which is different from zero:
+         * zero is a fact worth showing on a queue that is usually not empty,
+         * and a menu that cannot tell them apart would hide it.
+         */
+        public readonly ?int $count = null,
     ) {
     }
 

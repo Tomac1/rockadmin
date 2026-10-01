@@ -42,6 +42,18 @@ final class ShellView
          * for a `Csrf` of its own.
          */
         public readonly ?string $csrfToken = null,
+        /**
+         * The workspaces this reader may switch between, or none.
+         *
+         * The design system draws a switcher in the top bar and milestone 9
+         * builds what it switches; until then nothing supplies a list and the
+         * control is not drawn. Empty rather than null because "no
+         * workspaces" and "workspaces not built yet" render identically and
+         * always will — a shell has nothing to say about the difference.
+         *
+         * @var list<WorkspaceView>
+         */
+        public readonly array $workspaces = [],
     ) {
         if (!\in_array($this->darkMode, self::ALLOWED_DARK_MODES, true)) {
             throw new ViewException(
