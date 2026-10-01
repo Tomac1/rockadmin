@@ -446,6 +446,7 @@ if ($connection !== null) {
         new FieldValidator(),
         new SqlWriteHandler($connection),
         $reader,
+        $connection,
         $forms,
         $csrf,
         $flashes,

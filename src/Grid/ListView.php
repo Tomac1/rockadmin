@@ -80,7 +80,68 @@ final class ListView
          * on how many rows came back.
          */
         public readonly bool $rowActions = false,
+        /**
+         * The controls offered over a selection, already gated — an empty
+         * list is a grid with no selection column at all.
+         *
+         * @var list<\RockAdmin\View\ActionView>
+         */
+        public readonly array $bulkActions = [],
+        /**
+         * The CSRF token the selection form submits, empty when there are no
+         * bulk actions to submit.
+         *
+         * On the view rather than read from a session by the template, for
+         * the reason `FormView::$token` is: a template has no session, and a
+         * token rendered from one place is a token the one write path can
+         * verify.
+         */
+        public readonly string $bulkToken = '',
     ) {
+    }
+
+    /**
+     * Whether the table carries a selection column.
+     *
+     * The same question `hasRowActions()` answers for the other end of the
+     * row, and answered here once for the same reason: `head.php` and
+     * `row.php` must agree about how many cells a row has, and milestone 7
+     * shipped a header and a body that disagreed about exactly that, twice.
+     */
+    public function isSelectable(): bool
+    {
+        return $this->bulkActions !== [];
+    }
+
+    /**
+     * The id of the selection form, which the checkboxes point at.
+     *
+     * They point at it rather than sit inside it, and that is the whole
+     * arrangement. A `post` action draws a `<form>` inside a `<td>`; a
+     * selection form wrapping the table would contain those, and nested forms
+     * are not legal HTML — the browser drops the inner one silently, so with
+     * JavaScript off every row action would become a button that does
+     * nothing. An `<input form="...">` outside its form is legal, is how the
+     * attribute is meant to be used, and keeps both working with no script at
+     * all.
+     */
+    public function bulkFormId(): string
+    {
+        return self::selectionFormId($this->key);
+    }
+
+    /**
+     * The same id, for the one caller that needs it before a view exists.
+     *
+     * `ListRegion` writes it onto every `RowView` while building them, which
+     * is before it can ask the view it has not assembled yet. Two spellings
+     * of one string is how a checkbox comes to reference a form that is not
+     * there — and it would fail silently, because an `<input form="nothing">`
+     * is simply never submitted.
+     */
+    public static function selectionFormId(string $regionKey): string
+    {
+        return 'ra-bulk-' . $regionKey;
     }
 
     /**

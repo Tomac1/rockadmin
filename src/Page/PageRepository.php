@@ -346,6 +346,24 @@ final class PageRepository
             ? $this->buildActionItems($name, 'header button', $header['buttons'] ?? null, $actionsConfig, $context, true)
             : [];
 
+        // Not `rowless`: a bulk action's `when` names a column and is tested
+        // per selected row when it runs, which is a real condition and not the
+        // header button's "there is no row here at all". What a bulk action
+        // may not have is a row placeholder in its `to`, and that is refused
+        // below, where the reason can be given.
+        $bulkActions = $this->buildActionItems(
+            $name,
+            'bulk action',
+            $config['bulk_actions'] ?? null,
+            $actionsConfig,
+            $context,
+            false,
+        );
+
+        foreach ($bulkActions as $bulk) {
+            $this->assertBulkIsPerformable($name, $bulk);
+        }
+
         return new PageDefinition(
             $name,
             $title,
@@ -356,7 +374,42 @@ final class PageRepository
             $regions,
             $actions,
             $headerButtons,
+            $bulkActions,
         );
+    }
+
+    /**
+     * The two things a bulk action may not be.
+     *
+     * **It may not be a `link`.** A selection of forty rows has no single URL
+     * to navigate to, so a `link` in `bulk_actions` would draw a control that
+     * either goes nowhere or goes to one arbitrary row of the selection.
+     *
+     * **Its `to` may not carry a `{column}`.** A row placeholder is
+     * substituted per row while rendering, and a bulk control is drawn once
+     * for the whole table — there is no row to substitute from. Left
+     * unrefused it would render the literal braces into a URL and 404 at
+     * click time, with nothing saying why.
+     */
+    private function assertBulkIsPerformable(string $pageName, ActionDefinition $action): void
+    {
+        $where = "Page '{$pageName}': bulk action '{$action->key}'";
+
+        if (!$action->type->isWrite()) {
+            throw new PageException(
+                "{$where} is a '{$action->type->value}'. A bulk action applies to a selection of rows and "
+                . "so must be a 'post': a selection has no single URL to navigate to, and a control that "
+                . 'went to one arbitrary row of forty would look like it worked.',
+            );
+        }
+
+        if (str_contains((string) $action->to, '{')) {
+            throw new PageException(
+                "{$where} has a row placeholder in its 'to'. A {column} is substituted per row while "
+                . 'rendering, and a bulk control is drawn once for the whole table — there is no row to '
+                . 'substitute from. The selection travels in the body instead.',
+            );
+        }
     }
 
     /**

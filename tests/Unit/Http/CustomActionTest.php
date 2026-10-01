@@ -581,6 +581,7 @@ final class CustomActionTest extends TestCase
             new FieldValidator(),
             $this->writes,
             $reader,
+            null,
             new FormHandler(
                 $this->repository(),
                 $region,

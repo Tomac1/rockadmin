@@ -25,6 +25,33 @@
  */
 ?>
 <tr class="<?= $e($view->classes) ?>" data-id="<?= $e($view->key) ?>">
+    <?php if ($view->selectionFormId !== null) { ?>
+        <?php
+        /*
+         * The checkbox submits with a form it is not inside, by `form="…"`.
+         * A selection form wrapping the table would contain the `<form>` an
+         * action cell draws, and nested forms are dropped by the browser
+         * without a word — every row action would become a button that does
+         * nothing with JavaScript off, and nothing would say why.
+         */
+        ?>
+        <td class="ra-grid-cell-select">
+            <label class="ra-checkbox-label ra-grid-select-label">
+                <input
+                    class="ra-checkbox-input ra-grid-select"
+                    type="checkbox"
+                    form="<?= $e($view->selectionFormId) ?>"
+                    name="<?= $e(\RockAdmin\Form\FormFields::IDS) ?>[]"
+                    value="<?= $e($view->key) ?>"
+                    data-ra-select
+                    aria-label="Select row <?= $e($view->key) ?>"
+                >
+                <span class="ra-checkbox-box" aria-hidden="true">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>
+                </span>
+            </label>
+        </td>
+    <?php } ?>
     <?php foreach ($view->cells as $cell) { ?>
         <td class="<?= $e($cell->classes) ?>"<?= $attrs($cell->attributes) ?>>
             <?= $partial(

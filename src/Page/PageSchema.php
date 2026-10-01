@@ -110,6 +110,16 @@ final class PageSchema
                     . 'decides where that content appears, which is why the two are configured separately.',
                 each: ActionSchema::create(),
             ),
+            'bulk_actions' => new SchemaKey(
+                ValueType::Array,
+                description: 'The actions offered over a selection of rows, as a list of keys from this '
+                    . "page's `actions` block, or defined inline the same three ways a column's `items` "
+                    . 'accepts. Declaring any of them puts a selection column on the grid. Every one must '
+                    . 'be a `post`: a selection of forty rows has no single URL to navigate to. A `when` '
+                    . 'is allowed and is tested per row when the action runs, so archiving a selection '
+                    . 'archives the ones that qualify and says how many did not.',
+                example: ['delete', 'archive'],
+            ),
             'regions' => new SchemaKey(
                 ValueType::Array,
                 required: true,

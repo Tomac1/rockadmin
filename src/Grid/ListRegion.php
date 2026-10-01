@@ -127,11 +127,18 @@ final class ListRegion
             ? $stateUrl
             : null;
 
+        // Decided before the rows, from the same list the view's own
+        // `isSelectable()` reads, so the header's select-all cell and the
+        // rows' checkbox cells cannot disagree about whether they exist --
+        // the third time that pairing has had to be made from one value.
+        $bulkActions = $this->actions->forPage($page->name, $page->bulkActions);
+        $selectionFormId = $bulkActions === [] ? null : ListView::selectionFormId($region->key);
+
         return new ListView(
             key: $region->key,
             pageName: $page->name,
             columns: $this->columnViews($page, $region, $state),
-            rows: $this->rowViews($page, $region, $result->rows, $editReturnTo),
+            rows: $this->rowViews($page, $region, $result->rows, $editReturnTo, $selectionFormId),
             filters: $this->filterViews($region, $state),
             pagination: $this->pagination($page, $region, $state, $limit, $result),
             search: $state->search,
@@ -150,6 +157,12 @@ final class ListRegion
             // header and the body cannot disagree about how many cells a row
             // has. `hasRowActions()` reads this and nothing else.
             rowActions: $editReturnTo !== null,
+            // Gated here, exactly as a row's actions are, so a reader who may
+            // not perform any of them gets no selection column either --
+            // checkboxes whose only purpose is to feed controls that are not
+            // drawn.
+            bulkActions: $bulkActions,
+            bulkToken: $this->actions->sessionToken(),
         );
     }
 
@@ -194,6 +207,7 @@ final class ListRegion
         RegionDefinition $region,
         array $rows,
         ?string $returnTo,
+        ?string $selectionFormId = null,
     ): array {
         $views = [];
 
@@ -213,7 +227,17 @@ final class ListRegion
                     : $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
             }
 
-            $views[] = new RowView($key, $cells, $url, Classes::of('grid-row'), $editUrl);
+            // A row with no key of its own draws no checkbox: there is
+            // nothing to put in its value, and an unchecked box that cannot
+            // ever be checked is worse than a cell that is simply empty.
+            $views[] = new RowView(
+                $key,
+                $cells,
+                $url,
+                Classes::of('grid-row'),
+                $editUrl,
+                $key !== null && \is_scalar($key) ? $selectionFormId : null,
+            );
         }
 
         return $views;

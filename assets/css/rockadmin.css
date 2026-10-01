@@ -565,3 +565,61 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     order: 1;
     margin-left: auto;
 }
+
+/*
+ * The selection column and the bulk bar.
+ *
+ * The design system's table has no selection and its toolbar has no bar of
+ * actions over one, so both are this project's own — laid out with its
+ * tokens rather than numbers chosen here.
+ */
+.ra-grid-head-select,
+.ra-grid-cell-select {
+    width: 1px;
+    padding-right: 0;
+    white-space: nowrap;
+}
+
+.ra-grid-bulk {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 0.75rem);
+    padding: var(--space-2, 0.5rem) var(--table-cell-px, 0.75rem);
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    background: var(--color-primary-50, #eef2ff);
+}
+
+/*
+ * With nothing ticked the bar stays put and goes quiet. It does not
+ * disappear: a bar that only existed once something was selected would move
+ * the whole table down on the first click, and `core.js` adds this class --
+ * so with no script the bar is simply always active, which is correct,
+ * because the server refuses an empty selection by name.
+ */
+.ra-grid-bulk-empty {
+    background: var(--color-neutral-50, #f8fafc);
+    color: var(--text-muted, #64748b);
+}
+
+.ra-grid-bulk-count {
+    margin: 0;
+    font-size: var(--text-sm, 0.75rem);
+    color: var(--text-secondary, #475569);
+}
+
+.ra-grid-bulk-count-number {
+    font-weight: var(--font-semibold, 600);
+    font-variant-numeric: tabular-nums;
+}
+
+.ra-grid-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    margin-left: auto;
+}
+
+.ra-grid-bulk-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}

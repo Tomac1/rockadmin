@@ -44,6 +44,7 @@ written link must still show a grid, not an error page.
 | --- | --- | --- | --- | --- |
 | `title` | string | — | `Orders` | The page title, shown in the browser tab and header. **Required.** |
 | `layout` | string | `single` | `single` | The page layout: single, two-column or multi-column. Single is the default. |
+| `bulk_actions` | array | — | `['delete', 'archive']` | The actions offered over a selection of rows, as a list of keys from this page's `actions` block, or defined inline the same three ways a column's `items` accepts. Declaring any of them puts a selection column on the grid. Every one must be a `post`: a selection of forty rows has no single URL to navigate to. A `when` is allowed and is tested per row when the action runs, so archiving a selection archives the ones that qualify and says how many did not. |
 
 ## `entity`
 

@@ -195,6 +195,7 @@ final class ActionHandlerTest extends TestCase
             new FieldValidator(),
             $this->writes,
             new RowReader($rows),
+            null,
             new FormHandler(
                 $this->repository(),
                 $region,

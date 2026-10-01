@@ -189,6 +189,20 @@ final class ActionBuilder
         return (string) $value;
     }
 
+    /**
+     * The session's token for a form this builder did not itself draw.
+     *
+     * The selection form is one: it carries the token once for every bulk
+     * action on it, because a submit button chooses which action runs with
+     * `formaction` and they all post the same body. Empty when there is no
+     * `Csrf`, which is also when `forPage()` has refused to draw any `post`
+     * action, so an empty token can only ever reach a form with no buttons.
+     */
+    public function sessionToken(): string
+    {
+        return $this->csrf?->token() ?? '';
+    }
+
     private function token(ActionDefinition $action): string
     {
         if ($this->csrf === null) {

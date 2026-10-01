@@ -503,6 +503,93 @@
     // the whole page. attach()/detach() rebind this on every fragment swap,
     // so a toolbar returned by a reload keeps working exactly like the one
     // that was there first.
+    /**
+     * The selection: a running count, buttons that are off while nothing is
+     * ticked, and a select-all that ticks the page.
+     *
+     * Everything here is a convenience over markup that already works. The
+     * checkboxes submit with the form by `form="..."`, the buttons choose
+     * their action with `formaction`, and the server refuses an empty
+     * selection by name. With no script at all the only thing lost is the
+     * count and the select-all box, which is why the select-all carries no
+     * `name` -- it is the one control here that does nothing without this,
+     * so it must never be part of what is submitted.
+     *
+     * The boxes are found by the form attribute rather than by walking the
+     * table, because that is the actual relationship: they are this form's
+     * controls regardless of where they sit in the document, and a selector
+     * over the table would quietly miss one the day a row is drawn elsewhere.
+     */
+    behavior('grid-bulk', {
+        attach: function (form) {
+            function boxes() {
+                return Array.prototype.slice.call(
+                    document.querySelectorAll('[form="' + form.id + '"][data-ra-select]')
+                );
+            }
+
+            function selected() {
+                return boxes().filter(function (box) {
+                    return box.checked;
+                });
+            }
+
+            function sync() {
+                var all = boxes();
+                var chosen = selected();
+                var count = form.querySelector('.ra-grid-bulk-count-number');
+                var toggle = document.querySelector('[form="' + form.id + '"][data-ra-select-all]')
+                    || (form.closest('[data-ra-region]') || document).querySelector('[data-ra-select-all]');
+
+                if (count) {
+                    count.textContent = String(chosen.length);
+                }
+
+                form.classList.toggle('ra-grid-bulk-empty', chosen.length === 0);
+
+                form.querySelectorAll('.ra-grid-bulk-action').forEach(function (button) {
+                    button.disabled = chosen.length === 0;
+                });
+
+                if (toggle) {
+                    toggle.checked = all.length > 0 && chosen.length === all.length;
+                    // Some but not all: the box says so rather than reading
+                    // as "none selected", which is what an unticked select-all
+                    // over a part-selected page would say.
+                    toggle.indeterminate = chosen.length > 0 && chosen.length < all.length;
+                }
+            }
+
+            function onChange(event) {
+                var target = event.target;
+
+                if (!target || !target.matches) {
+                    return;
+                }
+
+                if (target.matches('[data-ra-select-all]')) {
+                    boxes().forEach(function (box) {
+                        box.checked = target.checked;
+                    });
+                }
+
+                if (target.matches('[data-ra-select-all]') || target.matches('[data-ra-select]')) {
+                    sync();
+                }
+            }
+
+            document.addEventListener('change', onChange);
+            form._raBulkChange = onChange;
+            sync();
+        },
+        detach: function (form) {
+            if (form._raBulkChange) {
+                document.removeEventListener('change', form._raBulkChange);
+                delete form._raBulkChange;
+            }
+        },
+    });
+
     behavior('grid-toolbar', {
         attach: function (form) {
             function onSubmit(event) {

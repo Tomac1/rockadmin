@@ -24,6 +24,25 @@
 ?>
 <thead class="ra-grid-head">
     <tr class="ra-grid-head-row">
+        <?php if ($view->isSelectable()) { ?>
+            <?php
+            /*
+             * Select-all. It carries no `name`, so it is never submitted and
+             * the server never sees it — it exists for `core.js` to tick the
+             * rest from, and with no script it is an inert box rather than a
+             * control that half works. The rows' own checkboxes are the
+             * selection, and they are what travels.
+             */
+            ?>
+            <th class="ra-grid-head-select" scope="col">
+                <label class="ra-checkbox-label ra-grid-select-all-label">
+                    <input class="ra-checkbox-input ra-grid-select-all" type="checkbox" data-ra-select-all aria-label="Select all rows on this page">
+                    <span class="ra-checkbox-box" aria-hidden="true">
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>
+                    </span>
+                </label>
+            </th>
+        <?php } ?>
         <?php foreach ($view->columns as $column) { ?>
             <th
                 class="<?= $e($column->classes . ' ra-align-' . $column->align) ?>"

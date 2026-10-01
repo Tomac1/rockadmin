@@ -172,6 +172,7 @@ final class WriteFlowTest extends DatabaseTestCase
             new FieldValidator(),
             new SqlWriteHandler($connection),
             new RowReader(new SqlRowSource($connection)),
+            $connection,
             new FormHandler(
                 $this->repository(),
                 $region,
