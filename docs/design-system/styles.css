@@ -1,0 +1,88 @@
+/* Rock Admin Design System — Entry Point
+ * Import this single file to get all tokens, base styles, and resets.
+ * The design system compiler bundles components separately via _ds_bundle.js.
+ */
+
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/shadows.css';
+@import './tokens/borders.css';
+@import './components/components.css';
+
+/* ---- Global utility resets ---- */
+a { color: var(--text-link); text-decoration: none; }
+a:hover { color: var(--text-link-hover); text-decoration: underline; }
+p, h1, h2, h3, h4, h5, h6 { margin: 0; }
+img, svg { display: block; }
+input, textarea, select, button { font-family: inherit; font-size: inherit; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+/* ---- Scrollbar (subtle) ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-neutral-300); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
+
+/* ---- Focus ring ---- */
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+
+/* ---- Admin page layout helpers ---- */
+.ra-page { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg-page); }
+.ra-page-body { flex: 1; display: flex; flex-direction: column; }
+.ra-container { width: 100%; max-width: var(--content-max-width); margin: 0 auto; padding: 0 var(--page-padding-x); }
+.ra-container--medium { max-width: var(--content-medium-width); }
+.ra-container--narrow { max-width: var(--content-narrow-width); }
+.ra-container--form   { max-width: var(--content-form-width); }
+.ra-container--login  { max-width: var(--content-login-width); }
+.ra-content { padding: var(--page-padding-y) var(--page-padding-x); flex: 1; }
+
+/* ---- Responsive grid utilities ---- */
+.ra-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.ra-cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.ra-cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.ra-cols-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.ra-cols-3-2 { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+/* Form layout: main + right sidebar */
+.ra-form-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+/* Inpage responsive */
+.ra-inpage-layout { display: flex; gap: 0; flex: 1; min-height: 0; }
+
+/* Tablet (≤1024px) */
+@media (max-width: 1024px) {
+  .ra-cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .ra-cols-3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Mobile (≤767px) */
+@media (max-width: 767px) {
+  .ra-cols-4, .ra-cols-3, .ra-cols-2,
+  .ra-cols-2-1, .ra-cols-3-2 { grid-template-columns: 1fr; }
+  .ra-form-layout { grid-template-columns: 1fr; }
+  .ra-inpage-layout { flex-direction: column; }
+  .ra-inpage-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-color);
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-2);
+  }
+  .ra-inpage-sidebar__section { margin-bottom: 0; }
+  .ra-inpage-sidebar__section-label { display: none; }
+  .ra-inpage-sidebar__item {
+    border-left: none !important;
+    border-bottom: 2px solid transparent;
+    padding: var(--space-2) var(--space-3);
+    white-space: nowrap;
+  }
+  .ra-inpage-sidebar__item--active {
+    border-bottom-color: var(--color-primary-600) !important;
+    border-left-color: transparent !important;
+  }
+  .ra-inpage-content { padding: var(--space-4); }
+  .ra-page-header { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+  .ra-page-header__right { width: 100%; justify-content: flex-end; padding-top: 0; }
+  .ra-content { padding: var(--space-4) var(--space-3); }
+  :root { --page-padding-x: 1rem; }
+}

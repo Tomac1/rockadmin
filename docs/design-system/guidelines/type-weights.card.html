@@ -1,0 +1,23 @@
+<!-- @dsCard group="Type" viewport="700x200" name="Type Weights & Styles" subtitle="Inter 300–700, mono, semantic roles" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{margin:0;padding:16px;background:var(--bg-page);font-family:var(--font-sans)} .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px} .cell{display:flex;flex-direction:column;gap:4px} .sample{font-size:var(--text-lg);color:var(--text-primary);line-height:1.2} .meta{font-size:10px;color:var(--text-muted);font-family:monospace} .divider{height:1px;background:var(--border-color);margin:12px 0} .roles{display:flex;flex-direction:column;gap:4px}</style>
+</head><body>
+<div class="grid">
+  <div class="cell"><div class="sample" style="font-weight:300">Light 300</div><div class="meta">--font-light</div></div>
+  <div class="cell"><div class="sample" style="font-weight:400">Regular 400</div><div class="meta">--font-normal</div></div>
+  <div class="cell"><div class="sample" style="font-weight:500">Medium 500</div><div class="meta">--font-medium ✦</div></div>
+  <div class="cell"><div class="sample" style="font-weight:600">Semibold 600</div><div class="meta">--font-semibold</div></div>
+  <div class="cell"><div class="sample" style="font-weight:700">Bold 700</div><div class="meta">--font-bold</div></div>
+</div>
+<div class="divider"></div>
+<div class="roles">
+  <div style="display:flex;gap:24px;align-items:baseline;flex-wrap:wrap">
+    <span style="font-size:var(--text-md);color:var(--text-primary)">Primary text</span>
+    <span style="font-size:var(--text-md);color:var(--text-secondary)">Secondary text</span>
+    <span style="font-size:var(--text-md);color:var(--text-muted)">Muted / placeholder</span>
+    <span style="font-size:var(--text-md);color:var(--text-link)">Link text</span>
+    <span style="font-size:var(--text-md);color:var(--text-disabled)">Disabled</span>
+    <span style="font-size:var(--text-sm);font-family:var(--font-mono);background:var(--color-neutral-100);padding:1px 6px;border-radius:4px;color:var(--text-secondary)">monospace code</span>
+  </div>
+</div>
+</body></html>

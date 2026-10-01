@@ -1,0 +1,115 @@
+/* Rock Admin — Color Tokens */
+:root {
+  /* Primary — Electric Blue */
+  --color-primary-50:  #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  /* Neutral */
+  --color-neutral-0:   #ffffff;
+  --color-neutral-50:  #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
+  /* Success */
+  --color-success-50:  #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-200: #bbf7d0;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+
+  /* Warning */
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  /* Error */
+  --color-error-50:  #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+
+  /* Info */
+  --color-info-50:  #f0f9ff;
+  --color-info-100: #e0f2fe;
+  --color-info-500: #0ea5e9;
+  --color-info-600: #0284c7;
+  --color-info-700: #0369a1;
+
+  /* Indigo/Purple accent */
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-violet-500: #8b5cf6;
+  --color-pink-500:   #ec4899;
+  --color-teal-500:   #14b8a6;
+  --color-orange-500: #f97316;
+
+  /* Navy — Nav backgrounds */
+  --color-navy-950: #080c14;
+  --color-navy-900: #0d1117;
+  --color-navy-800: #161b26;
+  --color-navy-700: #1c2338;
+  --color-navy-600: #232d4a;
+  --color-navy-500: #2c3a5e;
+  --color-navy-400: #3d5080;
+
+  /* Surfaces */
+  --color-surface:   #ffffff;
+  --color-page-bg:   #f0f2f7;
+
+  /* ---- Semantic Aliases ---- */
+  --text-primary:    var(--color-neutral-900);
+  --text-secondary:  var(--color-neutral-600);
+  --text-muted:      var(--color-neutral-400);
+  --text-disabled:   var(--color-neutral-300);
+  --text-inverse:    #ffffff;
+  --text-link:       var(--color-primary-600);
+  --text-link-hover: var(--color-primary-700);
+
+  --border-color:       var(--color-neutral-200);
+  --border-color-strong:var(--color-neutral-300);
+  --border-focus:       var(--color-primary-500);
+
+  --bg-page:    var(--color-page-bg);
+  --bg-surface: var(--color-surface);
+  --bg-hover:   var(--color-neutral-50);
+  --bg-active:  var(--color-primary-50);
+
+  /* Navbar */
+  --nav-primary-bg:          var(--color-navy-900);
+  --nav-primary-border:      rgba(255,255,255,0.07);
+  --nav-primary-text:        #94a0b8;
+  --nav-primary-text-hover:  #dde4f0;
+  --nav-primary-text-active: #ffffff;
+  --nav-primary-hover:       rgba(255,255,255,0.07);
+  --nav-primary-active:      rgba(255,255,255,0.12);
+
+  --nav-secondary-bg:          var(--color-navy-800);
+  --nav-secondary-border:      rgba(255,255,255,0.06);
+  --nav-secondary-text:        #a0aec0;
+  --nav-secondary-text-hover:  #dde4f0;
+  --nav-secondary-text-active: #ffffff;
+  --nav-secondary-active-bar:  var(--color-primary-500);
+  --nav-secondary-hover:       rgba(255,255,255,0.07);
+}

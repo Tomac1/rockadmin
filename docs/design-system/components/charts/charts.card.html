@@ -1,0 +1,47 @@
+<!-- @dsCard group="Components" viewport="700x500" name="Charts" subtitle="StatCard, LineChart, BarChart, DonutChart" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:16px;background:var(--bg-page)} .label{font-size:11px;color:var(--text-muted);font-family:var(--font-sans);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const { StatCard, LineChart, BarChart, DonutChart } = window.RockAdminDesignSystem_fced52;
+const CartIcon = () => <svg width="20" height="20" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"><circle cx="8" cy="17" r="1.5" fill="currentColor"/><circle cx="15" cy="17" r="1.5" fill="currentColor"/><path d="M1 1h3l2 10h9l2-7H6"/></svg>;
+const UsersIcon = () => <svg width="20" height="20" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"><circle cx="8" cy="7" r="4"/><path d="M2 18c0-3.86 2.69-7 6-7"/><circle cx="15" cy="9" r="3"/><path d="M13 18c0-2.5.9-4.5 2-5"/></svg>;
+const TrendIcon = () => <svg width="20" height="20" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"><polyline points="2,14 7,9 11,13 18,5"/><polyline points="14,5 18,5 18,9"/></svg>;
+const EuroIcon = () => <svg width="20" height="20" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"><path d="M15 6a6 6 0 100 8"/><line x1="4" y1="9" x2="12" y2="9"/><line x1="4" y1="12" x2="11" y2="12"/></svg>;
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun'];
+const LINE_DATA = [
+  { name:'Revenue', data:[4200,5800,5100,7200,6800,9100], color:'var(--color-primary-500)' },
+  { name:'Orders', data:[120,185,162,241,218,298], color:'var(--color-teal-500)' },
+];
+const BAR_DATA = [{ name:'Sales', data:[3200,4100,3800,5200,4900,6800], color:'var(--color-primary-500)' }];
+const DONUT_DATA = [
+  { label:'Direct', value:4200 },{ label:'Organic', value:3100 },
+  { label:'Paid', value:1800 },{ label:'Social', value:900 },
+];
+
+function App() {
+  return (
+    <div style={{fontFamily:'var(--font-sans)'}}>
+      <div className="label">Stat Cards</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:4}}>
+        <StatCard label="Total Revenue" value="€48.2k" trend={12.4} trendLabel="vs last mo" sparklineData={[3200,4100,3800,5200,4900,6800,9100]} icon={<EuroIcon />} iconColor="var(--color-primary-500)" />
+        <StatCard label="Orders" value="1,284" trend={8.1} trendLabel="vs last mo" sparklineData={[120,185,162,241,218,298,345]} icon={<CartIcon />} iconColor="var(--color-teal-500)" />
+        <StatCard label="Customers" value="3,421" trend={-2.3} trendLabel="vs last mo" icon={<UsersIcon />} iconColor="var(--color-indigo-500)" />
+        <StatCard label="Conv. Rate" value="3.6%" trend={0.4} trendLabel="vs last mo" icon={<TrendIcon />} iconColor="var(--color-orange-500)" />
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
+        <LineChart title="Revenue & Orders" labels={MONTHS} series={LINE_DATA} height={180} />
+        <DonutChart title="Traffic Sources" data={DONUT_DATA} size={160} />
+      </div>
+      <BarChart title="Monthly Sales" labels={MONTHS} series={BAR_DATA} height={150} style={{marginTop:12}} />
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script></body></html>
