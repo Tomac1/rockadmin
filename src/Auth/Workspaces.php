@@ -245,6 +245,20 @@ final class Workspaces
     }
 
     /**
+     * Every workspace, in declaration order.
+     *
+     * Asked by whatever has to name the workspace a row is in — a grid
+     * showing all of them — which needs the definitions rather than the
+     * names, because the answer it wants is a label and a variable.
+     *
+     * @return list<WorkspaceDefinition>
+     */
+    public function all(): array
+    {
+        return array_values($this->workspaces);
+    }
+
+    /**
      * The workspaces this user may work in, in declaration order.
      *
      * A name on the user that no longer matches a configured workspace is

@@ -68,6 +68,18 @@ final class QueryFactory
     {
         [$columns, $collections] = $this->splitColumns($region, $page->entity->key);
 
+        // Reading every workspace at once means the grid gains a column
+        // saying which one each row is in (spec 9.3), and a column nobody
+        // selected has nothing to draw. Added here rather than in the region,
+        // because this is the object that decides what a query asks for.
+        $workspaceColumn = $this->scope?->isAcrossAllWorkspaces($page) === true
+            ? $this->scope->workspaceColumn($page)
+            : null;
+
+        if ($workspaceColumn !== null && !isset($columns[$workspaceColumn])) {
+            $columns[$workspaceColumn] = $workspaceColumn;
+        }
+
         // PageRepository already refuses a per_page below 1 when a page
         // loads, loudly, naming the page and region where a person can fix
         // it. This lower bound exists for the RegionDefinition that never

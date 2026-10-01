@@ -392,7 +392,7 @@ if ($connection !== null) {
     // preview, the form and every write. Four of them working it out
     // separately is four chances to differ, and the one that differs is a
     // hole rather than a bug.
-    $requestScope = new RequestScope($activeWorkspace, $identity);
+    $requestScope = new RequestScope($activeWorkspace, $identity, $workspaces);
 
     $listRegion = new ListRegion(
         $rows,
@@ -402,6 +402,7 @@ if ($connection !== null) {
         $gate,
         $identity,
         $csrf,
+        $requestScope,
     );
     $previewRegion = new PreviewRegion($rows, new CellFormatter(), $requestScope);
 

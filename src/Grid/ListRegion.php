@@ -6,6 +6,7 @@ namespace RockAdmin\Grid;
 
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
+use RockAdmin\Auth\RequestScope;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\RowSource;
 use RockAdmin\Db\SortDirection;
@@ -13,6 +14,8 @@ use RockAdmin\Form\FormFields;
 use RockAdmin\Http\Csrf;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\ColumnDefinition;
+use RockAdmin\Page\ColumnType;
+use RockAdmin\Page\Display;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\RegionDefinition;
 use RockAdmin\View\Classes;
@@ -71,6 +74,13 @@ final class ListRegion
          * one is refused by `ActionBuilder` rather than drawn unsigned.
          */
         ?Csrf $csrf = null,
+        /**
+         * The workspace boundary, for the one thing this class needs it for:
+         * saying which workspace a row is in when the grid is showing all of
+         * them (spec 9.3). The query's own scope is `QueryFactory`'s, which
+         * is the object that decides what a query asks for.
+         */
+        private readonly ?RequestScope $scope = null,
     ) {
         $this->actions = new ActionBuilder($gate, $identity, $urls, $csrf);
     }
@@ -192,6 +202,27 @@ final class ListRegion
             );
         }
 
+        // Reading every workspace at once, so the grid says which one each
+        // row is in (spec 9.3). Last, because it is not one of the page's own
+        // columns -- it is the grid explaining itself -- and because a column
+        // appearing in the middle would move everything the person was
+        // already reading.
+        //
+        // Not sortable: it is not a column the page declared, so there is no
+        // `sortable` to honour and a sort on it would be a sort nobody asked
+        // for on a column that disappears the moment they pick a workspace.
+        if ($this->scope?->isAcrossAllWorkspaces($page) === true) {
+            $views[] = new ColumnView(
+                key: 'ra_workspace',
+                label: 'Workspace',
+                classes: Classes::of('grid-head', 'workspace'),
+                align: 'start',
+                width: null,
+                sortUrl: null,
+                sortDirection: null,
+            );
+        }
+
         return $views;
     }
 
@@ -225,6 +256,33 @@ final class ListRegion
                 $cells[] = $column->type->isActions()
                     ? $this->actionCell($page->name, $column, $row, $page->entity->key)
                     : $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
+            }
+
+            if ($this->scope?->isAcrossAllWorkspaces($page) === true) {
+                // The label, not the raw value. A grid saying "2" leaves
+                // whoever reads it to remember which tenant 2 is, which is
+                // exactly the attributability 9.3 asks for and does not get.
+                $column = $this->scope->workspaceColumn($page);
+                $label = $this->scope->workspaceLabel($page, $column === null ? null : $row[$column] ?? null);
+
+                $cells[] = $this->cells->format(
+                    new ColumnDefinition(
+                        filter: null,
+                        collection: null,
+                        key: 'ra_workspace',
+                        label: 'Workspace',
+                        source: 'ra_workspace',
+                        type: ColumnType::Text,
+                        display: Display::Badge,
+                        sortable: false,
+                        link: false,
+                        align: 'start',
+                        width: null,
+                        class: '',
+                    ),
+                    $label,
+                    null,
+                );
             }
 
             // A row with no key of its own draws no checkbox: there is
