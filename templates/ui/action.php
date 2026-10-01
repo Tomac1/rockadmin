@@ -56,7 +56,33 @@
         </button>
     </form>
 <?php } else { ?>
-    <a class="ra-btn ra-btn--outline ra-btn--sm <?= $e($view->classes()) ?>" href="<?= $href($view->url) ?>">
+    <?php
+    /*
+     * A link, including when it opens an overlay.
+     *
+     * An `open` is an anchor that script upgrades, never a button that script
+     * replaces. 8.6's own example is a button, and a button does nothing at
+     * all with JavaScript off — so `href` is the standalone page showing the
+     * same thing, and `data-ra-open` is the fragment `core.js` fetches
+     * instead when it is there to intercept the click.
+     *
+     * Linking straight at the fragment is what 8.6's "a fragment is always
+     * valid HTML, so it can be opened directly in a browser" suggests. That
+     * sentence is about debugging. Somebody with no script who clicks Preview
+     * should not land on an unstyled fragment with no navigation.
+     */
+    ?>
+    <a
+        class="ra-btn ra-btn--outline ra-btn--sm <?= $e($view->classes()) ?>"
+        href="<?= $href($view->url) ?>"
+        <?php if ($view->isOpen()) { ?>
+            data-ra-action="open"
+            data-ra-open="<?= $href($view->fragmentUrl) ?>"
+            data-ra-in="<?= $e($view->in) ?>"
+            <?php if ($view->size !== '') { ?>data-ra-size="<?= $e($view->size) ?>"<?php } ?>
+            <?php if ($view->title !== '') { ?>data-ra-title="<?= $e($view->title) ?>"<?php } ?>
+        <?php } ?>
+    >
         <?php if ($view->icon !== null) { ?>
             <?= $partial('ui/icon', $view->icon) ?>
         <?php } ?>

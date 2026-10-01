@@ -678,6 +678,26 @@ final class PageRepository
 
         $set = $this->actionSet($where, $type, $to, $actionConfig);
         [$in, $size] = $this->actionOverlay($where, $type, $actionConfig);
+        $title = \is_string($actionConfig['title'] ?? null) ? $actionConfig['title'] : '';
+
+        if ($title !== '' && !$type->isOpen()) {
+            throw new PageException(\sprintf(
+                "%s is a '%s' with a 'title'. A title names an overlay's heading, and only an 'open' "
+                . "opens one; the text on a control is its 'label'.",
+                $where,
+                $type->value,
+            ));
+        }
+
+        if ($rowless && preg_match('/\{[a-z][a-z0-9_]*}/', $title, $match) === 1) {
+            throw new PageException(\sprintf(
+                "%s has a 'title' of '%s', and there is no row here to read '%s' from. A {column} is "
+                . 'substituted from the row a control was drawn on, and this control is not drawn on one.',
+                $where,
+                $title,
+                $match[0],
+            ));
+        }
 
         return new ActionDefinition(
             key: $actionKey,
@@ -692,7 +712,7 @@ final class PageRepository
             refresh: $this->actionRefresh($where, $actionConfig, $context),
             in: $in,
             size: $size,
-            title: \is_string($actionConfig['title'] ?? null) ? $actionConfig['title'] : '',
+            title: $title,
             params: $this->actionParams($where, $type, $actionConfig, $rowless),
         );
     }
