@@ -72,6 +72,35 @@ return [
             'confirm' => 'Delete this ad? This cannot be undone.',
             'permission' => 'ads.delete',
         ],
+
+        // Milestone 9. The same region, opened two ways, which is 8.5's own
+        // argument for keeping regions and actions apart: a region renders
+        // content and an action decides where that content appears, so the
+        // panel below needs no second copy of itself to be shown as a modal.
+        //
+        // 8.5 calls `preview` "only shorthand" for exactly this -- a region
+        // plus an `open` action. The region shipped in milestone 6; this is
+        // the other half, spelled out rather than implied.
+        'peek' => [
+            'type' => 'open',
+            'in' => 'offcanvas',
+            'size' => 'lg',
+            'target' => '@region:preview',
+            'title' => 'Ad #{id}',
+            'params' => ['id' => '{id}'],
+            'label' => 'Preview',
+            'permission' => 'ads.view',
+        ],
+        'peek_modal' => [
+            'type' => 'open',
+            'in' => 'modal',
+            'size' => 'lg',
+            'target' => '@region:preview',
+            'title' => 'Ad #{id}',
+            'params' => ['id' => '{id}'],
+            'label' => 'Modal',
+            'permission' => 'ads.view',
+        ],
     ],
 
     // Over a selection rather than one row. `edit` is deliberately absent:
@@ -152,7 +181,7 @@ return [
                 'tools' => [
                     'type' => 'actions',
                     'label' => '',
-                    'items' => ['edit', 'archive', 'bin'],
+                    'items' => ['peek', 'peek_modal', 'edit', 'archive', 'bin'],
                 ],
             ],
         ],

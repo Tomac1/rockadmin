@@ -119,12 +119,23 @@ final class DemoActionsTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAViewerIsOfferedNoActionAtAll(?Connection $connection): void
+    public function testAViewerIsOfferedOnlyWhatChangesNothing(?Connection $connection): void
     {
+        // `ads.view` and nothing else. The two `open` controls declare
+        // `ads.view` and stay — reading a row is what a viewer is for — and
+        // every control that writes is gone. The selection column goes with
+        // them: it exists to feed bulk actions, and a viewer has none.
         $view = $this->grid($this->require($connection), ['ads.view']);
 
-        $this->assertSame([], $this->actionKeys($view), 'A viewer was offered a control that writes.');
-        $this->assertFalse($view->isSelectable(), 'A viewer got a selection column feeding controls they have not got.');
+        $this->assertSame(
+            ['peek', 'peek_modal'],
+            $this->actionKeys($view),
+            'A viewer was offered a control that writes, or lost one that only reads.',
+        );
+        $this->assertFalse(
+            $view->isSelectable(),
+            'A viewer got a selection column feeding controls they have not got.',
+        );
     }
 
     #[DataProvider('connections')]

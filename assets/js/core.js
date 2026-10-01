@@ -118,12 +118,68 @@
         return document.getElementById('ra-' + name);
     }
 
-    function openOverlay(name, title) {
+    /**
+     * What to focus again when an overlay closes, per overlay.
+     *
+     * A dialog that leaves focus where it was is one a keyboard user arrives
+     * at by tabbing through the page behind it; a dialog that drops focus on
+     * close leaves them at the top of the document, having lost their place.
+     * Both are the same bug from opposite ends, and this is the half of it
+     * that has to be remembered across the open.
+     */
+    var opener = {};
+
+    /** Every size modifier an overlay has, so one can be swapped for another. */
+    var overlaySizes = {
+        modal: ['sm', 'md', 'lg', 'xl'],
+        offcanvas: ['sm', 'lg'],
+    };
+
+    function overlayDialog(el) {
+        return el.querySelector('[role="dialog"]') || el;
+    }
+
+    /**
+     * The focusable things inside an element, in document order.
+     *
+     * No library and no curated selector list beyond this: these are the
+     * elements that take focus by default, and `:not([disabled])` plus a
+     * negative-tabindex check is what separates "can be tabbed to" from
+     * "exists".
+     */
+    function focusable(el) {
+        var candidates = el.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),'
+            + ' textarea:not([disabled]), [tabindex]'
+        );
+
+        return Array.prototype.filter.call(candidates, function (node) {
+            return node.getAttribute('tabindex') !== '-1'
+                && node.offsetWidth + node.offsetHeight > 0;
+        });
+    }
+
+    function sizeOverlay(el, name, size) {
+        var dialog = overlayDialog(el);
+        var sizes = overlaySizes[name] || [];
+
+        sizes.forEach(function (one) {
+            dialog.classList.remove('ra-' + name + '--' + one);
+        });
+
+        if (size && sizes.indexOf(size) !== -1) {
+            dialog.classList.add('ra-' + name + '--' + size);
+        }
+    }
+
+    function openOverlay(name, title, options) {
         var el = overlay(name);
 
         if (!el) {
             return null;
         }
+
+        options = options || {};
 
         var heading = el.querySelector('.ra-' + name + '-title');
 
@@ -131,9 +187,25 @@
             heading.textContent = title || '';
         }
 
+        if (options.size !== undefined) {
+            sizeOverlay(el, name, options.size);
+        }
+
+        var stale = el.getAttribute('data-ra-added-class');
+
+        if (stale) {
+            overlayDialog(el).classList.remove(stale);
+            el.removeAttribute('data-ra-added-class');
+        }
+
+        // Remembered before the overlay is shown, because showing it can move
+        // focus and then there is nothing left to remember.
+        opener[name] = options.opener
+            || (document.activeElement !== document.body ? document.activeElement : null);
+
         el.hidden = false;
 
-        var dialog = el.querySelector('[role="dialog"]');
+        var dialog = overlayDialog(el);
 
         if (dialog && dialog.focus) {
             dialog.focus();
@@ -145,10 +217,80 @@
     function closeOverlay(name) {
         var el = overlay(name);
 
-        if (el) {
-            el.hidden = true;
+        if (!el || el.hidden) {
+            return;
+        }
+
+        // Released before anything is emptied: `detach` is what lets an
+        // editor or a chart give up its own global listeners, and a tab left
+        // open all day is the difference between a fresh page and a degraded
+        // one (8.6.2).
+        var body = el.querySelector('.ra-' + name + (name === 'modal' ? '-content' : '-body'));
+
+        if (body) {
+            detach(body);
+            // Emptied rather than left holding the last fragment. A modal
+            // that flashes the previous row's data for 200ms before the next
+            // fetch lands is indistinguishable from a data leak in a
+            // screenshot, and reads as one to whoever reports it.
+            body.innerHTML = '';
+        }
+
+        el.hidden = true;
+
+        var back = opener[name];
+
+        opener[name] = null;
+
+        if (back && back.focus && document.contains(back)) {
+            back.focus();
         }
     }
+
+    /**
+     * Tab does not leave an open overlay.
+     *
+     * Without this the next Tab goes to the page behind the dialog, which is
+     * inert to the eye and perfectly reachable to a keyboard — so somebody
+     * tabs into content they cannot see, with no way back but Escape, which
+     * they have no reason to think will help.
+     */
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Tab') {
+            return;
+        }
+
+        var open = ['modal', 'offcanvas'].map(overlay).filter(function (el) {
+            return el && !el.hidden;
+        })[0];
+
+        if (!open) {
+            return;
+        }
+
+        var stops = focusable(overlayDialog(open));
+
+        if (stops.length === 0) {
+            // Nothing to move to, so the dialog itself keeps focus rather
+            // than the page behind it getting it by default.
+            event.preventDefault();
+            overlayDialog(open).focus();
+
+            return;
+        }
+
+        var first = stops[0];
+        var last = stops[stops.length - 1];
+        var active = document.activeElement;
+
+        if (event.shiftKey && (active === first || !open.contains(active))) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && (active === last || !open.contains(active))) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
 
     document.addEventListener('click', function (event) {
         var target = event.target;
@@ -491,6 +633,165 @@
         event.preventDefault();
         currentRegion = region;
         navigate(href, regionRequestUrl(region, href), region);
+    }
+
+    /**
+     * An `open` action: fetch the region and put it in an overlay.
+     *
+     * The control is an ordinary anchor pointing at the standalone page, so
+     * everything here is an upgrade on something that already worked. The
+     * click is only taken when it is a plain one — a middle click, a
+     * ctrl-click or a shift-click is somebody asking for a new tab, and
+     * stealing those would make a link that is not a link.
+     *
+     * The overlay opens before the fetch resolves, with the action's own
+     * title, because an overlay that appears a beat after the click reads as
+     * a click that missed.
+     */
+    action('open', function (trigger, event) {
+        if (event.defaultPrevented || event.button > 0 || event.metaKey
+            || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+        }
+
+        var url = trigger.getAttribute('data-ra-open');
+        var where = trigger.getAttribute('data-ra-in');
+
+        if (!url || !where) {
+            return;
+        }
+
+        var el = openOverlay(where, trigger.getAttribute('data-ra-title') || '', {
+            size: trigger.getAttribute('data-ra-size') || '',
+            opener: trigger,
+        });
+
+        if (!el) {
+            // No overlay of that kind in this document. The anchor is left to
+            // do what it would have done, which is navigate to the standalone
+            // page -- a working control rather than a dead one.
+            return;
+        }
+
+        event.preventDefault();
+
+        var body = el.querySelector('.ra-' + where + (where === 'modal' ? '-content' : '-body'));
+
+        if (!body) {
+            return;
+        }
+
+        body.innerHTML = '';
+
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(url + ' answered ' + response.status);
+                }
+
+                return response.text();
+            })
+            .then(function (html) {
+                // Still the same overlay, and still open. A second click
+                // while the first fetch was in flight means this answer is
+                // for a panel that has moved on, and writing it in would show
+                // the wrong row.
+                if (el.hidden || opener[where] !== trigger) {
+                    return;
+                }
+
+                body.innerHTML = html;
+
+                var fragment = body.firstElementChild;
+
+                // 8.6.3: the fragment root carries its own title, size and
+                // class.
+                //
+                // The fragment's title fills a gap rather than winning. The
+                // plan for this milestone said the opposite -- the answer
+                // knows which row it turned out to be about -- and driving it
+                // showed why that is wrong: a preview's own title is the row
+                // key, so a control the page author labelled 'Ad #{id}'
+                // opened a panel headed '2'. One of the two is a generic name
+                // a region gives itself and the other is what somebody wrote
+                // for this control, and the author's choice is the specific
+                // one.
+                //
+                // Size and class do win, because a fragment asking to be wide
+                // is asking about its own content, which the action cannot
+                // know.
+                if (fragment) {
+                    var title = fragment.getAttribute('data-ra-title');
+                    var size = fragment.getAttribute('data-ra-size');
+                    var extra = fragment.getAttribute('data-ra-class');
+                    var heading = el.querySelector('.ra-' + where + '-title');
+
+                    if (title && heading && !trigger.getAttribute('data-ra-title')) {
+                        heading.textContent = title;
+                    }
+
+                    if (size) {
+                        sizeOverlay(el, where, size);
+                    }
+
+                    if (extra) {
+                        overlayDialog(el).classList.add(extra);
+                        // Remembered so the next open can take it off again.
+                        // Without this the overlay accumulates every class
+                        // every fragment ever asked for, and the second row
+                        // is drawn with the first one's styling on top.
+                        el.setAttribute('data-ra-added-class', extra);
+                    }
+                }
+
+                attach(body);
+
+                // Focus moves in only now. Before the fragment arrived there
+                // was nothing inside to move to, and a dialog focused on its
+                // own empty body is one a screen reader announces as empty.
+                var stops = focusable(overlayDialog(el));
+
+                if (stops.length > 0) {
+                    stops[0].focus();
+                }
+            })
+            .catch(function (error) {
+                if (el.hidden) {
+                    return;
+                }
+
+                // Said inside the overlay rather than closing it. An overlay
+                // that opens and closes again is indistinguishable from a
+                // control that did nothing, and leaves nobody anything to
+                // read or to retry.
+                body.innerHTML = '';
+                body.appendChild(overlayFailure(trigger.getAttribute('href') || url));
+
+                // eslint-disable-next-line no-console
+                console.warn('RockAdmin: ' + error.message);
+            });
+    });
+
+    /**
+     * What an overlay shows when its fragment could not be fetched: the
+     * reason, and the link the control would have followed without any
+     * script at all.
+     *
+     * @param {string} href
+     */
+    function overlayFailure(href) {
+        var box = document.createElement('p');
+        box.className = 'ra-overlay-error';
+        box.textContent = 'Could not load this. ';
+
+        var link = document.createElement('a');
+        link.className = 'ra-overlay-error-link';
+        link.href = href;
+        link.textContent = 'Open it as a page instead.';
+
+        box.appendChild(link);
+
+        return box;
     }
 
     action('sort', followRegionLink);

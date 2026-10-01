@@ -929,6 +929,77 @@ final class PageRepositoryTest extends TestCase
         $this->assertSame(['title', 'price'], array_map(static fn ($f) => $f->key, $fields));
     }
 
+    public function testAPreviewInheritingAGridSkipsItsActionsColumn(): void
+    {
+        // Inheriting means inheriting the columns that *hold* something. An
+        // `actions` column holds controls, not a value, and names no column
+        // of the table -- so a preview that took it would SELECT `tools` and
+        // fail with "unknown column".
+        //
+        // Which is what `/p/ads/{id}` did from the moment the demo grew an
+        // actions column: 500 on the detail page of every row, shipped in
+        // milestone 8, green through 2304 tests, and found by opening the
+        // page one milestone later.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'actions' => [
+                    'edit' => ['type' => 'link', 'to' => '@page:ads', 'permission' => 'ads.update'],
+                ],
+                'regions' => [
+                    'grid' => [
+                        'type' => 'list',
+                        'columns' => [
+                            'title' => [],
+                            'tools' => ['type' => 'actions', 'items' => ['edit']],
+                            'price' => ['type' => 'money'],
+                        ],
+                    ],
+                    'preview' => ['type' => 'preview'],
+                ],
+            ]
+            PHP);
+
+        $fields = $this->repository()->get('ads')->region('preview')->fields;
+
+        $this->assertSame(['title', 'price'], array_map(static fn ($f) => $f->key, $fields));
+    }
+
+    public function testAPreviewNamingAnActionsColumnIsRefusedAtLoad(): void
+    {
+        // Asked for explicitly rather than inherited, which is a different
+        // mistake and deserves a different answer: silently dropping it would
+        // leave somebody wondering why the field they listed never appears.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ads'],
+                'actions' => [
+                    'edit' => ['type' => 'link', 'to' => '@page:ads', 'permission' => 'ads.update'],
+                ],
+                'regions' => [
+                    'grid' => [
+                        'type' => 'list',
+                        'columns' => [
+                            'title' => [],
+                            'tools' => ['type' => 'actions', 'items' => ['edit']],
+                        ],
+                    ],
+                    'preview' => ['type' => 'preview', 'fields' => ['title', 'tools']],
+                ],
+            ]
+            PHP);
+
+        try {
+            $this->repository()->get('ads');
+            $this->fail('A preview showing an actions column was accepted.');
+        } catch (PageException $e) {
+            $this->assertStringContainsString("'tools'", $e->getMessage());
+            $this->assertStringContainsString('actions column', $e->getMessage());
+        }
+    }
+
     public function testAnExplicitFieldsListIsUsedInItsOwnOrder(): void
     {
         $this->writePage('ads', <<<'PHP'

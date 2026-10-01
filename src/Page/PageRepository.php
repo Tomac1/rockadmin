@@ -1234,7 +1234,23 @@ final class PageRepository
         $raw = $hasFields ? $regionConfig['fields'] : null;
 
         if (!$hasFields) {
-            return $this->fieldsFromGrid($pageName, $regionKey, $grid, static fn (RegionDefinition $g): array => array_values($g->columns));
+            // Inheriting means inheriting the columns that *hold* something.
+            // An `actions` column holds controls, not a value: it names no
+            // column of the table, so a preview that inherited it would
+            // SELECT `tools` and fail with "unknown column" — which is
+            // exactly what `/p/ads/{id}` did from the moment the demo grew
+            // an actions column, on the detail page and on the fragment
+            // alike. Milestone 8 added the column type and this is the one
+            // place that read a grid's columns as if they were all data.
+            return $this->fieldsFromGrid(
+                $pageName,
+                $regionKey,
+                $grid,
+                static fn (RegionDefinition $g): array => array_values(array_filter(
+                    $g->columns,
+                    static fn (ColumnDefinition $column): bool => !$column->type->isActions(),
+                )),
+            );
         }
 
         if ($raw === '@all') {
@@ -1304,7 +1320,22 @@ final class PageRepository
     private function fieldFromGrid(string $pageName, string $regionKey, RegionDefinition $grid, string $fieldKey): ColumnDefinition
     {
         if (isset($grid->columns[$fieldKey])) {
-            return $grid->columns[$fieldKey];
+            $column = $grid->columns[$fieldKey];
+
+            if ($column->type->isActions()) {
+                throw new PageException(\sprintf(
+                    "Page '%s': region '%s' names field '%s', which is the list region's actions column. "
+                    . 'It holds controls rather than a value, so there is nothing for a preview to show '
+                    . "and nothing to select — the query would ask the database for a column called '%s'. "
+                    . 'Put the actions on the page rather than in the preview.',
+                    $pageName,
+                    $regionKey,
+                    $fieldKey,
+                    $fieldKey,
+                ));
+            }
+
+            return $column;
         }
 
         $nearest = Schema::nearestOf(array_keys($grid->columns), $fieldKey);

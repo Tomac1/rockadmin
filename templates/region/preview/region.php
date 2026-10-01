@@ -17,7 +17,7 @@
  * @var \Closure(string, mixed=): string $partial
  */
 ?>
-<div class="<?= $e($view->classes()) ?>" data-ra-region="<?= $e($view->key) ?>">
+<div class="<?= $e($view->classes()) ?>" data-ra-region="<?= $e($view->key) ?>" data-ra-title="<?= $e($view->title) ?>">
     <h2 class="ra-preview-title"><?= $e($view->title) ?></h2>
     <?php if ($view->fields === []) { ?>
         <p class="ra-preview-empty">This preview has no fields to show.</p>
