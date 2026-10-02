@@ -31,6 +31,31 @@ final class TemplateStandardsTest extends TestCase
     /** The one template allowed to write a <script src="…"> with an empty body. */
     private const SCRIPT_LOADING_TEMPLATE = 'layout/base';
 
+    /**
+     * Templates that are not admin HTML, and therefore not what these rules
+     * are about.
+     *
+     * `templates/mail/` draws messages, and two of the rules below are rules
+     * about the admin's own pages:
+     *
+     * - **`ra-` classes.** They are the override path and the test hook for a
+     *   stylesheet, and a mail client has no stylesheet: a class in a message
+     *   is dead markup, because everything that renders is inline. The design
+     *   system is the authority on how the admin looks and says nothing about
+     *   mail, which is the same answer from the other side.
+     * - **escaping every echo.** The `.txt` half of a message is not markup,
+     *   so there is nothing to escape into -- `$e()` there would HTML-encode an
+     *   apostrophe into `&#039;` in a plain-text mail. The HTML half is *not*
+     *   exempt and escapes like anything else, which is what keeps a name out
+     *   of `ra_users` from carrying a `<script>` into somebody's inbox.
+     *
+     * Everything else still applies to mail templates, `$href` for URLs
+     * included.
+     *
+     * @var list<string>
+     */
+    private const NOT_ADMIN_HTML = ['mail/'];
+
     public function testTheStandardIsCheckedAgainstEveryTemplate(): void
     {
         // A provider that silently found nothing would make every rule below
@@ -59,6 +84,14 @@ final class TemplateStandardsTest extends TestCase
     #[DataProvider('templates')]
     public function testEveryShortEchoEscapes(string $name, string $path): void
     {
+        if (self::isPlainText($name)) {
+            // Not markup: there is nothing to escape into, and escaping would
+            // put `&#039;` in a plain-text mail where an apostrophe was typed.
+            $this->expectNotToPerformAssertions();
+
+            return;
+        }
+
         $violations = $this->unescapedEchoViolations(file_get_contents($path) ?: '');
 
         $this->assertSame([], $violations, "{$name}: " . implode('; ', $violations));
@@ -83,6 +116,14 @@ final class TemplateStandardsTest extends TestCase
     #[DataProvider('templates')]
     public function testTheTemplateCarriesAtLeastOneRaClass(string $name, string $path): void
     {
+        if (self::isNotAdminHtml($name)) {
+            // A class in a message is dead markup: a mail client has no
+            // stylesheet, so everything that renders is inline.
+            $this->expectNotToPerformAssertions();
+
+            return;
+        }
+
         $this->assertTrue(
             $this->hasRaClass(file_get_contents($path) ?: ''),
             "{$name}: carries no 'ra-' class and calls neither Classes::of() nor Classes::identity(), "
@@ -520,6 +561,24 @@ final class TemplateStandardsTest extends TestCase
         usort($files, static fn (SplFileInfo $a, SplFileInfo $b): int => $a->getPathname() <=> $b->getPathname());
 
         return $files;
+    }
+
+    /** Whether this template draws something other than a page of the admin. */
+    private static function isNotAdminHtml(string $name): bool
+    {
+        foreach (self::NOT_ADMIN_HTML as $prefix) {
+            if (str_starts_with($name, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The plain-text half of a message, by the `.txt` its name ends with. */
+    private static function isPlainText(string $name): bool
+    {
+        return self::isNotAdminHtml($name) && str_ends_with($name, '.txt');
     }
 
     private static function templatesRoot(): string
