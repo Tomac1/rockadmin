@@ -64,6 +64,44 @@ final class SessionWorkspace implements ActiveWorkspace
         return $this->resolved['workspace'];
     }
 
+    public function isAutomatic(?AuthUser $user): bool
+    {
+        $theirs = $this->workspaces->forUser($user);
+
+        if (\count($theirs) < 2) {
+            // Nothing to choose, so nothing can have been chosen. Answering
+            // "chosen" here would make the switcher mark a workspace as a
+            // decision somebody made, when in fact it is the only one they
+            // hold.
+            return true;
+        }
+
+        $stored = $this->session->get(self::KEY);
+
+        if ($stored === self::ALL) {
+            // A deliberate choice, until it is not theirs any more -- at which
+            // point `resolve()` falls back to the first workspace they hold,
+            // and so does this. The two have to agree about what the session
+            // means or the switcher marks something `current()` does not
+            // answer.
+            return !$this->workspaces->userHoldsEvery($user);
+        }
+
+        return !\is_string($stored)
+            || !$this->workspaces->has($stored)
+            || $user?->hasWorkspace($stored) !== true;
+    }
+
+    public function automatic(): void
+    {
+        $this->session->forget(self::KEY);
+
+        // The memo is replaced rather than cleared, for the reason
+        // `switchTo()` gives: a request that switches goes on to redirect, and
+        // anything asking afterwards should see the new answer.
+        $this->resolved = ['set' => false, 'workspace' => null];
+    }
+
     public function switchTo(?WorkspaceDefinition $workspace): void
     {
         $this->session->set(self::KEY, $workspace === null ? self::ALL : $workspace->name);

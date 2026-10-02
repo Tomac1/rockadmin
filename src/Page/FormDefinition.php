@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Page;
 
+use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\Schema;
 
 /**
@@ -21,6 +22,14 @@ final class FormDefinition
     public function __construct(
         public readonly array $fields,
         public readonly array $resetOnCopy = [],
+        /**
+         * The project's own logic for saving this form, or null for the
+         * default. Carried as the reference rather than the object for the
+         * reason an action's `to` is: a page definition is configuration, and
+         * resolving it to something the host wired would make loading a page
+         * depend on the host being wired first.
+         */
+        public readonly ?HandlerReference $handler = null,
     ) {
     }
 

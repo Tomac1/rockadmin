@@ -6,7 +6,6 @@ namespace RockAdmin\View;
 
 use RockAdmin\Auth\ActiveWorkspace;
 use RockAdmin\Auth\Identity;
-use RockAdmin\Auth\WorkspaceDefinition;
 use RockAdmin\Auth\Workspaces;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Http\WorkspaceHandler;
@@ -22,6 +21,20 @@ use RockAdmin\Http\WorkspaceHandler;
  * simply in it, and a switcher with a single button is a control that cannot
  * do anything — the visible-button-that-does-nothing this project refuses.
  * Both draw no switcher at all.
+ *
+ * **"Automatic" is offered whenever the switcher is**, because a choice is
+ * sticky: somebody who switched to Motobazar.cz cannot get back to "whatever
+ * this admin would have picked" by picking something, and on an installation
+ * that resolves its workspace from the request's host, that is the difference
+ * between following the address and overriding it.
+ *
+ * It says what it resolves to **only while it is the current state**, where
+ * `current()` is the automatic answer and naming it is telling the truth. Once
+ * something is chosen, what automatic would answer instead is the resolver's
+ * business and not visible from here -- so the entry says "Automatic" and
+ * nothing more. Naming the chosen workspace there would be the one label on
+ * the control that is actively wrong: it would promise that pressing it
+ * changes nothing.
  *
  * **"All workspaces" is offered only to somebody holding every one**, which
  * is specification 9.3's own condition: choosing it grants nothing they could
@@ -66,23 +79,36 @@ final class ShellWorkspaces
         }
 
         $current = $this->active->current($user);
+        $automatic = $this->active->isAutomatic($user);
 
-        $views = array_map(
-            fn (WorkspaceDefinition $workspace): WorkspaceView => new WorkspaceView(
+        // Exactly one entry is marked, and which one is the state rather than
+        // the answer. Under automatic the workspace it currently resolves to
+        // is *not* marked: a switcher showing two current entries would be
+        // asking somebody to work out which of them they are in.
+        $views = [new WorkspaceView(
+            WorkspaceHandler::AUTOMATIC,
+            $automatic && $current !== null
+                ? "Automatic ({$current->label})"
+                : 'Automatic',
+            $this->urls->route('workspace.switch', ['workspace' => WorkspaceHandler::AUTOMATIC]),
+            $automatic,
+        )];
+
+        foreach ($theirs as $workspace) {
+            $views[] = new WorkspaceView(
                 $workspace->name,
                 $workspace->label,
                 $this->urls->route('workspace.switch', ['workspace' => $workspace->name]),
-                $current?->name === $workspace->name,
-            ),
-            $theirs,
-        );
+                !$automatic && $current?->name === $workspace->name,
+            );
+        }
 
         if ($this->workspaces->userHoldsEvery($user)) {
             $views[] = new WorkspaceView(
                 WorkspaceHandler::ALL,
                 'All workspaces',
                 $this->urls->route('workspace.switch', ['workspace' => WorkspaceHandler::ALL]),
-                $current === null,
+                !$automatic && $current === null,
             );
         }
 

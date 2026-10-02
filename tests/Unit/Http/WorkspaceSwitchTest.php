@@ -155,6 +155,46 @@ final class WorkspaceSwitchTest extends TestCase
         $this->assertFalse($this->workspaces()->has(WorkspaceHandler::ALL));
     }
 
+    public function testSwitchingBackToAutomaticForgetsTheChoice(): void
+    {
+        // The way back, and the only one: a choice is sticky and nobody can
+        // un-choose by choosing. On an admin that resolves its workspace from
+        // the request this is the difference between following the address and
+        // overriding it.
+        $session = new ArraySessionStore();
+        $user = Access::user(workspaces: ['cyklobazar', 'motobazar']);
+
+        $this->switch($session, $user, 'motobazar');
+        $this->assertSame('motobazar', $this->active($session, $user)?->name);
+
+        $this->switch($session, $user, WorkspaceHandler::AUTOMATIC);
+
+        $this->assertSame('cyklobazar', $this->active($session, $user)->name);
+        $this->assertNull($session->get('ra.workspace'), 'The choice outlived the switch back.');
+    }
+
+    public function testAnybodyMaySwitchBackToAutomatic(): void
+    {
+        // It cannot widen anything: what follows is what the resolver would
+        // have answered before they ever touched the switcher. So somebody
+        // holding one workspace -- who may not reach "all workspaces" -- may
+        // still do this.
+        $session = new ArraySessionStore();
+        $user = Access::user(workspaces: ['cyklobazar']);
+
+        $response = $this->switch($session, $user, WorkspaceHandler::AUTOMATIC);
+
+        $this->assertSame(302, $response->status);
+        $this->assertSame('cyklobazar', $this->active($session, $user)?->name);
+    }
+
+    public function testTheAutomaticSentinelCannotCollideWithARealWorkspaceEither(): void
+    {
+        $this->assertStringStartsWith('_', WorkspaceHandler::AUTOMATIC);
+        $this->assertFalse($this->workspaces()->has(WorkspaceHandler::AUTOMATIC));
+        $this->assertNotSame(WorkspaceHandler::ALL, WorkspaceHandler::AUTOMATIC);
+    }
+
     // --- harness ---
 
     /** @param array<string, mixed> $body */

@@ -36,6 +36,21 @@ final class WorkspaceHandler implements Handler
      */
     public const string ALL = '_all';
 
+    /**
+     * The name that means "whatever you would have chosen for me".
+     *
+     * The third state, and the switcher's only way back to it: a choice is
+     * sticky, and nobody can un-choose by choosing. On an admin that resolves
+     * its workspace from the request -- one address, several tenants -- this
+     * is the difference between following the address and overriding it, so it
+     * is not a convenience.
+     *
+     * Underscored like `ALL`, and for the same reason: `Workspaces` refuses a
+     * name that is not `^[a-z][a-z0-9_]*$`, so this cannot collide with an
+     * installation that names a tenant `auto`.
+     */
+    public const string AUTOMATIC = '_auto';
+
     public function __construct(
         private readonly Workspaces $workspaces,
         private readonly ActiveWorkspace $active,
@@ -76,6 +91,16 @@ final class WorkspaceHandler implements Handler
             }
 
             $this->active->switchTo(null);
+
+            return $this->back($request);
+        }
+
+        if ($name === self::AUTOMATIC) {
+            // No check, because there is nothing to check. What follows is
+            // whatever the resolver would have answered before anybody
+            // touched the switcher, which is by definition something this
+            // user was already allowed to see.
+            $this->active->automatic();
 
             return $this->back($request);
         }

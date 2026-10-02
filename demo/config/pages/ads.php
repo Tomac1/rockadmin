@@ -68,7 +68,13 @@ return [
             'confirm' => 'Archive this ad?',
             'permission' => 'ads.update',
             'when' => ['state' => 'active'],
-            'set' => ['state' => 'archived'],
+            // The project's own logic instead of a `set` (milestone 11).
+            // `demo/src/ArchiveAd.php` is what runs: it refuses an ad with no
+            // price, takes the feature off while it archives, and queues the
+            // seller's notification for after the commit. Written here as well
+            // as in the wiring, so this file does not tell half the truth
+            // about what the button does.
+            'handler' => '@handler:archive_ad',
             // The grid re-renders where it stands rather than the page
             // reloading. Without JavaScript this attribute does nothing and
             // the redirect happens, which is what it did before.

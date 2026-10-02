@@ -29,7 +29,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "RockAdmin\\Tests\\": "tests/"
+            "RockAdmin\\Tests\\": "tests/",
+            "RockAdmin\\Demo\\": "demo/src/"
         }
     },
     "scripts": {

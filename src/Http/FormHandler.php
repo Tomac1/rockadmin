@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace RockAdmin\Http;
 
+use Closure;
+use RockAdmin\Auth\NoWorkspaceSwitch;
+use RockAdmin\Auth\RowWorkspace;
+use RockAdmin\Auth\WorkspaceContext;
+use RockAdmin\Auth\WorkspaceDefinition;
 use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Form\FormView;
@@ -66,6 +71,17 @@ final class FormHandler implements Handler
          * what a shell without one looks like.
          */
         private readonly ?ShellAccount $account = null,
+        /**
+         * Which workspace the row being drawn is in. Under "all workspaces"
+         * that is the row's own and not the reader's, which is the case this
+         * is here for.
+         */
+        private readonly ?RowWorkspace $rowWorkspace = null,
+        /**
+         * How the host is told. Null behaves as `NoWorkspaceSwitch`, which is
+         * what an admin whose host has no workspaces of its own wants.
+         */
+        private readonly ?WorkspaceContext $workspaces = null,
     ) {
     }
 
@@ -81,20 +97,62 @@ final class FormHandler implements Handler
         $region = self::formRegionOf($page);
         $returnTo = self::returnTo($request->query(FormFields::RETURN_TO), $this->urls);
 
-        $view = match ($route->name) {
-            'page.create' => $this->region->create($page, $region, $returnTo),
-            'page.edit' => $this->region->edit($page, $region, $route->param('id'), $returnTo),
-            'page.copy' => $this->region->copy($page, $region, $route->param('id'), $returnTo),
-            default => throw new NotFoundException(
-                "Route '{$route->name}' does not draw a form.",
-            ),
-        };
+        // The whole render, including the read of the row, runs with the
+        // row's workspace active. A form asks the project for things a scope
+        // cannot reach -- the options of a select, the label behind a foreign
+        // key -- and those come from the project's own code, which follows the
+        // project's own idea of the current tenant. Drawing Motobazar.cz's ad
+        // with Autobazar.cz's categories in its dropdown is the bug this
+        // prevents, and it is the kind that is only noticed after somebody
+        // saves it.
+        //
+        // Which workspace is resolved before the switch, from the key in the
+        // URL, because asking "whose row is this" is the one question that
+        // cannot be answered from inside the answer.
+        $id = $route->name === 'page.create' ? null : $route->param('id');
+        $workspace = $this->rowWorkspace?->forRow($page, $id);
+        $view = null;
+
+        $this->runIn($workspace, function () use (
+            $page,
+            $region,
+            $route,
+            $returnTo,
+            &$view,
+        ): void {
+            $view = match ($route->name) {
+                'page.create' => $this->region->create($page, $region, $returnTo),
+                'page.edit' => $this->region->edit($page, $region, $route->param('id'), $returnTo),
+                'page.copy' => $this->region->copy($page, $region, $route->param('id'), $returnTo),
+                default => throw new NotFoundException(
+                    "Route '{$route->name}' does not draw a form.",
+                ),
+            };
+        });
 
         if ($view === null) {
-            throw new NotFoundException("Page '{$name}' has no row '{$route->param('id')}'.");
+            throw new NotFoundException("Page '{$name}' has no row '{$id}'.");
         }
 
-        return $this->document($page, $view);
+        return $this->runIn($workspace, fn (): Response => $this->document($page, $view));
+    }
+
+    /**
+     * Runs something with a workspace active, through the host if one is
+     * wired.
+     *
+     * The twin of `ActionHandler`'s, and deliberately a copy rather than a
+     * shared base class: the two classes have nothing else in common, and a
+     * parent invented to hold four lines would be a parent two unrelated
+     * handlers then inherit from.
+     *
+     * @template T
+     * @param  Closure():T $work
+     * @return T
+     */
+    private function runIn(?WorkspaceDefinition $workspace, Closure $work): mixed
+    {
+        return ($this->workspaces ?? new NoWorkspaceSwitch())->runIn($workspace, $work);
     }
 
     /**

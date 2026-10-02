@@ -12,6 +12,7 @@ use RockAdmin\Config\Definitions;
 use RockAdmin\Config\EnumOption;
 use RockAdmin\Config\EnumReference;
 use RockAdmin\Config\Enums;
+use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\PageReference;
 use RockAdmin\Config\RegionReference;
 use RockAdmin\Config\Resolver;
@@ -676,7 +677,8 @@ final class PageRepository
             ? $actionConfig['label']
             : $this->labelFromKey($actionKey);
 
-        $set = $this->actionSet($where, $type, $to, $actionConfig);
+        $handler = $this->handlerReference($where, $actionConfig['handler'] ?? null);
+        $set = $this->actionSet($where, $type, $to, $actionConfig, $handler !== null);
         [$in, $size] = $this->actionOverlay($where, $type, $actionConfig);
         $title = \is_string($actionConfig['title'] ?? null) ? $actionConfig['title'] : '';
 
@@ -714,6 +716,7 @@ final class PageRepository
             size: $size,
             title: $title,
             params: $this->actionParams($where, $type, $actionConfig, $rowless),
+            handler: $handler,
         );
     }
 
@@ -868,6 +871,36 @@ final class PageRepository
     }
 
     /**
+     * A `@handler:` reference, or null.
+     *
+     * Parsed by `Resolver` before this sees it, so anything arriving as a
+     * plain string is by that fact not a reference -- the same test
+     * `actionTarget()` makes, for the same reason: a bare name would be a
+     * name this layer had to invent rules for, and there is already a syntax
+     * for naming things.
+     *
+     * Whether anything is *registered* under it is `Operations`' business,
+     * which is where that catalogue is.
+     */
+    private function handlerReference(string $where, mixed $raw): ?HandlerReference
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        if (!$raw instanceof HandlerReference) {
+            throw new PageException(\sprintf(
+                "%s has 'handler' => %s, which is not a handler reference. A project's own logic is "
+                . "named the way everything else is: 'handler' => '@handler:save_ad'.",
+                $where,
+                \is_string($raw) ? "'{$raw}'" : get_debug_type($raw),
+            ));
+        }
+
+        return $raw;
+    }
+
+    /**
      * What a `post` writes to the row it was drawn for.
      *
      * Specification 8.5 gives `archive` as its example of a `post` and never
@@ -897,9 +930,25 @@ final class PageRepository
         ActionType $type,
         PageReference|ActionReference|RegionReference $to,
         array $actionConfig,
+        bool $hasHandler = false,
     ): array {
         $raw = $actionConfig['set'] ?? null;
         $isDelete = $to instanceof ActionReference && $to->action === 'delete';
+
+        if ($hasHandler && $raw !== null) {
+            throw new PageException(
+                "{$where} has both a 'handler' and a 'set'. Only one of them can run, and the file "
+                . 'does not say which -- so neither is assumed. Keep the handler and write the columns '
+                . "inside it, or drop the handler and keep the 'set'.",
+            );
+        }
+
+        if ($hasHandler) {
+            // The handler decides what is written, so there is nothing here
+            // to require. It is still a `post`, still confirmed, still gated,
+            // and still re-checks its `when`.
+            return [];
+        }
 
         if (!$type->isWrite()) {
             if ($raw !== null) {
@@ -1701,7 +1750,11 @@ final class PageRepository
             $resetOnCopy[] = $resetKey;
         }
 
-        return new FormDefinition($fields, $resetOnCopy);
+        return new FormDefinition(
+            $fields,
+            $resetOnCopy,
+            $this->handlerReference("Page '{$pageName}': region '{$regionKey}': form", $formConfig['handler'] ?? null),
+        );
     }
 
     /** @param array<string, mixed> $fieldConfig */

@@ -26,6 +26,16 @@ final class FormSchema
                 description: 'The fields of this form, each described by the field schema.',
                 each: FieldSchema::create(),
             ),
+            'handler' => new SchemaKey(
+                ValueType::Mixed,
+                description: 'The project\'s own logic for saving this form, as a `@handler:` reference '
+                    . 'naming something it registered: `@handler:save_ad`. It replaces what create, update '
+                    . 'and delete do, not what surrounds them — validation, the permission, the workspace '
+                    . 'scope, the transaction and the audit row all still happen, and the operation is told '
+                    . 'which of the three it is serving. Declared here rather than only in wiring so that '
+                    . 'this file does not tell half the truth about what saving does.',
+                example: '@handler:save_ad',
+            ),
             'copy' => new SchemaKey(
                 ValueType::Array,
                 description: 'How the copy action differs from a plain edit.',

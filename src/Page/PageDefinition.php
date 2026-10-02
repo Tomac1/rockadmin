@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Page;
 
+use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\Schema;
 use RockAdmin\Db\Entity;
 
@@ -58,6 +59,36 @@ final class PageDefinition
         }
 
         return null;
+    }
+
+    /**
+     * Every `@handler:` this page names, by where it is written.
+     *
+     * Walked by `Operations` when the registry is built, so a reference to
+     * logic nobody registered is refused then -- naming the page and the key
+     * -- rather than at the moment somebody presses Save. The key of the
+     * returned map is the "where" a refusal quotes, which is why it is a
+     * sentence rather than an identifier.
+     *
+     * @return array<string, HandlerReference>
+     */
+    public function handlers(): array
+    {
+        $found = [];
+
+        foreach ($this->actions as $key => $action) {
+            if ($action->handler !== null) {
+                $found["action '{$key}'"] = $action->handler;
+            }
+        }
+
+        foreach ($this->regions as $key => $region) {
+            if ($region->form?->handler !== null) {
+                $found["region '{$key}': form"] = $region->form->handler;
+            }
+        }
+
+        return $found;
     }
 
     public function action(string $key): ActionDefinition
