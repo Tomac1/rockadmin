@@ -27,9 +27,14 @@ use RockAdmin\Db\WriteResult;
  * that does not go through `WriteHandler` is a write with no audit row, and
  * an operation re-checking a permission is an operation that can get it
  * wrong. If the default write is all that is wanted, `$writes` does it —
- * `$context->writeDefault($writes, $row, $values)` is one line and is the
+ * `$context->writeDefault($writes, $values)` is one line and is the
  * usual first line of an operation that mostly wants to send an email
  * afterwards.
+ *
+ * **Saying no is not failing.** `OperationRefused` carries a sentence back to
+ * the person who pressed the button -- through the form it came from, or as a
+ * flash wherever there was no form -- and rolls everything back on the way.
+ * An ordinary business rule has no business being a 500.
  *
  * **Side effects belong after the commit.** An operation that sends mail and
  * then fails has sent mail about a change that did not happen, and the
@@ -47,12 +52,15 @@ interface Operation
      * then claim was a change.
      *
      * Raising aborts everything. The transaction rolls back, no audit row is
-     * written, and nothing queued with `afterCommit()` runs. A
-     * `ValidationError` carries a message back to the form; anything else is
-     * a 500, which is the right answer to logic that did not expect its own
-     * input.
+     * written, and nothing queued with `afterCommit()` runs. An
+     * `OperationRefused` carries its message back to whoever pressed the
+     * button; anything else is a 500, which is the right answer to logic that
+     * did not expect its own input.
      *
-     * @param array<string, mixed> $row    the row as it is now, empty for a create
+     * @param array<string, mixed> $row    the row as it is now, in the columns this page knows
+     *                                     about -- the before-values, so an operation can compare.
+     *                                     Empty for a create, and not every column of the table
+     *                                     (see `ActionHandler::rowBefore()` for why)
      * @param array<string, mixed> $values what the form validated, or what the action's `set` named
      */
     public function perform(

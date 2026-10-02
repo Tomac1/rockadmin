@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace RockAdmin\Http;
 
+use Closure;
 use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\Placeholder;
+use RockAdmin\Data\OperationContext;
+use RockAdmin\Data\OperationRefused;
+use RockAdmin\Data\Operations;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\NoSuchRowException;
@@ -130,8 +135,32 @@ final class ActionHandler implements Handler
         private readonly UrlGenerator $urls,
         private readonly ?AuditLog $audit = null,
         private readonly ?AuthUser $actor = null,
+        /**
+         * The project's own write logic, by the name a page file gave it.
+         *
+         * Optional, because an admin whose pages name none never needs it and
+         * a great many tests build this handler to exercise one write. A page
+         * that does name one and reaches a handler built without this fails
+         * loudly rather than quietly doing the default -- which would be the
+         * project's logic silently not running, the single worst way for this
+         * seam to fail.
+         */
+        private readonly ?Operations $operations = null,
     ) {
     }
+
+    /**
+     * What operations queued for after the commit, in the order they queued
+     * it.
+     *
+     * The one piece of state on this handler, and it is here because the
+     * commit is not where the operation is: a bulk action's forty rows run
+     * inside one transaction and each may queue something, so the list
+     * outlives the call that filled it. It is per request, like the handler.
+     *
+     * @var list<Closure():void>
+     */
+    private array $pending = [];
 
     public function handle(Route $route, Request $request): Response
     {
@@ -375,10 +404,8 @@ final class ActionHandler implements Handler
 
         $applied = 0;
         $skipped = [];
-        $scope = $this->scopeFor($page);
-
         try {
-            $this->connection->transaction(function () use ($page, $action, $keys, $scope, &$applied, &$skipped): void {
+            $this->connection->transaction(function () use ($page, $action, $keys, &$applied, &$skipped): void {
                 foreach ($keys as $key) {
                     $refusal = $this->bulkRefusal($page, $action, $key);
 
@@ -389,9 +416,22 @@ final class ActionHandler implements Handler
                     }
 
                     try {
-                        $write = $action->isDelete()
-                            ? $this->writes->delete($page->entity, $key, $scope)
-                            : $this->writes->update($page->entity, $key, $action->set, $scope);
+                        $write = $this->apply(
+                            $page,
+                            (string) ($action->verb() ?? $action->key),
+                            $key,
+                            $action->set,
+                            $action->handler,
+                        );
+                    } catch (OperationRefused $e) {
+                        // The project's logic saying no to this row, which is
+                        // a row that does not qualify -- the same thing
+                        // `when` says, decided in code instead of in
+                        // configuration. So it is skipped and reported with
+                        // its own sentence, and the other thirty-nine stand.
+                        $skipped[] = "{$key} ({$e->getMessage()})";
+
+                        continue;
                     } catch (NoSuchRowException) {
                         // A row the scope excludes, or one somebody removed
                         // while this loop was running. Both are "not there"
@@ -407,6 +447,15 @@ final class ActionHandler implements Handler
                         // unreachable is an argument to ignore.
                         $skipped[] = $key;
 
+                        continue;
+                    }
+
+                    if ($write === null) {
+                        // The operation decided this row needed nothing. Not
+                        // a failure and not an application either, so it is
+                        // counted as neither -- inventing a WriteResult to
+                        // make the arithmetic tidy would put a change in the
+                        // audit log that never happened.
                         continue;
                     }
 
@@ -439,6 +488,7 @@ final class ActionHandler implements Handler
             return Response::redirect($returnTo);
         }
 
+        $this->runPending();
         $this->reportBulk($action, $applied, $skipped);
 
         return Response::redirect($returnTo);
@@ -560,11 +610,15 @@ final class ActionHandler implements Handler
         }
 
         if ($performed->isDelete()) {
-            return $this->delete($page, $returnTo, $key);
+            return $this->delete($page, $returnTo, $key, $action->handler);
         }
 
         try {
-            $write = $this->writes->update($page->entity, $key, $action->set, $this->scopeFor($page));
+            $write = $this->apply($page, $performed->verb, $key, $action->set, $action->handler);
+        } catch (OperationRefused $e) {
+            $this->flashes->danger($e->getMessage());
+
+            return Response::redirect($returnTo);
         } catch (NoSuchRowException $e) {
             throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
@@ -577,7 +631,15 @@ final class ActionHandler implements Handler
             return Response::redirect($returnTo);
         }
 
+        if ($write === null) {
+            $this->runPending();
+            $this->flashes->info("{$action->label}: nothing needed changing.");
+
+            return Response::redirect($returnTo);
+        }
+
         $this->record($action->key, $page, $write);
+        $this->runPending();
 
         $this->flashes->success("{$action->label}: {$page->title} {$write->key}.");
 
@@ -667,10 +729,18 @@ final class ActionHandler implements Handler
      * filling in. This is the one place the five-step shape above does not
      * apply, because steps 3 and 4's "redraw the form" has no form to mean.
      */
-    private function delete(PageDefinition $page, string $returnTo, string $key): Response
-    {
+    private function delete(
+        PageDefinition $page,
+        string $returnTo,
+        string $key,
+        ?HandlerReference $handler = null,
+    ): Response {
         try {
-            $write = $this->writes->delete($page->entity, $key, $this->scopeFor($page));
+            $write = $this->apply($page, 'delete', $key, [], $handler);
+        } catch (OperationRefused $e) {
+            $this->flashes->danger($e->getMessage());
+
+            return Response::redirect($returnTo);
         } catch (NoSuchRowException $e) {
             // Somebody deleted it between this page being drawn and the
             // button being pressed. That is a row that is gone, not a server
@@ -686,7 +756,15 @@ final class ActionHandler implements Handler
             return Response::redirect($returnTo);
         }
 
+        if ($write === null) {
+            $this->runPending();
+            $this->flashes->info("Nothing was deleted: {$page->title} {$key} was left as it is.");
+
+            return Response::redirect($returnTo);
+        }
+
         $this->record('delete', $page, $write);
+        $this->runPending();
 
         $this->flashes->success("Deleted {$page->title} {$key}.");
 
@@ -747,9 +825,21 @@ final class ActionHandler implements Handler
             : array_diff_key($values, $this->scopeFor($page));
 
         try {
-            $write = $isCreate
-                ? $this->writes->insert($page->entity, $values)
-                : $this->writes->update($page->entity, (string) $key, $values, $this->scopeFor($page));
+            $write = $this->apply($page, $isCreate ? 'create' : 'update', $key, $values, $form->handler);
+        } catch (OperationRefused $e) {
+            // The project's logic refusing a submission is a refused
+            // submission, so it is answered the way validation is: the form
+            // again, with what was typed, and the reason above it. A flash and
+            // a redirect would throw the submission away over a rule the
+            // person can act on.
+            return $this->reject(
+                $page,
+                $region,
+                $submission,
+                [new ValidationError(self::FORM_LEVEL, $e->getMessage())],
+                $key,
+                $returnTo,
+            );
         } catch (NoSuchRowException $e) {
             // The row went away while this form was open. Redrawing the form
             // would offer to save into nothing; the honest answer is that
@@ -770,7 +860,15 @@ final class ActionHandler implements Handler
             );
         }
 
+        if ($write === null) {
+            $this->runPending();
+            $this->flashes->info("Nothing was saved: {$page->title} needed no change.");
+
+            return Response::redirect($returnTo);
+        }
+
         $this->record($isCreate ? 'create' : 'update', $page, $write);
+        $this->runPending();
 
         $this->flashes->success(
             $isCreate
@@ -802,6 +900,170 @@ final class ActionHandler implements Handler
         $view = $this->region->reject($page, $region, $submission, $errors, $key, $returnTo);
 
         return $this->forms->document($page, $view, 422);
+    }
+
+    /**
+     * The write itself: the project's own logic when the page named some, and
+     * what RockAdmin does when it did not.
+     *
+     * One method for all five paths, which is the only way the promise in
+     * `Operation`'s docblock can hold. A seam that dispatched for actions and
+     * wrote directly for forms would be a seam where half the admin quietly
+     * ignores the project's logic -- and saving a row is the half a project is
+     * most likely to have rules about.
+     *
+     * Everything around it is unchanged and stays RockAdmin's: this is called
+     * after the CSRF check, after the gate, after `when` was re-checked
+     * against the row as it actually is, with the scope bound, inside whatever
+     * transaction the path opened.
+     *
+     * @param  array<string, mixed> $values what is to be written
+     * @return ?WriteResult         null when the operation decided nothing was worth recording
+     */
+    private function apply(
+        PageDefinition $page,
+        string $operation,
+        ?string $key,
+        array $values,
+        ?HandlerReference $handler = null,
+    ): ?WriteResult {
+        $context = new OperationContext(
+            page: $page,
+            operation: $operation,
+            key: $key,
+            scope: $this->scopeFor($page),
+            // Null until the workspace context arrives, which is the next
+            // thing to be wired through here. An operation is told what is
+            // known rather than a guess: under "all workspaces" the active
+            // workspace is not this row's workspace, and passing it would be
+            // worse than passing nothing.
+            workspace: null,
+            actor: $this->actor,
+        );
+
+        if ($handler === null) {
+            return $context->writeDefault($this->writes, $values);
+        }
+
+        if ($this->operations === null) {
+            throw new LogicException(\sprintf(
+                "Page '%s' names %s for its %s, and this handler was built without an Operations "
+                . 'registry, so there is nothing to look it up in. Pass one -- doing the default '
+                . "instead would be the project's own logic silently not running.",
+                $page->name,
+                (string) $handler,
+                $operation,
+            ));
+        }
+
+        if ($this->connection === null) {
+            throw new LogicException(\sprintf(
+                "Page '%s' names %s for its %s, and an operation is one transaction -- it may write "
+                . 'several times and all of it has to roll back together. So ActionHandler needs a '
+                . 'Connection, and it was built without one.',
+                $page->name,
+                (string) $handler,
+                $operation,
+            ));
+        }
+
+        $write = null;
+        $row = $this->rowBefore($page, $operation, $key, $values);
+        $logic = $this->operations->get($handler);
+
+        // One transaction around the whole operation, not around each of its
+        // writes. An operation is free to write three times -- the row, a row
+        // in another table, a counter -- and "raising aborts everything" is
+        // only true if the three are one unit. `WriteHandler`'s own
+        // transaction is depth-counted and joins this one, and so does the
+        // outer transaction a bulk action already opened, so the guarantee
+        // holds at one row and at forty.
+        $this->connection->transaction(function () use ($context, $logic, $row, $values, &$write): void {
+            $write = $logic->perform($context, $row, $values, $this->writes);
+        });
+
+        // Queued, not run. Inside a bulk action this is one row of a
+        // transaction that thirty-nine later rows can still roll back, and an
+        // email about a change that did not happen is the exact thing
+        // `afterCommit()` exists to prevent.
+        $this->pending = [...$this->pending, ...$context->queued()];
+
+        return $write;
+    }
+
+    /**
+     * The row as it is now, in the columns this page knows about.
+     *
+     * Not every column of the table, and deliberately. A `Query` names its
+     * columns, so "the whole row" would mean introspecting the table on every
+     * write -- and what the page's own files describe is a better definition
+     * of the row than whatever a migration happens to have left in the table.
+     * A project wanting more reads it with its own code, which it has, over
+     * its own tables, which it owns; what it cannot get for itself once the
+     * write has happened is the before-value, and that is what this is.
+     *
+     * So: the columns the write names, and the columns the page's forms
+     * manage. The second is what makes it useful rather than circular -- an
+     * action replaced by an operation carries no `set`, because the operation
+     * decides what is written, and a row consisting only of its own key would
+     * answer nothing.
+     *
+     * Read only when there is an operation to hand it to. The default write
+     * never looks at the row, and a query for nobody on every save would be
+     * exactly the kind of thing rule 8 is about.
+     *
+     * Empty for a create, and empty for a row the scope excludes -- the write
+     * that follows raises `NoSuchRowException` for that row anyway, from the
+     * one place that decides it, rather than this inventing a second refusal.
+     *
+     * @param  array<string, mixed> $values
+     * @return array<string, mixed>
+     */
+    private function rowBefore(PageDefinition $page, string $operation, ?string $key, array $values): array
+    {
+        if ($operation === 'create' || $key === null) {
+            return [];
+        }
+
+        $columns = array_map(strval(...), array_keys($values));
+
+        foreach ($page->regions as $region) {
+            foreach (array_keys($region->form->fields ?? []) as $field) {
+                $columns[] = (string) $field;
+            }
+        }
+
+        return $this->reader->byKey(
+            $page->entity,
+            $key,
+            array_values(array_unique($columns)),
+            $this->scopeFor($page),
+        ) ?? [];
+    }
+
+    /**
+     * Everything an operation queued, now that the change is real.
+     *
+     * Reached only from the paths that got as far as a commit, so a rollback
+     * leaves the list unrun -- which is the guarantee `afterCommit()` makes.
+     * The list is emptied before anything runs, because a side effect that
+     * happened twice is worse than one that did not happen at all.
+     *
+     * A failure here propagates, and the change stands. That is not the audit
+     * log's arrangement, and the difference is whose code it is: an audit row
+     * is an optional subsystem of this SDK, and swallowing its failure is a
+     * decision this SDK is entitled to make. An operation's side effect is the
+     * project's own logic, and deciding on its behalf that a mail that never
+     * went out does not matter is not this layer's call.
+     */
+    private function runPending(): void
+    {
+        $queued = $this->pending;
+        $this->pending = [];
+
+        foreach ($queued as $work) {
+            $work();
+        }
     }
 
     /**
