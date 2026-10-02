@@ -62,13 +62,41 @@ final class RootSchema
             ),
             'mail' => new SchemaKey(
                 ValueType::Array,
-                description: 'How the admin sends a password reset.',
+                description: 'How the admin sends a password reset or an invitation. The default '
+                    . 'driver writes each message to a file instead of sending it, so an '
+                    . 'installation with no mail server still has a working password reset: the '
+                    . 'link is in the file.',
                 children: new Schema([
                     'driver' => new SchemaKey(
                         ValueType::String,
                         default: 'log',
-                        description: 'log, smtp, sendmail or callback.',
+                        description: 'log, smtp, sendmail or callback. The log driver writes one .eml '
+                            . 'per message under logs/mail and sends nothing. The callback driver is '
+                            . 'the one a project with its own mailer wants: the closure is passed to '
+                            . 'the bootstrap, because configuration holds data and the host supplies '
+                            . 'services.',
                         example: 'smtp',
+                    ),
+                    'from' => new SchemaKey(
+                        ValueType::Array,
+                        description: 'Who the mail is from. Required for every driver except callback, '
+                            . 'where the project already knows.',
+                        children: new Schema([
+                            'address' => new SchemaKey(
+                                ValueType::String,
+                                default: '',
+                                description: 'The sender address. An address at a domain this server is '
+                                    . 'allowed to send for, or the mail will be filed as spam whatever '
+                                    . 'the driver does.',
+                                example: '{{env.MAIL_FROM}}',
+                            ),
+                            'name' => new SchemaKey(
+                                ValueType::String,
+                                default: '',
+                                description: 'The name shown beside the address.',
+                                example: 'Cyklobazar admin',
+                            ),
+                        ]),
                     ),
                     'host' => new SchemaKey(
                         ValueType::String,
@@ -77,6 +105,39 @@ final class RootSchema
                         nullable: true,
                     ),
                     'port' => new SchemaKey(ValueType::Int, default: 587, description: 'SMTP port.', example: 587),
+                    'encryption' => new SchemaKey(
+                        ValueType::String,
+                        default: 'tls',
+                        description: "How the SMTP connection is secured: 'tls' issues STARTTLS on port "
+                            . "587, 'ssl' opens the socket encrypted on port 465, and 'none' sends in "
+                            . 'the clear -- which means the password below crosses the network as text, '
+                            . 'so it is for a server on the same machine and nothing else.',
+                        example: 'ssl',
+                    ),
+                    'username' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP username. Null for a server that does not ask.',
+                        example: '{{env.MAIL_USERNAME}}',
+                        nullable: true,
+                    ),
+                    'password' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP password. Write it as {{env.MAIL_PASSWORD}} and keep it out '
+                            . 'of git -- this file is committed, and the configuration cache is written '
+                            . 'with the value resolved, which is why that cache lives outside the '
+                            . 'document root.',
+                        example: '{{env.MAIL_PASSWORD}}',
+                        nullable: true,
+                    ),
+                    'timeout' => new SchemaKey(
+                        ValueType::Int,
+                        default: 10,
+                        description: 'Seconds to wait for the SMTP server, on connecting and on every '
+                            . 'reply. A request that sends mail waits for this, so it is short on '
+                            . 'purpose: a mail server that has stopped answering must not hold a '
+                            . 'browser open.',
+                        example: 5,
+                    ),
                 ]),
             ),
             'assets' => new SchemaKey(
