@@ -8,7 +8,11 @@ use Closure;
 use LogicException;
 use RockAdmin\Auth\AuditLog;
 use RockAdmin\Auth\AuthUser;
+use RockAdmin\Auth\NoWorkspaceSwitch;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\RowWorkspace;
+use RockAdmin\Auth\WorkspaceContext;
+use RockAdmin\Auth\WorkspaceDefinition;
 use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\Placeholder;
 use RockAdmin\Data\OperationContext;
@@ -146,6 +150,18 @@ final class ActionHandler implements Handler
          * seam to fail.
          */
         private readonly ?Operations $operations = null,
+        /**
+         * Which workspace the row being written is in -- *its* workspace, not
+         * the one the person is looking at. Under "all workspaces" those are
+         * not the same thing, and the write has to happen in the first.
+         */
+        private readonly ?RowWorkspace $rowWorkspace = null,
+        /**
+         * How the host is told, for the half of the work its own code does.
+         * Optional, and null behaves as `NoWorkspaceSwitch`: an admin whose
+         * host has no tenants of its own needs nothing switched.
+         */
+        private readonly ?WorkspaceContext $workspaces = null,
     ) {
     }
 
@@ -897,9 +913,27 @@ final class ActionHandler implements Handler
         ?string $key,
         string $returnTo,
     ): Response {
-        $view = $this->region->reject($page, $region, $submission, $errors, $key, $returnTo);
+        // Inside the row's workspace, because redrawing a form is a render
+        // and a render asks the project for things -- the options of a select,
+        // the label of a related row. A rejected submission redrawn with
+        // another tenant's categories in its dropdown would be a strange and
+        // very hard bug to find.
+        $response = null;
 
-        return $this->forms->document($page, $view, 422);
+        $this->runIn($this->rowWorkspace?->forRow($page, $key), function () use (
+            $page,
+            $region,
+            $submission,
+            $errors,
+            $key,
+            $returnTo,
+            &$response,
+        ): void {
+            $view = $this->region->reject($page, $region, $submission, $errors, $key, $returnTo);
+            $response = $this->forms->document($page, $view, 422);
+        });
+
+        return $response ?? throw new LogicException('Redrawing the form produced no response.');
     }
 
     /**
@@ -927,22 +961,30 @@ final class ActionHandler implements Handler
         array $values,
         ?HandlerReference $handler = null,
     ): ?WriteResult {
+        $workspace = $this->rowWorkspace?->forRow($page, $key, $values);
+
         $context = new OperationContext(
             page: $page,
             operation: $operation,
             key: $key,
             scope: $this->scopeFor($page),
-            // Null until the workspace context arrives, which is the next
-            // thing to be wired through here. An operation is told what is
-            // known rather than a guess: under "all workspaces" the active
-            // workspace is not this row's workspace, and passing it would be
-            // worse than passing nothing.
-            workspace: null,
+            workspace: $workspace,
             actor: $this->actor,
         );
 
         if ($handler === null) {
-            return $context->writeDefault($this->writes, $values);
+            // Inside the workspace too, even though the default write needs
+            // nothing from the host: a project may have a trigger, a listener
+            // or a connection of its own behind `WriteHandler`, and "every
+            // write happens in the row's workspace" is only a rule if it has
+            // no exceptions.
+            $default = null;
+
+            $this->runIn($workspace, function () use ($context, $values, &$default): void {
+                $default = $context->writeDefault($this->writes, $values);
+            });
+
+            return $default;
         }
 
         if ($this->operations === null) {
@@ -978,15 +1020,30 @@ final class ActionHandler implements Handler
         // transaction is depth-counted and joins this one, and so does the
         // outer transaction a bulk action already opened, so the guarantee
         // holds at one row and at forty.
-        $this->connection->transaction(function () use ($context, $logic, $row, $values, &$write): void {
-            $write = $logic->perform($context, $row, $values, $this->writes);
+        // The switch is outside the transaction, because it is not a
+        // database fact: it tells the host's own code which tenant it is
+        // serving, and the whole transaction belongs to one row and therefore
+        // to one workspace.
+        $this->runIn($workspace, function () use ($context, $logic, $row, $values, &$write): void {
+            $this->connection?->transaction(function () use ($context, $logic, $row, $values, &$write): void {
+                $write = $logic->perform($context, $row, $values, $this->writes);
+            });
         });
 
         // Queued, not run. Inside a bulk action this is one row of a
         // transaction that thirty-nine later rows can still roll back, and an
         // email about a change that did not happen is the exact thing
         // `afterCommit()` exists to prevent.
-        $this->pending = [...$this->pending, ...$context->queued()];
+        //
+        // Each is wrapped in the workspace its own operation ran in. A bulk
+        // action over "all workspaces" queues forty side effects belonging to
+        // several tenants, and running them all in whichever was last would
+        // send Motobazar.cz's mail as Autobazar.cz.
+        foreach ($context->queued() as $work) {
+            $this->pending[] = function () use ($workspace, $work): void {
+                $this->runIn($workspace, $work);
+            };
+        }
 
         return $write;
     }
@@ -1039,6 +1096,23 @@ final class ActionHandler implements Handler
             array_values(array_unique($columns)),
             $this->scopeFor($page),
         ) ?? [];
+    }
+
+    /**
+     * Runs something with a workspace active, through the host if one is
+     * wired.
+     *
+     * Null is `NoWorkspaceSwitch`, not a skipped switch: an admin whose host
+     * has no workspaces of its own has nothing to tell it, and that is the
+     * same answer as telling it nothing.
+     *
+     * @template T
+     * @param  Closure():T $work
+     * @return T
+     */
+    private function runIn(?WorkspaceDefinition $workspace, Closure $work): mixed
+    {
+        return ($this->workspaces ?? new NoWorkspaceSwitch())->runIn($workspace, $work);
     }
 
     /**

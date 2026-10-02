@@ -96,6 +96,52 @@ final class RequestScope
     }
 
     /**
+     * The workspace this request is in, or null for all of them -- or for an
+     * admin that has none.
+     *
+     * Asked by whoever has to tell somebody *else* which workspace this is:
+     * the host, through `WorkspaceContext`. The scope itself does not need it
+     * answered separately, which is why this arrived later than the rest of
+     * the class.
+     */
+    public function activeWorkspace(): ?WorkspaceDefinition
+    {
+        return $this->active->current($this->identity->user());
+    }
+
+    /**
+     * Which configured workspace a row's value names, or null when none does.
+     *
+     * Matched as text, for the reason `workspaceLabel()` gives: one driver
+     * hands back `1` where another hands back `'1'`, and a row that belonged
+     * to Motobazar.cz on MySQL and to nobody on PostgreSQL would be a rule-3
+     * bug with a write on the end of it.
+     *
+     * Null for a value no workspace claims. Rows outlive the workspace they
+     * were written in, and the honest answer about such a row is that nothing
+     * configured owns it -- not a guess at the nearest one.
+     */
+    public function workspaceFor(PageDefinition $page, mixed $value): ?WorkspaceDefinition
+    {
+        $column = $this->workspaceColumn($page);
+        $placeholder = $column === null ? null : $page->scope[$column] ?? null;
+
+        if (!$placeholder instanceof Placeholder || !\is_scalar($value)) {
+            return null;
+        }
+
+        foreach ($this->workspaces?->all() ?? [] as $workspace) {
+            $theirs = $workspace->var($placeholder->name);
+
+            if ($theirs !== null && (string) $theirs === (string) $value) {
+                return $workspace;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Which column of this page says which workspace a row is in.
      *
      * The scope's own column, because it is the only one known to identify
@@ -127,23 +173,8 @@ final class RequestScope
      */
     public function workspaceLabel(PageDefinition $page, mixed $value): string
     {
-        $column = $this->workspaceColumn($page);
-        $placeholder = $column === null ? null : $page->scope[$column] ?? null;
-        $text = \is_scalar($value) ? (string) $value : '';
-
-        if (!$placeholder instanceof Placeholder) {
-            return $text;
-        }
-
-        foreach ($this->workspaces?->all() ?? [] as $workspace) {
-            $theirs = $workspace->var($placeholder->name);
-
-            if ($theirs !== null && (string) $theirs === $text) {
-                return $workspace->label;
-            }
-        }
-
-        return $text;
+        return $this->workspaceFor($page, $value)->label
+            ?? (\is_scalar($value) ? (string) $value : '');
     }
 
     /**
