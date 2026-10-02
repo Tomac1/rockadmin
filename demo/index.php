@@ -30,16 +30,19 @@ use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\RowWorkspace;
 use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
 use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
+use RockAdmin\Data\Operations;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\RowReader;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
+use RockAdmin\Demo\ArchiveAd;
 use RockAdmin\Form\FieldValidator;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Grid\ActionBuilder;
@@ -455,6 +458,29 @@ if ($connection !== null) {
     // the form put in its body. The two share a `FormRegion` so that a
     // refused submission is redrawn by exactly the code that drew it first.
     $reader = new RowReader($rows);
+
+    // The project's own write logic, by the name its pages use (milestone 11).
+    // `ads.php` archives through `@handler:archive_ad` instead of a `set`, and
+    // this is what that name means.
+    //
+    // Checked here rather than when somebody presses the button, because here
+    // is where both halves are in hand: the pages that name handlers and the
+    // wiring that supplies them. A page naming something nothing registered is
+    // refused now, saying which page and where -- the same arrangement
+    // `Permission::assertActionsAreGrantable()` has with roles.
+    $operations = Operations::of(['archive_ad' => new ArchiveAd($flashes)]);
+    $operations->assertEveryHandlerExists($pages);
+
+    // Which workspace a row is in -- *its* own, not the one being looked at,
+    // which under "all workspaces" are not the same thing. The operation is
+    // told, and the write and the form render both happen inside it.
+    //
+    // A host with tenants of its own passes a `WorkspaceContext` alongside
+    // this, so its own code is switched too; `docs/guides/own-write-logic.md`
+    // writes that out. This demo's host has no tenants outside RockAdmin, so
+    // there is nothing to tell and the argument is left out.
+    $rowWorkspace = new RowWorkspace($requestScope, $reader);
+
     $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity, $requestScope);
     $forms = new FormHandler(
         $pages,
@@ -467,6 +493,7 @@ if ($connection !== null) {
         $darkMode,
         $menu,
         $account,
+        $rowWorkspace,
     );
 
     $handlers->register('page.create', $forms);
@@ -491,6 +518,8 @@ if ($connection !== null) {
         // is `audit.enabled => false` in rockadmin.php, not a change here.
         $auditEnabled ? new SqlAuditLog($connection) : null,
         $actor,
+        $operations,
+        $rowWorkspace,
     ));
 } else {
     // No database configured: still render the shell and the page header for

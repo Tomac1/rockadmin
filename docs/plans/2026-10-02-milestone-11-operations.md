@@ -234,3 +234,85 @@ that ships rather than only by tests.
   the parts a project must not be able to get wrong.
 - **Mail itself.** Section 10 is the next milestone; this one only has to not
   be in its way.
+
+---
+
+## Where it ended up (2026-10-02)
+
+All seven tasks done, `composer run check` green on both drivers (2476 tests),
+and the demo exercises the seam with something that ships:
+`demo/src/ArchiveAd.php`, named by `demo/config/pages/ads.php` as
+`@handler:archive_ad`.
+
+Against the acceptance list: a project can replace the logic of `create`,
+`update`, `delete` and any configured action per page (2); a custom operation
+still writes an audit row, still runs inside the transaction and still cannot
+write outside `WriteHandler` (3); `afterCommit` runs after the commit and does
+not run at all when the operation fails (4) — carried by
+`tests/Integration/Data/OperationFlowTest.php`, whose sharpest case is a bulk
+action whose *second* row raises and whose first row's side effect therefore
+never runs; every write and every form render happens in the row's own
+workspace (5), carried by `WorkspaceContextTest`; the resolver has three states
+and can be set back to automatic (6); and a `handler` naming nothing registered
+is refused when the registry is built, naming the page (7).
+
+### What the plan got right, and what it cost
+
+**One interface for all five write paths was the right call and cost almost
+nothing.** The alternative — an `Operation` for actions and something else for
+forms — would have been a split on an accident of naming, and the five paths
+already met in one class.
+
+**The seam promised an answer it could not give.** `Operation`'s docblock said
+a `ValidationError` carries a message back to the form; `ValidationError` is a
+value object and was never throwable. `OperationRefused` is what that sentence
+was describing: it rolls everything back and then answers where the person is
+— the form redrawn, a flash for an action, a skipped row with its own reason
+inside a selection. Without it, "this ad is already sold" would have had to be
+a 500.
+
+**"Raising aborts everything" was false for four of the five paths.** Only a
+bulk action had a transaction around it; a form save called `WriteHandler`,
+which commits before it returns, so an operation that wrote and then raised
+left the row behind. `apply()` now opens one transaction around the whole
+operation — not around each of its writes — so an operation free to write three
+times is an operation whose three writes are one unit.
+
+**`$row` nearly arrived useless.** Read as "the columns being written", it is
+empty for exactly the case that most wants it: an action replaced by an
+operation carries no `set`, so the operation would have been handed a row
+consisting of its own key. It reads the page's form columns too.
+
+### Two things found by running it
+
+**The switcher's new entry lied about itself.** "Automatic (Motobazar.cz)" was
+drawn after choosing Motobazar — but automatic would have resolved to
+Cyklobazar, so the one label on the control that claimed to predict an outcome
+predicted the wrong one, and promised that pressing it changes nothing. It
+names the workspace only while automatic *is* the current state, where
+`current()` is the automatic answer. Found in the browser, not by a test; the
+test that now holds it was written afterwards.
+
+**The demo's `archive` had no test at all before this milestone.** Nothing in
+the suite posted it, so swapping its `set` for a handler broke nothing and
+proved nothing. `DemoOperationTest` covers it now, including the refusal and
+the bulk skip.
+
+### Still open
+
+**Narrow viewports do not work, and now there is a measurement.** At 384 CSS
+pixels the ads page scrolls horizontally to 1086: the grid table is 1070 wide
+with no scroller of its own, so the *page* scrolls and the navbar goes with it,
+and the top bar's own contents measure 888 inside a 384 box rather than
+wrapping. This was milestone 9's carried debt, unverified until now because
+window resizing did not reach the page viewport through the tooling; it does
+now. It is a design-system question — `docs/design-system/` is the authority on
+how this should look — and it wants an interlude of its own rather than a
+corner of the next milestone.
+
+**Nobody has switched JavaScript off yet.** Still carried from milestone 9.
+
+**The `Host`-header resolver still has no implementation here**, which is
+correct — it belongs to the host — but `docs/guides/own-write-logic.md` now
+writes out the shape Bazik needs, including the three states its
+`ActiveWorkspace` has to express, so the next thing to test it is Bazik itself.

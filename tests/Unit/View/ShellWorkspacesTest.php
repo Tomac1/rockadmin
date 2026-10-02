@@ -65,6 +65,20 @@ final class ShellWorkspacesTest extends TestCase
         self::assertSame(['motobazar'], $this->marked($switcher->all()));
     }
 
+    public function testOnceSomethingIsChosenAutomaticNoLongerNamesAWorkspace(): void
+    {
+        // What automatic would answer instead is the resolver's business and
+        // cannot be read from here. Naming the chosen workspace would be the
+        // one label on this control that is actively wrong -- it would promise
+        // that pressing it changes nothing, when it is how you change back.
+        $session = new ArraySessionStore();
+        $switcher = $this->switcher(['cyklobazar', 'motobazar'], $session);
+
+        $this->active($session)->switchTo($this->workspaces()->get('motobazar'));
+
+        self::assertSame('Automatic', $switcher->all()[0]->label);
+    }
+
     public function testAllWorkspacesIsOfferedLastAndOnlyToSomebodyHoldingEveryOne(): void
     {
         $theirs = $this->switcher(['cyklobazar', 'motobazar'])->all();

@@ -26,9 +26,15 @@ use RockAdmin\Http\WorkspaceHandler;
  * sticky: somebody who switched to Motobazar.cz cannot get back to "whatever
  * this admin would have picked" by picking something, and on an installation
  * that resolves its workspace from the request's host, that is the difference
- * between following the address and overriding it. The entry says what it
- * currently resolves to, so it is a readable answer rather than a mode nobody
- * can see the effect of.
+ * between following the address and overriding it.
+ *
+ * It says what it resolves to **only while it is the current state**, where
+ * `current()` is the automatic answer and naming it is telling the truth. Once
+ * something is chosen, what automatic would answer instead is the resolver's
+ * business and not visible from here -- so the entry says "Automatic" and
+ * nothing more. Naming the chosen workspace there would be the one label on
+ * the control that is actively wrong: it would promise that pressing it
+ * changes nothing.
  *
  * **"All workspaces" is offered only to somebody holding every one**, which
  * is specification 9.3's own condition: choosing it grants nothing they could
@@ -81,9 +87,9 @@ final class ShellWorkspaces
         // asking somebody to work out which of them they are in.
         $views = [new WorkspaceView(
             WorkspaceHandler::AUTOMATIC,
-            $current === null
-                ? 'Automatic'
-                : "Automatic ({$current->label})",
+            $automatic && $current !== null
+                ? "Automatic ({$current->label})"
+                : 'Automatic',
             $this->urls->route('workspace.switch', ['workspace' => WorkspaceHandler::AUTOMATIC]),
             $automatic,
         )];
