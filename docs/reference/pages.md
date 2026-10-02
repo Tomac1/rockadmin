@@ -98,6 +98,7 @@ Every entry of `actions`.
 | `confirm` | string | — | `Archive this ad?` | The question asked before a `post` runs. Required on every `post` — one that changes data and asks nothing is a mis-click away from a deletion — and refused on a `link`, because confirming something that only navigates teaches people to dismiss confirmations. |
 | `when` | array | — | `['state' => 'active']` | Row conditions deciding whether the action is offered: a map of column key to the one value that column must hold. Every key must name a column the list region declares. It decides what is *offered*, so it is re-checked on the server when the action is performed — a client that was never shown it can still post it. |
 | `set` | array | — | `['state' => 'archived']` | What a `post` writes: a map of column key to the one value to store, applied to the row the action was drawn for. This is what makes `archive` mean something — `'set' => ['state' => 'archived']` — and every `post` needs it except one pointing at `@action:delete`, which deletes instead. Values are literals, never expressions and never row placeholders: an action that computes what it writes is a form, and forms already exist. Refused on a `link`, which writes nothing. |
+| `handler` | mixed | — | `@handler:archive_ad` | The project's own logic for this write, as a `@handler:` reference naming something it registered: `@handler:archive_ad`. It replaces what the action does, not what surrounds it — the CSRF check, the permission, the `when` re-check, the transaction and the audit row all still happen. Given one, `set` is not needed and is refused alongside it, because only one of the two could run and nobody reading the file would know which. |
 | `refresh` | array | — | `['grid']` | Which regions of this page re-render once the action completes, as a list of region keys. Without it the page reloads. Set it when the action changes what one region shows and nothing else. |
 
 ## `regions.*`
@@ -171,6 +172,9 @@ Fetches a one-to-many relationship. The column displays collected values; a supp
 
 The fields this form reads and writes, and how copying a row differs from editing one. Only for form regions.
 
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `handler` | mixed | — | `@handler:save_ad` | The project's own logic for saving this form, as a `@handler:` reference naming something it registered: `@handler:save_ad`. It replaces what create, update and delete do, not what surrounds them — validation, the permission, the workspace scope, the transaction and the audit row all still happen, and the operation is told which of the three it is serving. Declared here rather than only in wiring so that this file does not tell half the truth about what saving does. |
 
 ## `regions.*.form.fields.*`
 

@@ -131,7 +131,7 @@ final class ActionSchemaTest extends TestCase
     {
         $keys = [
                 'type', 'label', 'icon', 'to', 'target', 'in', 'size', 'title', 'params',
-                'permission', 'confirm', 'when', 'set', 'refresh',
+                'permission', 'confirm', 'when', 'set', 'handler', 'refresh',
             ];
 
         return array_combine($keys, array_map(static fn (string $key): array => [$key], $keys));
@@ -152,7 +152,7 @@ final class ActionSchemaTest extends TestCase
         $this->assertSame(
             [
                 'type', 'label', 'icon', 'to', 'target', 'in', 'size', 'title', 'params',
-                'permission', 'confirm', 'when', 'set', 'refresh',
+                'permission', 'confirm', 'when', 'set', 'handler', 'refresh',
             ],
             ActionSchema::create()->names(),
         );

@@ -139,6 +139,16 @@ final class ActionSchema
                     . 'forms already exist. Refused on a `link`, which writes nothing.',
                 example: ['state' => 'archived'],
             ),
+            'handler' => new SchemaKey(
+                ValueType::Mixed,
+                description: 'The project\'s own logic for this write, as a `@handler:` reference naming '
+                    . 'something it registered: `@handler:archive_ad`. It replaces what the action does, '
+                    . 'not what surrounds it — the CSRF check, the permission, the `when` re-check, the '
+                    . 'transaction and the audit row all still happen. Given one, `set` is not needed and '
+                    . 'is refused alongside it, because only one of the two could run and nobody reading '
+                    . 'the file would know which.',
+                example: '@handler:archive_ad',
+            ),
             'refresh' => new SchemaKey(
                 ValueType::Array,
                 description: 'Which regions of this page re-render once the action completes, as a list of '

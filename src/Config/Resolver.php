@@ -37,7 +37,7 @@ final class Resolver
      * a link to nowhere. `@enum:` is matched separately, above, because it
      * predates this and its key pattern is wider.
      */
-    private const array REFERENCE_NAMESPACES = ['page', 'action', 'region'];
+    private const array REFERENCE_NAMESPACES = ['page', 'action', 'region', 'handler'];
 
     /**
      * Every `@namespace:` this class claims, including `@enum:`.
@@ -167,7 +167,7 @@ final class Resolver
         string $namespace,
         string $key,
         string $original,
-    ): PageReference|ActionReference|RegionReference {
+    ): PageReference|ActionReference|RegionReference|HandlerReference {
         // Case is not a spelling choice. The namespaces are three lower-case
         // words, and a reference that works in two spellings is two things to
         // remember -- so '@Page:ads' is refused by name rather than accepted
@@ -185,6 +185,8 @@ final class Resolver
                     . 'to address one of its rows.',
                 'region' => "'{$original}' names no region. Write '@region:detail' for a region of this "
                     . "page, or '@region:users.detail' for one of another page's.",
+                'handler' => "'{$original}' names no handler. Write '@handler:save_ad', naming logic the "
+                    . 'project registered.',
                 default => "'{$original}' names no action. Write '@action:archive', naming an action of "
                     . 'this page.',
             });
@@ -193,8 +195,31 @@ final class Resolver
         return match ($namespace) {
             'page' => $this->pageReference($key, $original),
             'region' => $this->regionReference($key, $original),
+            'handler' => $this->handlerReference($key, $original),
             default => $this->actionReference($key, $original),
         };
+    }
+
+    /**
+     * `@handler:save_ad` — a project's own logic for a write.
+     *
+     * One name and nothing else, like `@action:`, because it addresses
+     * something the host registered rather than something another file
+     * declares. Whether anything is registered under it is `Operations`'
+     * business: this class has no catalogue, which is the same split
+     * `@page:` already follows.
+     */
+    private function handlerReference(string $key, string $original): HandlerReference
+    {
+        if (preg_match(self::NAME, $key) !== 1) {
+            throw new ConfigException(
+                "'{$original}' is not a valid handler reference. A handler is named by the project "
+                . 'that registered it, in the lower-case snake_case every configuration key uses: '
+                . "'@handler:save_ad'.",
+            );
+        }
+
+        return new HandlerReference($key);
     }
 
     /**

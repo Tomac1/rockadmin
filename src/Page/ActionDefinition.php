@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RockAdmin\Page;
 
 use RockAdmin\Config\ActionReference;
+use RockAdmin\Config\HandlerReference;
 use RockAdmin\Config\PageReference;
 use RockAdmin\Config\RegionReference;
 
@@ -57,6 +58,8 @@ final class ActionDefinition
          * @var array<string, string>
          */
         public readonly array $params = [],
+        /** The project's own logic for this write, or null for `set`. */
+        public readonly ?HandlerReference $handler = null,
     ) {
     }
 
