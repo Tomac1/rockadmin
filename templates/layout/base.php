@@ -50,11 +50,17 @@ $theme = $view->shell->themeAttribute();
 
         <?php
         /*
-         * The workspace switcher. The design system draws one here and
-         * milestone 9 builds what it switches, so it renders only when a list
-         * is supplied -- nothing supplies one yet. Drawing a control that
-         * cannot do anything is the visible-button-that-does-nothing this
-         * project refuses, and the markup costs nothing while it waits.
+         * The workspace switcher. It renders only when a list is supplied, and
+         * `ShellWorkspaces` supplies one only when there are at least two
+         * workspaces to move between: a switcher with a single button is a
+         * control that cannot do anything, which is the
+         * visible-button-that-does-nothing this project refuses.
+         *
+         * Three kinds of entry come through here and the markup does not care
+         * which is which -- automatic, each workspace, and all of them. That
+         * is deliberate: which one is current is `$workspace->active`, decided
+         * where the states are known, and a template working it out from the
+         * labels would be a second place that has to agree about them.
          */
         ?>
         <?php if ($view->shell->workspaces !== []) { ?>

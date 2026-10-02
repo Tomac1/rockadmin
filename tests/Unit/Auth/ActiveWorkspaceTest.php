@@ -138,6 +138,93 @@ final class ActiveWorkspaceTest extends TestCase
         );
     }
 
+    // --- the third state ---
+
+    public function testNothingChosenIsAutomatic(): void
+    {
+        $user = Access::user(workspaces: ['cyklobazar', 'motobazar']);
+
+        self::assertTrue($this->workspace()->isAutomatic($user));
+    }
+
+    public function testChoosingAWorkspaceIsNotAutomatic(): void
+    {
+        $active = $this->workspace();
+        $user = Access::user(workspaces: ['cyklobazar', 'motobazar']);
+
+        $active->switchTo($this->workspaces()->get('motobazar'));
+
+        self::assertFalse($active->isAutomatic($user));
+    }
+
+    public function testChoosingAllWorkspacesIsNotAutomaticEither(): void
+    {
+        // Both answer null from `current()`, and they are not the same state:
+        // one is a decision and the other is the absence of one. A switcher
+        // that could not tell them apart would mark the wrong entry.
+        $active = $this->workspace();
+        $everything = Access::user(workspaces: ['cyklobazar', 'motobazar', 'lodbazar']);
+
+        $active->switchTo(null);
+
+        self::assertNull($active->current($everything));
+        self::assertFalse($active->isAutomatic($everything));
+    }
+
+    public function testGoingBackToAutomaticForgetsTheChoice(): void
+    {
+        // The reason this method exists: a choice is sticky and nobody can
+        // un-choose by choosing. Somebody who switched to motobazar has no
+        // other way back to "whatever this admin would have picked".
+        $session = new ArraySessionStore();
+        $active = $this->workspace($session);
+        $user = Access::user(workspaces: ['cyklobazar', 'motobazar']);
+
+        $active->switchTo($this->workspaces()->get('motobazar'));
+        $active->automatic();
+
+        self::assertTrue($active->isAutomatic($user));
+        self::assertSame('cyklobazar', $active->current($user)?->name);
+        self::assertNull($session->get('ra.workspace'), 'Going back to automatic left the choice stored.');
+    }
+
+    public function testGoingBackToAutomaticIsVisibleWithinTheSameRequest(): void
+    {
+        $active = $this->workspace();
+        $user = Access::user(workspaces: ['cyklobazar', 'motobazar']);
+
+        $active->switchTo($this->workspaces()->get('motobazar'));
+        self::assertSame('motobazar', $active->current($user)?->name);
+
+        $active->automatic();
+
+        self::assertSame(
+            'cyklobazar',
+            $active->current($user)?->name,
+            'The memo survived going back to automatic, so the switch did not take effect.',
+        );
+    }
+
+    public function testSomebodyHoldingOneWorkspaceIsAlwaysAutomatic(): void
+    {
+        // Nothing to choose, so nothing can have been chosen. Marking their
+        // one workspace as a decision would be the switcher claiming they made
+        // one.
+        self::assertTrue($this->workspace()->isAutomatic(Access::user(workspaces: ['cyklobazar'])));
+    }
+
+    public function testAStaleChoiceReadsAsAutomatic(): void
+    {
+        // It is ignored by `current()`, so the switcher must not mark it
+        // either: the two have to agree about what the session means.
+        $session = new ArraySessionStore();
+        $session->set('ra.workspace', 'deleted_last_week');
+
+        self::assertTrue(
+            $this->workspace($session)->isAutomatic(Access::user(workspaces: ['cyklobazar', 'motobazar'])),
+        );
+    }
+
     // --- nobody, and nothing configured ---
 
     public function testAUserHoldingNoWorkspaceGetsNull(): void
