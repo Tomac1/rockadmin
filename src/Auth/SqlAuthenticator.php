@@ -48,32 +48,41 @@ use RockAdmin\Db\Sql;
  */
 final class SqlAuthenticator implements Authenticator
 {
+    /**
+     * How many attempts an address and a machine get inside the window.
+     *
+     * This was three numbers on this constructor, and the docblock they
+     * carried said they would become configuration keys "when that section is
+     * written". That section is `auth.*` now and `Throttle` is what reads it,
+     * so this class holds no numbers at all -- which is where they belonged:
+     * how often somebody may try is a policy, and verifying a password is not.
+     */
+    private readonly Throttle $throttle;
+
     public function __construct(
         private readonly Connection $connection,
         private readonly PasswordHasher $hasher = new Argon2idHasher(),
         /**
-         * How many attempts an address and a machine get inside the window.
+         * Omitting it means the default allowances, never *no* allowance.
          *
-         * This was three numbers on this constructor, and the docblock they
-         * carried said they would become configuration keys "when that
-         * section is written". That section is `auth.*` now and `Throttle`
-         * is what reads it, so this class holds no numbers at all -- which is
-         * the right place for them to have gone: how often somebody may try
-         * is a policy, and verifying a password is not.
-         *
-         * Optional, because a great many tests build an authenticator to
-         * check one password and have no table of attempts at all. Without
-         * one nothing is counted and nothing is refused.
+         * It was briefly `?Throttle $throttle = null` with null meaning "count
+         * nothing", which reads as a convenience and is a fail-open default:
+         * `new SqlAuthenticator($connection)` is the obvious way to build one,
+         * it is what the demo and a host would write, and it would have
+         * accepted unlimited guesses while looking exactly like an
+         * authenticator that did not. A security control that is absent must
+         * not be the thing you get by not mentioning it.
          */
-        private readonly ?Throttle $throttle = null,
+        ?Throttle $throttle = null,
     ) {
+        $this->throttle = $throttle ?? new Throttle($connection);
     }
 
     public function attempt(string $email, string $password, string $ip): LoginResult
     {
         $normalised = $this->normaliseEmail($email);
 
-        if ($this->throttle?->isExhausted(Throttle::LOGIN, $normalised, $ip) === true) {
+        if ($this->throttle->isExhausted(Throttle::LOGIN, $normalised, $ip)) {
             return LoginResult::throttled();
         }
 
@@ -81,7 +90,7 @@ final class SqlAuthenticator implements Authenticator
         // success writes use: the attempt is the throttle's only evidence, and
         // a later failure -- a broken row, a rolled-back stamp -- must not
         // take it with it.
-        $this->throttle?->record(Throttle::LOGIN, $normalised, $ip);
+        $this->throttle->record(Throttle::LOGIN, $normalised, $ip);
 
         $row = $this->rowByEmail($normalised);
         $stored = $row === null ? null : $row['password'];
@@ -116,7 +125,7 @@ final class SqlAuthenticator implements Authenticator
         // not part of the sign-in, and a failure to clear it must not undo a
         // sign-in that worked. The cost of it failing is one wasted attempt
         // out of ten.
-        $this->throttle?->clear(Throttle::LOGIN, $normalised);
+        $this->throttle->clear(Throttle::LOGIN, $normalised);
 
         return LoginResult::success($user);
     }
