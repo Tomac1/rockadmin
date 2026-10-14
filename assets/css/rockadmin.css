@@ -554,6 +554,31 @@ th[aria-sort="descending"] .ra-grid-sort::after {
     width: 9rem;
 }
 
+/*
+ * A multiple select is a list, not a select.
+ *
+ * The design system's `.ra-select` is 34px tall with room for a caret, which
+ * is right for the control it was drawn for and collapses a `multiple` one to
+ * a row and a half with a scrollbar -- a list of five roles showing one of
+ * them, which reads as a broken control rather than as a short one. Height by
+ * rows instead, and no caret spacing, since a multiple select draws none.
+ *
+ * Here rather than in `ds/components.css`: that file is the design system as
+ * it ships, and this is the layer this project puts over it. The design
+ * system has no multiple select, so there is nothing there to correct.
+ */
+select[multiple].ra-select {
+    height: auto;
+    min-height: 6.5rem;
+    padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+    cursor: default;
+}
+
+/* A filter's is shorter: the row it sits in is one line tall. */
+.ra-grid-filter select[multiple].ra-select {
+    min-height: 4.5rem;
+}
+
 /* The search box leads the row and takes what is left of it. */
 .ra-grid-search {
     order: -1;

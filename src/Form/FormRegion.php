@@ -382,6 +382,25 @@ final class FormRegion
     /** @return list<string> */
     private function list(mixed $value): array
     {
+        if (\is_string($value) && str_starts_with(ltrim($value), '[')) {
+            // A JSON column, which is where a list of values is actually kept:
+            // `ra_users.roles` holds `["editor"]`, and so does any other
+            // column a multiselect writes. Without this the control is handed
+            // the string `["editor"]`, matches no option, draws nothing as
+            // chosen -- and the save that follows writes the empty selection
+            // back, silently clearing what it never showed.
+            //
+            // By shape rather than by asking the schema, because a page file
+            // says a field is a multiselect and says nothing about how the
+            // column stores it. A string that is not JSON falls through to the
+            // scalar case below, which is what a comma-free single value is.
+            $decoded = json_decode($value, true);
+
+            if (\is_array($decoded)) {
+                $value = $decoded;
+            }
+        }
+
         if (\is_scalar($value)) {
             return [(string) $value];
         }
