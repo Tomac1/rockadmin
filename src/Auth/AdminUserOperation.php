@@ -42,6 +42,9 @@ use RockAdmin\Mail\MessageFactory;
  * 4. **An account created without a password is invited.** The mail goes out
  *    after the commit, because a transaction can take back a row and cannot
  *    take back an e-mail.
+ * 5. **Nobody hands out more than they hold.** `administrators.update` is the
+ *    permission to manage accounts; without a rule it is also the permission
+ *    to award oneself every other permission there is.
  */
 final class AdminUserOperation implements Operation
 {
@@ -87,6 +90,8 @@ final class AdminUserOperation implements Operation
     /** @param array<string, mixed> $values */
     private function create(OperationContext $context, array $values, WriteHandler $writes): ?WriteResult
     {
+        $this->refuseIfItGrantsMoreThanTheActorHolds($context, $values);
+
         $password = $this->plainPassword($values);
         $email = $this->address($values);
 
@@ -113,6 +118,7 @@ final class AdminUserOperation implements Operation
         WriteHandler $writes,
     ): ?WriteResult {
         $this->refuseIfItLocksTheBuilding($context, $row, $values);
+        $this->refuseIfItGrantsMoreThanTheActorHolds($context, $values);
 
         $password = $this->plainPassword($values);
         $columns = $this->columns($values, $password);
@@ -198,6 +204,71 @@ final class AdminUserOperation implements Operation
             . 'first.',
             $this->roles->label($widest),
         ));
+    }
+
+    /**
+     * Refuses handing out a role or a workspace the person doing it does not
+     * have.
+     *
+     * Found by a security review of the commit before this one, and it is the
+     * ordinary shape of privilege escalation: `administrators.update` is the
+     * permission to manage accounts, and without this rule it is also the
+     * permission to award oneself every other permission there is. An editor
+     * who may edit administrators could tick `superadmin` on their own row and
+     * be one -- and from there grant it to anybody, with the audit log
+     * recording an edit that reads as routine.
+     *
+     * **Somebody holding the widest role is exempt**, because for them the
+     * rule would be theatre: they can already reach everything, including this
+     * page, and refusing them the tick box while leaving them the ability to
+     * take it would be a check that only ever fired on the honest.
+     *
+     * **With no actor it refuses rather than skips.** A null actor means the
+     * host wired this without an identity, and the right answer to "I cannot
+     * tell who is doing this" is not to assume it is fine -- the last time
+     * this project made an absent check the default, it was a fail-open
+     * throttle that looked exactly like a working one.
+     *
+     * Workspaces are checked by the same rule and for the same reason:
+     * granting somebody a workspace is granting them sight of its rows, and
+     * nobody should be able to hand out more than they were given.
+     *
+     * @param array<string, mixed> $values
+     */
+    private function refuseIfItGrantsMoreThanTheActorHolds(OperationContext $context, array $values): void
+    {
+        $actor = $context->actor;
+
+        if ($actor === null) {
+            throw new OperationRefused(
+                'This admin cannot tell who is making this change, so it will not grant anybody '
+                . 'anything. Whoever wired this handler has to pass the signed-in user.',
+            );
+        }
+
+        if (\in_array($this->roles->widest(), $actor->roles, true)) {
+            return;
+        }
+
+        foreach ([
+            'roles' => ['held' => $actor->roles, 'what' => 'role'],
+            'workspaces' => ['held' => $actor->workspaces, 'what' => 'workspace'],
+        ] as $column => $actors) {
+            if (!\array_key_exists($column, $values)) {
+                continue;
+            }
+
+            foreach ($this->listOf($values[$column]) as $granted) {
+                if (!\in_array($granted, $actors['held'], true)) {
+                    throw new OperationRefused(\sprintf(
+                        "You cannot give somebody the %s '%s', because you do not have it yourself. "
+                        . 'Ask somebody who does.',
+                        $actors['what'],
+                        $granted,
+                    ));
+                }
+            }
+        }
     }
 
     private function inviteAfterCommit(OperationContext $context, string $email, string $name): void

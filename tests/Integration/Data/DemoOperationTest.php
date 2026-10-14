@@ -6,7 +6,12 @@ namespace RockAdmin\Tests\Integration\Data;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RockAdmin\Auth\AdminUserOperation;
+use RockAdmin\Auth\AdminUsers;
+use RockAdmin\Auth\PasswordResets;
+use RockAdmin\Auth\Permission;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\Roles;
 use RockAdmin\Auth\RowWorkspace;
 use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
@@ -32,6 +37,9 @@ use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Mail\LogMailer;
+use RockAdmin\Mail\Mailbox;
+use RockAdmin\Mail\MessageFactory;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\Tests\Support\Access;
@@ -119,13 +127,13 @@ final class DemoOperationTest extends DatabaseTestCase
     #[DataProvider('connections')]
     public function testTheDemoRegistersEveryHandlerItsPagesName(?Connection $connection): void
     {
-        $this->requireConnection($connection);
+        $connection = $this->requireConnection($connection);
 
         // Nothing to assert afterwards: the assertion is that this does not
         // raise, which is what the demo itself relies on at startup.
         $this->expectNotToPerformAssertions();
 
-        $this->operations()->assertEveryHandlerExists($this->repository());
+        $this->operations($connection)->assertEveryHandlerExists($this->repository());
     }
 
     /** And without the registry it is refused at startup, naming the page. */
@@ -139,8 +147,12 @@ final class DemoOperationTest extends DatabaseTestCase
 
             self::fail('A page naming logic nothing registered was accepted.');
         } catch (PageException $e) {
-            self::assertStringContainsString("Page 'ads'", $e->getMessage());
-            self::assertStringContainsString('@handler:archive_ad', $e->getMessage());
+            // Whichever page it reaches first: the claim is that it names one,
+            // and names the key, rather than which of the demo's pages happens
+            // to be walked first.
+            self::assertMatchesRegularExpression("/Page '(ads|administrators)'/", $e->getMessage());
+            self::assertMatchesRegularExpression('/@handler:(archive_ad|ra_admin_user)/', $e->getMessage());
+            self::assertStringContainsString('nothing registered', $e->getMessage());
         }
     }
 
@@ -220,10 +232,33 @@ final class DemoOperationTest extends DatabaseTestCase
 
     // --- harness ---
 
-    /** The demo's own registry, as `demo/index.php` builds it. */
-    private function operations(): Operations
+    /**
+     * The demo's own registry, as `demo/index.php` builds it.
+     *
+     * Both of them, because the assertion that matters is that the demo
+     * registers *every* handler its pages name -- a registry listing one of
+     * two would pass a test written around one of two.
+     */
+    private function operations(Connection $connection): Operations
     {
-        return Operations::of(['archive_ad' => new ArchiveAd(new FlashBag($this->session))]);
+        $urls = new UrlGenerator('/');
+        $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
+        $config = (new Loader(\dirname(__DIR__, 3) . '/demo/config', static fn (string $n): ?string => null))
+            ->load();
+
+        return Operations::of([
+            'archive_ad' => new ArchiveAd(new FlashBag($this->session)),
+            'ra_admin_user' => new AdminUserOperation(
+                new AdminUsers($connection),
+                Roles::fromConfig($config->roles(), Permission::catalogue($this->repository())),
+                new PasswordResets($connection, 2880),
+                new MessageFactory($renderer, new Mailbox('admin@example.com', 'Admin'), 'RockAdmin Demo'),
+                new LogMailer(sys_get_temp_dir() . '/ra-demo-op-mail'),
+                $urls,
+                'https://admin.example.com',
+                2880,
+            ),
+        ]);
     }
 
     /** @param array<string, mixed> $body */
@@ -277,7 +312,7 @@ final class DemoOperationTest extends DatabaseTestCase
             $urls,
             new SqlAuditLog($connection),
             Access::identity()->user(),
-            $this->operations(),
+            $this->operations($connection),
             new RowWorkspace($scope, $reader),
         );
     }

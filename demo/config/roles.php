@@ -30,10 +30,15 @@ return [
 
         // `ads.*` widens and `!ads.delete` subtracts, and the order does not
         // matter: every subtraction is applied after every widening.
-        'permissions' => ['ads.*', '!ads.delete'],
+        'permissions' => ['ads.*', '!ads.delete', '!administrators.*'],
     ],
     'viewer' => [
         'label' => 'Viewer',
-        'permissions' => ['*.view'],
+
+        // `*.view` would include `administrators.view`, which is a list of
+        // every address that can sign in -- worth taking off explicitly rather
+        // than leaving to whoever reads the role and assumes "view" is
+        // harmless. Who may administer the admin is the superadmin's business.
+        'permissions' => ['*.view', '!administrators.*'],
     ],
 ];

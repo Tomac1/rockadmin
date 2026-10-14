@@ -24,6 +24,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use RockAdmin\Auth\AdminUserOperation;
 use RockAdmin\Auth\AdminUsers;
 use RockAdmin\Auth\Authenticator;
 use RockAdmin\Auth\AuthUser;
@@ -146,6 +147,11 @@ $flashes = new FlashBag($session);
 $menuItems = [
     new MenuItemView('Dashboard', $urls->route('dashboard'), key: 'dashboard'),
     new MenuItemView('Ads', $urls->to('p/ads'), key: 'ads'),
+    // Drawn only for somebody the gate would let open it, like every other
+    // item: `demo/config/roles.php` gives `administrators.*` to the superadmin
+    // and takes it off everybody else, so the editor and the viewer do not see
+    // this at all.
+    new MenuItemView('Administrators', $urls->to('p/administrators'), key: 'administrators'),
 ];
 
 $pagesPath = $configString($config, 'pages_path', 'pages');
@@ -271,6 +277,7 @@ $attemptsPerEmail = $configInt($config, 'auth.attempts_per_email', 10);
 $attemptsPerIp = $configInt($config, 'auth.attempts_per_ip', 20);
 $throttleWindow = $configInt($config, 'auth.window_minutes', 15);
 $resetLifetime = $configInt($config, 'auth.reset_lifetime_minutes', 60);
+$inviteLifetime = $configInt($config, 'auth.invite_lifetime_minutes', 2880);
 
 /**
  * Where this admin is reachable from outside, for the link in a reset mail.
@@ -570,7 +577,22 @@ if ($connection !== null) {
     // wiring that supplies them. A page naming something nothing registered is
     // refused now, saying which page and where -- the same arrangement
     // `Permission::assertActionsAreGrantable()` has with roles.
-    $operations = Operations::of(['archive_ad' => new ArchiveAd($flashes)]);
+    $operations = Operations::of([
+        'archive_ad' => new ArchiveAd($flashes),
+        // The SDK's own, for the SDK's own table: hashing, the two JSON
+        // columns, the refusal that keeps an installation reachable, and the
+        // invitation. `demo/config/pages/administrators.php` names it.
+        'ra_admin_user' => new AdminUserOperation(
+            new AdminUsers($connection),
+            Roles::fromConfig($config->roles(), Permission::catalogue($pages)),
+            new PasswordResets($connection, $inviteLifetime),
+            new MessageFactory($renderer, Mailers::from($config), $brand),
+            Mailers::fromConfig($config),
+            $urls,
+            $publicUrl,
+            $inviteLifetime,
+        ),
+    ]);
     $operations->assertEveryHandlerExists($pages);
 
     // Which workspace a row is in -- *its* own, not the one being looked at,
