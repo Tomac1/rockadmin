@@ -60,15 +60,109 @@ final class RootSchema
                     . 'copying or registering.',
                 example: ['resources/rockadmin', 'vendor/company/admin-theme'],
             ),
+            'public_url' => new SchemaKey(
+                ValueType::String,
+                default: '',
+                description: 'Where this admin is reachable from outside, as an absolute URL with no '
+                    . 'trailing slash. It is used for the links in mail, and only there -- every page '
+                    . 'of the admin itself builds relative URLs and needs none of this.\n\n'
+                    . 'It is configuration rather than something read from the request on purpose. A '
+                    . 'link built from the Host header is a link an attacker can choose by sending '
+                    . 'one, which turns a password reset into a way of collecting reset tokens: the '
+                    . 'mail goes to the right person and the link points at the wrong server. Left '
+                    . 'empty, a reset link cannot be built and the admin says so rather than sending '
+                    . 'a message nobody can use.',
+                example: 'https://admin.cyklobazar.cz',
+            ),
+            'auth' => new SchemaKey(
+                ValueType::Array,
+                description: 'How hard it is to guess a password, and how long a reset link lasts. '
+                    . 'The defaults are deliberately survivable: an administrator who has genuinely '
+                    . 'forgotten their password tries a handful of variants, and a lockout they '
+                    . 'cannot sit out is a support ticket.',
+                children: new Schema([
+                    'attempts_per_email' => new SchemaKey(
+                        ValueType::Int,
+                        default: 10,
+                        description: 'Sign-in attempts one address may make inside the window before '
+                            . 'the next is refused. Ten leaves room for somebody trying the variants '
+                            . 'they might have used, and is nowhere near enough to guess anything an '
+                            . 'Argon2id hash is protecting.',
+                        example: 5,
+                    ),
+                    'attempts_per_ip' => new SchemaKey(
+                        ValueType::Int,
+                        default: 20,
+                        description: 'Attempts one machine may make, counting every address it tried. '
+                            . 'Larger than the per-address allowance on purpose: one office address '
+                            . 'carries every administrator behind it, and one confused colleague must '
+                            . 'not lock out the rest.',
+                        example: 40,
+                    ),
+                    'window_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 15,
+                        description: 'How long both allowances are counted over, and therefore how '
+                            . 'long somebody waits after exhausting one. Fifteen minutes is a wait '
+                            . 'that can be sat out; an hour is one that gets reported as an outage.',
+                        example: 30,
+                    ),
+                    'reset_lifetime_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 60,
+                        description: 'How long a password-reset link works for, from specification 10. '
+                            . 'It is single-use whatever this says -- the lifetime is the second '
+                            . 'limit, for a link that was never used and is sitting in a mailbox.',
+                        example: 30,
+                    ),
+                    'invite_lifetime_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 2880,
+                        description: 'How long an invitation link works for. Longer than a reset, '
+                            . 'because nobody asked for it and it waits for somebody to read their '
+                            . 'mail: two days covers a weekend, and an invitation that expired '
+                            . 'unseen is a second message somebody has to send by hand.',
+                        example: 10080,
+                    ),
+                ]),
+            ),
             'mail' => new SchemaKey(
                 ValueType::Array,
-                description: 'How the admin sends a password reset.',
+                description: 'How the admin sends a password reset or an invitation. The default '
+                    . 'driver writes each message to a file instead of sending it, so an '
+                    . 'installation with no mail server still has a working password reset: the '
+                    . 'link is in the file.',
                 children: new Schema([
                     'driver' => new SchemaKey(
                         ValueType::String,
                         default: 'log',
-                        description: 'log, smtp, sendmail or callback.',
+                        description: 'log, smtp, sendmail or callback. The log driver writes one .eml '
+                            . 'per message under logs/mail and sends nothing. The callback driver is '
+                            . 'the one a project with its own mailer wants: the closure is passed to '
+                            . 'the bootstrap, because configuration holds data and the host supplies '
+                            . 'services.',
                         example: 'smtp',
+                    ),
+                    'from' => new SchemaKey(
+                        ValueType::Array,
+                        description: 'Who the mail is from. Required for every driver except callback, '
+                            . 'where the project already knows.',
+                        children: new Schema([
+                            'address' => new SchemaKey(
+                                ValueType::String,
+                                default: '',
+                                description: 'The sender address. An address at a domain this server is '
+                                    . 'allowed to send for, or the mail will be filed as spam whatever '
+                                    . 'the driver does.',
+                                example: '{{env.MAIL_FROM}}',
+                            ),
+                            'name' => new SchemaKey(
+                                ValueType::String,
+                                default: '',
+                                description: 'The name shown beside the address.',
+                                example: 'Cyklobazar admin',
+                            ),
+                        ]),
                     ),
                     'host' => new SchemaKey(
                         ValueType::String,
@@ -77,6 +171,39 @@ final class RootSchema
                         nullable: true,
                     ),
                     'port' => new SchemaKey(ValueType::Int, default: 587, description: 'SMTP port.', example: 587),
+                    'encryption' => new SchemaKey(
+                        ValueType::String,
+                        default: 'tls',
+                        description: "How the SMTP connection is secured: 'tls' issues STARTTLS on port "
+                            . "587, 'ssl' opens the socket encrypted on port 465, and 'none' sends in "
+                            . 'the clear -- which means the password below crosses the network as text, '
+                            . 'so it is for a server on the same machine and nothing else.',
+                        example: 'ssl',
+                    ),
+                    'username' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP username. Null for a server that does not ask.',
+                        example: '{{env.MAIL_USERNAME}}',
+                        nullable: true,
+                    ),
+                    'password' => new SchemaKey(
+                        ValueType::String,
+                        description: 'SMTP password. Write it as {{env.MAIL_PASSWORD}} and keep it out '
+                            . 'of git -- this file is committed, and the configuration cache is written '
+                            . 'with the value resolved, which is why that cache lives outside the '
+                            . 'document root.',
+                        example: '{{env.MAIL_PASSWORD}}',
+                        nullable: true,
+                    ),
+                    'timeout' => new SchemaKey(
+                        ValueType::Int,
+                        default: 10,
+                        description: 'Seconds to wait for the SMTP server, on connecting and on every '
+                            . 'reply. A request that sends mail waits for this, so it is short on '
+                            . 'purpose: a mail server that has stopped answering must not hold a '
+                            . 'browser open.',
+                        example: 5,
+                    ),
                 ]),
             ),
             'assets' => new SchemaKey(

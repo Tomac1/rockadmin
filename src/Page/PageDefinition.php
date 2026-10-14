@@ -91,6 +91,25 @@ final class PageDefinition
         return $found;
     }
 
+    /**
+     * The project's own logic for this page's create, update and delete, or
+     * null.
+     *
+     * The form block is where it is declared, because create and update are
+     * what a form does -- and delete belongs with them, which is the part that
+     * is easy to miss: `POST /a/{page}/delete` is a built-in verb with no
+     * action behind it, so nothing hands it an action's handler. A page whose
+     * form named one and whose delete quietly did the default would be a page
+     * where two thirds of the project's logic ran.
+     *
+     * The first form region, the same one `FormHandler::formRegionOf()`
+     * picks, so the two cannot disagree about which form a page has.
+     */
+    public function writeHandler(): ?HandlerReference
+    {
+        return $this->firstFormRegion()?->form->handler ?? null;
+    }
+
     public function action(string $key): ActionDefinition
     {
         if (isset($this->actions[$key])) {

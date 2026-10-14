@@ -24,16 +24,22 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use RockAdmin\Auth\AdminUserOperation;
+use RockAdmin\Auth\AdminUsers;
 use RockAdmin\Auth\Authenticator;
 use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
+use RockAdmin\Auth\PasswordResets;
+use RockAdmin\Auth\Permission;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\Roles;
 use RockAdmin\Auth\RowWorkspace;
 use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
 use RockAdmin\Auth\SqlAuthenticator;
+use RockAdmin\Auth\Throttle;
 use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
@@ -63,13 +69,17 @@ use RockAdmin\Http\LogoutHandler;
 use RockAdmin\Http\NativeSessionStore;
 use RockAdmin\Http\NotFoundException;
 use RockAdmin\Http\PageHandler;
+use RockAdmin\Http\PasswordResetHandler;
 use RockAdmin\Http\RegionHandler;
 use RockAdmin\Http\Request;
 use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\Router;
+use RockAdmin\Http\SetupHandler;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Http\WorkspaceHandler;
+use RockAdmin\Mail\Mailers;
+use RockAdmin\Mail\MessageFactory;
 use RockAdmin\Page\PageRepository;
 use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
@@ -137,6 +147,11 @@ $flashes = new FlashBag($session);
 $menuItems = [
     new MenuItemView('Dashboard', $urls->route('dashboard'), key: 'dashboard'),
     new MenuItemView('Ads', $urls->to('p/ads'), key: 'ads'),
+    // Drawn only for somebody the gate would let open it, like every other
+    // item: `demo/config/roles.php` gives `administrators.*` to the superadmin
+    // and takes it off everybody else, so the editor and the viewer do not see
+    // this at all.
+    new MenuItemView('Administrators', $urls->to('p/administrators'), key: 'administrators'),
 ];
 
 $pagesPath = $configString($config, 'pages_path', 'pages');
@@ -245,6 +260,36 @@ $auditValue = $config->get('audit.enabled', true);
 $auditEnabled = is_bool($auditValue) ? $auditValue : true;
 
 /**
+ * The `auth.*` numbers, read rather than hard-coded.
+ *
+ * The same argument as `audit.enabled` above: a throttle that can only be
+ * tuned by editing a composition root is a throttle nobody can find. These are
+ * declared in `RootSchema`, so they are in the generated reference and a
+ * project changes them in `rockadmin.php`.
+ */
+$configInt = static function (Config $config, string $path, int $default): int {
+    $value = $config->get($path, $default);
+
+    return is_int($value) ? $value : $default;
+};
+
+$attemptsPerEmail = $configInt($config, 'auth.attempts_per_email', 10);
+$attemptsPerIp = $configInt($config, 'auth.attempts_per_ip', 20);
+$throttleWindow = $configInt($config, 'auth.window_minutes', 15);
+$resetLifetime = $configInt($config, 'auth.reset_lifetime_minutes', 60);
+$inviteLifetime = $configInt($config, 'auth.invite_lifetime_minutes', 2880);
+
+/**
+ * Where this admin is reachable from outside, for the link in a reset mail.
+ *
+ * Deliberately not derived from the request: a link built from the `Host`
+ * header is a link an attacker chooses by sending one. Empty is a legitimate
+ * state -- this demo ships with it empty -- and the form says so plainly
+ * rather than sending a message whose link points at somebody else's server.
+ */
+$publicUrl = $configString($config, 'public_url', '');
+
+/**
  * The person the audit log names, resolved once for this request.
  *
  * It is the authenticated user and never a column of the row being written —
@@ -304,11 +349,75 @@ $login = new LoginHandler(
     $brand,
     is_string($remoteAddress) && $remoteAddress !== '' ? $remoteAddress : '0.0.0.0',
     $darkMode,
+    // So that "your password is set" is said on the page somebody lands on
+    // after a reset, rather than on a page of its own.
+    $flashes,
 );
 
 $handlers->register('login.form', $login);
 $handlers->register('login.submit', $login);
 $handlers->register('logout', new LogoutHandler($identity, $csrf, $urls));
+
+if ($connection !== null) {
+    // Specification 10's password reset. The default mail driver writes an
+    // .eml under storage/logs/mail and sends nothing, so this demo has a
+    // working forgotten-password flow with no mail server: the link is in the
+    // file, and a mail client opens it as the message it would have been.
+    $passwords = new PasswordResetHandler(
+        new AdminUsers($connection),
+        new PasswordResets($connection, $resetLifetime),
+        new Throttle($connection, $attemptsPerEmail, $attemptsPerIp, $throttleWindow * 60),
+        $identity,
+        Mailers::fromConfig($config),
+        new MessageFactory($renderer, Mailers::from($config), $brand),
+        $csrf,
+        $renderer,
+        $assets,
+        $flashes,
+        $urls,
+        $brand,
+        is_string($remoteAddress) && $remoteAddress !== '' ? $remoteAddress : '0.0.0.0',
+        $publicUrl,
+        $resetLifetime,
+        $darkMode,
+    );
+
+    foreach ([
+        'password.request.form',
+        'password.request.submit',
+        'password.reset.form',
+        'password.reset.submit',
+    ] as $route) {
+        $handlers->register($route, $passwords);
+    }
+
+    // `_setup` is how a freshly migrated installation gets its first
+    // administrator without writing an Argon2id hash into the database by
+    // hand. It 404s the moment one exists -- and `demo/seed.php` creates
+    // three, so in this demo it is reachable only on a database that has been
+    // migrated but not seeded. That is the state a real installation is in
+    // for about a minute, and the one worth being able to look at.
+    $setup = new SetupHandler(
+        new AdminUsers($connection),
+        $identity,
+        new SqlAuthenticator($connection),
+        // The same roles the gate is built from, read again rather than
+        // reached for through it: `Gate` answers questions about permissions
+        // and does not hand out its catalogue, and an accessor whose only
+        // caller is this one page would be a hole in that for a convenience.
+        Roles::fromConfig($config->roles(), Permission::catalogue($pages)),
+        $workspaces,
+        $csrf,
+        $renderer,
+        $assets,
+        $urls,
+        $brand,
+        $darkMode,
+    );
+
+    $handlers->register('setup.form', $setup);
+    $handlers->register('setup.submit', $setup);
+}
 
 $handlers->register(
     'dashboard',
@@ -468,7 +577,22 @@ if ($connection !== null) {
     // wiring that supplies them. A page naming something nothing registered is
     // refused now, saying which page and where -- the same arrangement
     // `Permission::assertActionsAreGrantable()` has with roles.
-    $operations = Operations::of(['archive_ad' => new ArchiveAd($flashes)]);
+    $operations = Operations::of([
+        'archive_ad' => new ArchiveAd($flashes),
+        // The SDK's own, for the SDK's own table: hashing, the two JSON
+        // columns, the refusal that keeps an installation reachable, and the
+        // invitation. `demo/config/pages/administrators.php` names it.
+        'ra_admin_user' => new AdminUserOperation(
+            new AdminUsers($connection),
+            Roles::fromConfig($config->roles(), Permission::catalogue($pages)),
+            new PasswordResets($connection, $inviteLifetime),
+            new MessageFactory($renderer, Mailers::from($config), $brand),
+            Mailers::fromConfig($config),
+            $urls,
+            $publicUrl,
+            $inviteLifetime,
+        ),
+    ]);
     $operations->assertEveryHandlerExists($pages);
 
     // Which workspace a row is in -- *its* own, not the one being looked at,

@@ -28,4 +28,32 @@ return [
     'theme' => [
         'dark' => 'auto',
     ],
+
+    /*
+     * Where this demo is reachable from outside, for the links in mail.
+     *
+     * It is read from the environment because a demo is run on whatever port
+     * is free, and left empty when nothing says. Empty is a real state and the
+     * reset form says so plainly rather than sending a link to nowhere --
+     * which is better than the alternative of building one from the Host
+     * header, a value whoever sent the request chose.
+     *
+     *     RA_PUBLIC_URL=http://localhost:8080 php -S localhost:8080 -t demo demo/index.php
+     */
+    'public_url' => getenv('RA_PUBLIC_URL') !== false ? getenv('RA_PUBLIC_URL') : '',
+
+    /*
+     * The default driver, spelled out rather than left implicit, because the
+     * point of this demo is that every key is one a project would set. It
+     * writes each message to storage/logs/mail as an .eml a mail client opens;
+     * nothing is sent, and the forgotten-password flow works end to end with
+     * no mail server anywhere.
+     */
+    'mail' => [
+        'driver' => 'log',
+        'from' => [
+            'address' => 'admin@example.com',
+            'name' => 'RockAdmin Demo',
+        ],
+    ],
 ];

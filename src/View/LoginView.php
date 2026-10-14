@@ -41,6 +41,17 @@ final class LoginView
         public readonly string $returnTo = '',
         public readonly ?string $message = null,
         public readonly string $hint = '',
+        /**
+         * Something that went right, said on the page somebody lands on
+         * afterwards.
+         *
+         * Separate from `message` because they mean opposite things and are
+         * drawn differently. It exists because a password that has just been
+         * set is news the person needs on the login form -- the alternative
+         * was for the reset to render its own "done" page, which is a page
+         * whose only content is a sentence and a link back here.
+         */
+        public readonly ?string $notice = null,
     ) {
     }
 

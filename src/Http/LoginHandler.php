@@ -9,6 +9,7 @@ use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
 use RockAdmin\Form\FormFields;
 use RockAdmin\View\Assets;
+use RockAdmin\View\FlashBag;
 use RockAdmin\View\LoginView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellView;
@@ -85,6 +86,20 @@ final class LoginHandler implements Handler
         private readonly string $brand,
         private readonly string $clientIp,
         private readonly string $darkMode = 'auto',
+        /**
+         * Flashes left by whatever sent somebody here.
+         *
+         * Only one thing does today: a password reset redirects to this page
+         * after setting a password, and "your password is set, sign in with
+         * it" belongs on the form rather than on a page of its own. This page
+         * draws no toasts -- it loads no script, and `.toast` is hidden until
+         * one shows it -- so the message is drawn as an alert in the flow of
+         * the form instead.
+         *
+         * Optional, because a great many tests build this handler to check one
+         * sign-in and have no session to flash into.
+         */
+        private readonly ?FlashBag $flashes = null,
     ) {
     }
 
@@ -193,9 +208,30 @@ final class LoginHandler implements Handler
             returnTo: $returnPath,
             message: $message,
             hint: $hint,
+            notice: $this->notice(),
         );
 
         return Response::html($this->renderer->render('page/login', $view), $status);
+    }
+
+    /**
+     * The first thing flashed to this session, taken rather than read.
+     *
+     * Taken, because a flash is shown once: a message still sitting there
+     * after the page that shows it would reappear on the next refused
+     * attempt, which is how "your password is set" ends up under "that was
+     * not the right password".
+     *
+     * Only the first. This page has room for one sentence, and the only
+     * caller flashes one.
+     */
+    private function notice(): ?string
+    {
+        foreach ($this->flashes?->take() ?? [] as $flash) {
+            return $flash->message;
+        }
+
+        return null;
     }
 
     /**

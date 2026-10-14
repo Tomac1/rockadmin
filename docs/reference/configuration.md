@@ -20,6 +20,7 @@ The pages themselves are described in their own files and documented in
 | `debug` | bool | `false` | `true` | Shows what went wrong instead of a neutral error page. Never on in production. |
 | `brand` | string | `RockAdmin` | `Cyklobazar admin` | Shown in the navbar. |
 | `template_paths` | array | `[]` | `['resources/rockadmin', 'vendor/company/admin-theme']` | Directories searched for templates before the SDK's own, highest priority first. A file with the same name as an SDK template replaces it; nothing needs copying or registering. |
+| `public_url` | string | `` | `https://admin.cyklobazar.cz` | Where this admin is reachable from outside, as an absolute URL with no trailing slash. It is used for the links in mail, and only there -- every page of the admin itself builds relative URLs and needs none of this.\n\nIt is configuration rather than something read from the request on purpose. A link built from the Host header is a link an attacker can choose by sending one, which turns a password reset into a way of collecting reset tokens: the mail goes to the right person and the link points at the wrong server. Left empty, a reset link cannot be built and the admin says so rather than sending a message nobody can use. |
 | `pages_path` | string | `pages` | `pages` | Where page files live, relative to the configuration directory. One file per page, named after the page: pages/ads.php is reachable at /p/ads. |
 | `per_page` | int | `25` | `50` | Rows in one page of a grid, for regions that do not set their own. *Performance:* A large value makes every grid render slower for everyone; set it per region where a particular page needs more. |
 
@@ -32,15 +33,40 @@ Writable directories, relative to the project root.
 | `logs` | string | — | `storage/logs/rockadmin` | Errors, mail and the audit trail. Must be outside the document root. **Required.** |
 | `cache` | string | — | `storage/cache/rockadmin` | Where the compiled configuration is written. It can hold resolved {{env.*}} values, so it must be outside the document root. *Performance:* Without it the configuration is read and validated on every request. |
 
-## `mail`
+## `auth`
 
-How the admin sends a password reset.
+How hard it is to guess a password, and how long a reset link lasts. The defaults are deliberately survivable: an administrator who has genuinely forgotten their password tries a handful of variants, and a lockout they cannot sit out is a support ticket.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `driver` | string | `log` | `smtp` | log, smtp, sendmail or callback. |
+| `attempts_per_email` | int | `10` | `5` | Sign-in attempts one address may make inside the window before the next is refused. Ten leaves room for somebody trying the variants they might have used, and is nowhere near enough to guess anything an Argon2id hash is protecting. |
+| `attempts_per_ip` | int | `20` | `40` | Attempts one machine may make, counting every address it tried. Larger than the per-address allowance on purpose: one office address carries every administrator behind it, and one confused colleague must not lock out the rest. |
+| `window_minutes` | int | `15` | `30` | How long both allowances are counted over, and therefore how long somebody waits after exhausting one. Fifteen minutes is a wait that can be sat out; an hour is one that gets reported as an outage. |
+| `reset_lifetime_minutes` | int | `60` | `30` | How long a password-reset link works for, from specification 10. It is single-use whatever this says -- the lifetime is the second limit, for a link that was never used and is sitting in a mailbox. |
+| `invite_lifetime_minutes` | int | `2880` | `10080` | How long an invitation link works for. Longer than a reset, because nobody asked for it and it waits for somebody to read their mail: two days covers a weekend, and an invitation that expired unseen is a second message somebody has to send by hand. |
+
+## `mail`
+
+How the admin sends a password reset or an invitation. The default driver writes each message to a file instead of sending it, so an installation with no mail server still has a working password reset: the link is in the file.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `driver` | string | `log` | `smtp` | log, smtp, sendmail or callback. The log driver writes one .eml per message under logs/mail and sends nothing. The callback driver is the one a project with its own mailer wants: the closure is passed to the bootstrap, because configuration holds data and the host supplies services. |
 | `host` | string or null | — | `{{env.MAIL_HOST}}` | SMTP host. Null while the driver does not need one. |
 | `port` | int | `587` | `587` | SMTP port. |
+| `encryption` | string | `tls` | `ssl` | How the SMTP connection is secured: 'tls' issues STARTTLS on port 587, 'ssl' opens the socket encrypted on port 465, and 'none' sends in the clear -- which means the password below crosses the network as text, so it is for a server on the same machine and nothing else. |
+| `username` | string or null | — | `{{env.MAIL_USERNAME}}` | SMTP username. Null for a server that does not ask. |
+| `password` | string or null | — | `{{env.MAIL_PASSWORD}}` | SMTP password. Write it as {{env.MAIL_PASSWORD}} and keep it out of git -- this file is committed, and the configuration cache is written with the value resolved, which is why that cache lives outside the document root. |
+| `timeout` | int | `10` | `5` | Seconds to wait for the SMTP server, on connecting and on every reply. A request that sends mail waits for this, so it is short on purpose: a mail server that has stopped answering must not hold a browser open. |
+
+## `mail.from`
+
+Who the mail is from. Required for every driver except callback, where the project already knows.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `address` | string | `` | `{{env.MAIL_FROM}}` | The sender address. An address at a domain this server is allowed to send for, or the mail will be filed as spam whatever the driver does. |
+| `name` | string | `` | `Cyklobazar admin` | The name shown beside the address. |
 
 ## `assets`
 
