@@ -26,3 +26,6 @@ Thumbs.db
 
 # Playwright MCP writes session artefacts here when a browser check runs.
 .playwright-mcp/
+
+# The demo writes mail and logs here when it runs.
+/demo/storage/logs/
