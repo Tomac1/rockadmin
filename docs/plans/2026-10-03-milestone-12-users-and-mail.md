@@ -307,3 +307,117 @@ not take.
   host wanting a queue has `CallbackMailer`.
 - **Built-in pages.** Discussed above: it needs a second page root and an
   override rule, and a page file costs nothing.
+
+---
+
+## Where it ended up (2026-10-14)
+
+All nine tasks done, `composer run check` green on both drivers (2690 tests).
+Six routes that answered 404 since milestone 5 answer now, and the demo has a
+working forgotten-password flow with no mail server anywhere: the message lands
+in `demo/storage/logs/mail` as an `.eml` a mail client opens, and the link in it
+is real.
+
+Against the acceptance list: a project replaces the mailer in one constructor
+argument (2); every message goes out in both halves through overridable
+templates (3); a forgotten password is recovered without a database client and
+the form says the same thing either way, byte for byte but for its CSRF token
+(4); a link works once, expires in an hour and is useless to somebody holding
+the database (5); an installation with no administrators can make its first and
+one with administrators cannot (6); administrators are created, edited, invited
+and deactivated from inside the admin, and the last superadmin cannot remove
+their own access (7); every new key is in the generated reference (8).
+
+### What the plan got right, and what it cost
+
+**Mail as a seam before a feature was the right order.** `CallbackMailer` is
+three lines and is what a real project should use; everything else exists so a
+framework-less one is not stuck. The SMTP client justified its two hundred
+lines against rule 1, and writing it against `SmtpTransport` is what made nine
+tests of a protocol possible without a server.
+
+**`AdminUsers` had to come forward from task 7 into task 5.** A token store
+that could not set a password would have been a task finished in name only.
+
+**The administrators page as configuration held up.** The SDK using milestone
+11's own seam for its own table is the best evidence that the seam is wide
+enough, and the page file reads like any other page file.
+
+### Six findings from the background security review, five of them real
+
+The reviewer ran on every commit and was right five times out of six. In order:
+
+1. **A fail-open throttle.** `?Throttle $throttle = null` with null meaning
+   "count nothing" read as a convenience for tests; `new
+   SqlAuthenticator($connection)` is what a host writes, and it would have
+   accepted unlimited guesses while looking exactly like an authenticator that
+   did not. Omitting the argument now means the default allowances.
+2. **A mail failure flashed to whoever asked.** The flash landed in their
+   session and the login page drew it, so "could not be sent" appeared for
+   addresses that exist and not for ones that do not -- the disclosure the
+   whole handler is shaped around, arriving by the back door.
+3. **`_setup`'s race.** Two people on a freshly migrated admin both read "no
+   administrators" and both write one, and their addresses differ so the unique
+   index did not catch it. Migration 004's `founder` column, which one row may
+   hold, is what makes "first wins" true rather than likely.
+4. **Privilege escalation on the administrators page.**
+   `administrators.update` was also the permission to award oneself every other
+   permission there is.
+5. **And the other direction**: nothing stopped somebody editing an account
+   *above* them -- setting a superadmin's password is not escalation by
+   permission, it is signing in as them a minute later. Roles and workspaces
+   both count now, because two administrators with the same role and different
+   tenants are not peers.
+6. **A fail-open in those very checks**: they read the roles out of the row the
+   operation was handed, and that row carries the columns the *page* names. A
+   project whose form left `roles` out would have had every check over roles
+   pass silently. They read the table now.
+
+The sixth finding -- that `_setup` has no authentication -- is what it is: the
+bootstrap. What was missing was not a check but the guarantee that the check
+cannot be overtaken.
+
+### Three things found by running it
+
+**A cleared multiselect kept its old value**, and on a create left a NOT NULL
+column unwritten. `FieldValidator` wrote a field only when the submission
+carried it, and a multiselect with nothing chosen sends nothing at all. It is
+now the second field type whose absence is a value, beside the checkbox.
+
+**The built-in delete never reached the form's handler.** `POST
+/a/{page}/delete` has no action behind it, so a page whose form declared
+`handler` had the project's logic run for create and update and not for delete
+-- the one of the three that cannot be undone.
+
+**A multiselect drew nothing as chosen and saving cleared it.** The control was
+handed the column as the database holds it, `["superadmin"]`, which matched no
+option. Found by opening the page; every test in the suite posts values rather
+than reading a form.
+
+### Still open
+
+**The create button says "New Administrators".** It is built from the page
+title, so every plural page title reads wrong there and in the form's own
+heading ("Edit Administrators"). The fix is a `singular` key in the page
+schema, read by `FormRegion` and the grid header -- small, but it is a
+configuration key with a reference entry and a handful of tests to update, and
+it belongs with whatever milestone next touches page metadata rather than
+bolted onto this one.
+
+**Narrow viewports still do not work**, measured in milestone 11's report and
+unchanged: 1086 pixels of horizontal scroll at 384. Still an interlude of its
+own.
+
+**Nobody has switched JavaScript off yet**, carried from milestone 9.
+
+**`ra_login_attempts` and `ra_password_resets` grow unbounded.** Both are
+append-only and nothing prunes them. A row outside the window costs a
+comparison rather than a decision, so it is not urgent -- but it is an
+environment job, it belongs to the CLI milestone, and it is recorded here
+rather than done quietly during somebody's sign-in.
+
+**Timing still distinguishes an address that exists from one that does not**,
+because sending mail takes longer than not sending it. Equalising it needs a
+queue or a flushed response; what stands between the signal and a usable oracle
+is the throttle. Written into `PasswordResetHandler`'s docblock rather than
+left for somebody to discover.
