@@ -296,6 +296,94 @@ final class AdminUserOperationTest extends DatabaseTestCase
         self::assertSame(1, $this->countFor($connection, 'actor@example.com'), 'The row was deleted anyway.');
     }
 
+    // --- nobody reaches above themselves ---
+
+    /**
+     * The takeover the second review round found: `administrators.update` is
+     * the permission to manage accounts, and without a rule it is also the
+     * permission to set the password of somebody who can do more than you --
+     * which is not escalation by permission, it is signing in as them
+     * afterwards.
+     */
+    #[DataProvider('connections')]
+    public function testAnEditorCannotSetASuperadminsPassword(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $superadmin = $this->existing($connection, 'jana@example.com', 'the-original-password', ['superadmin']);
+        $editor = $this->existing($connection, 'editor@example.com', 'a-password-here', ['viewer']);
+        $before = $this->text($this->rowFor($connection, 'jana@example.com')['password']);
+
+        $response = $this->post($connection, 'update', [
+            FormFields::ID => $superadmin,
+            'email' => 'jana@example.com',
+            'name' => 'Jana',
+            'password' => 'a-password-the-editor-knows',
+            'roles' => ['superadmin'],
+            'is_active' => '1',
+        ], $editor, ['viewer']);
+
+        self::assertSame(422, $response->status, "An editor set a superadmin's password.");
+        self::assertStringContainsString('do not have it yourself', $response->body);
+        self::assertSame($before, $this->text($this->rowFor($connection, 'jana@example.com')['password']));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnEditorCannotDeleteASuperadmin(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $superadmin = $this->existing($connection, 'jana@example.com', 'a-password-here', ['superadmin']);
+        $this->existing($connection, 'petr@example.com', 'a-password-here', ['superadmin']);
+        $editor = $this->existing($connection, 'editor@example.com', 'a-password-here', ['viewer']);
+
+        $response = $this->post($connection, 'delete', [FormFields::ID => $superadmin], $editor, ['viewer']);
+
+        self::assertSame(302, $response->status);
+        self::assertStringContainsString('do not have it yourself', $this->flashes());
+        self::assertSame(1, $this->countFor($connection, 'jana@example.com'));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnEditorCannotGrantARoleTheyDoNotHold(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $this->existing($connection, 'jana@example.com', 'a-password-here', ['superadmin']);
+        $editor = $this->existing($connection, 'editor@example.com', 'a-password-here', ['viewer']);
+
+        $response = $this->post($connection, 'create', [
+            'email' => 'friend@example.com',
+            'name' => 'A Friend',
+            'password' => 'a-password-here',
+            'roles' => ['superadmin'],
+            'is_active' => '1',
+        ], $editor, ['viewer']);
+
+        self::assertSame(422, $response->status, 'An editor made somebody a superadmin.');
+        self::assertStringContainsString('do not have it yourself', $response->body);
+        self::assertSame(0, $this->countFor($connection, 'friend@example.com'));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnEditorMayStillManageAccountsAtTheirOwnLevel(?Connection $connection): void
+    {
+        // The other half: a rule that refuses everything is not a safeguard.
+        $connection = $this->requireConnection($connection);
+        $this->existing($connection, 'jana@example.com', 'a-password-here', ['superadmin']);
+        $editor = $this->existing($connection, 'editor@example.com', 'a-password-here', ['viewer']);
+        $colleague = $this->existing($connection, 'colleague@example.com', 'a-password-here', ['viewer']);
+
+        $response = $this->post($connection, 'update', [
+            FormFields::ID => $colleague,
+            'email' => 'colleague@example.com',
+            'name' => 'A Colleague',
+            'password' => '',
+            'roles' => ['viewer'],
+            'is_active' => '1',
+        ], $editor, ['viewer']);
+
+        self::assertSame(302, $response->status, $response->body);
+        self::assertSame('A Colleague', $this->text($this->rowFor($connection, 'colleague@example.com')['name']));
+    }
+
     // --- invitations ---
 
     #[DataProvider('connections')]
@@ -380,10 +468,18 @@ final class AdminUserOperationTest extends DatabaseTestCase
 
     // --- harness ---
 
-    /** @param array<string, mixed> $body */
-    private function post(Connection $connection, string $verb, array $body, string $actorId = '1'): Response
-    {
-        return $this->actions($connection, $actorId)->handle(
+    /**
+     * @param array<string, mixed> $body
+     * @param list<string>         $actorRoles what the person doing it holds
+     */
+    private function post(
+        Connection $connection,
+        string $verb,
+        array $body,
+        string $actorId = '1',
+        array $actorRoles = ['superadmin'],
+    ): Response {
+        return $this->actions($connection, $actorId, $actorRoles)->handle(
             new Route('action', ['page' => 'administrators', 'action' => $verb]),
             new Request(
                 'POST',
@@ -393,7 +489,8 @@ final class AdminUserOperationTest extends DatabaseTestCase
         );
     }
 
-    private function actions(Connection $connection, string $actorId): ActionHandler
+    /** @param list<string> $actorRoles */
+    private function actions(Connection $connection, string $actorId, array $actorRoles): ActionHandler
     {
         $urls = new UrlGenerator('/admin');
         $csrf = new Csrf($this->session);
@@ -424,7 +521,7 @@ final class AdminUserOperationTest extends DatabaseTestCase
             $flashes,
             $urls,
             new \RockAdmin\Auth\SqlAuditLog($connection),
-            new \RockAdmin\Auth\AuthUser($actorId, 'actor@example.com', 'Actor', ['superadmin']),
+            new \RockAdmin\Auth\AuthUser($actorId, 'actor@example.com', 'Actor', $actorRoles),
             Operations::of(['ra_admin_user' => $this->operation($connection, $renderer, $urls)]),
         );
     }

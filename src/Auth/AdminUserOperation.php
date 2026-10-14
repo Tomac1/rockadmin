@@ -42,9 +42,11 @@ use RockAdmin\Mail\MessageFactory;
  * 4. **An account created without a password is invited.** The mail goes out
  *    after the commit, because a transaction can take back a row and cannot
  *    take back an e-mail.
- * 5. **Nobody hands out more than they hold.** `administrators.update` is the
- *    permission to manage accounts; without a rule it is also the permission
- *    to award oneself every other permission there is.
+ * 5. **Nobody hands out more than they hold, and nobody reaches above
+ *    themselves.** `administrators.update` is the permission to manage
+ *    accounts; without rules it is also the permission to award oneself every
+ *    other permission there is, and to set the password of somebody who
+ *    already has them.
  */
 final class AdminUserOperation implements Operation
 {
@@ -117,6 +119,7 @@ final class AdminUserOperation implements Operation
         array $values,
         WriteHandler $writes,
     ): ?WriteResult {
+        $this->refuseIfTheAccountIsAboveTheActor($context, $row);
         $this->refuseIfItLocksTheBuilding($context, $row, $values);
         $this->refuseIfItGrantsMoreThanTheActorHolds($context, $values);
 
@@ -136,6 +139,7 @@ final class AdminUserOperation implements Operation
     /** @param array<string, mixed> $row */
     private function delete(OperationContext $context, array $row, WriteHandler $writes): ?WriteResult
     {
+        $this->refuseIfTheAccountIsAboveTheActor($context, $row);
         $this->refuseIfItLocksTheBuilding($context, $row, ['is_active' => false]);
 
         if ((string) $context->key === ($context->actor->id ?? '')) {
@@ -204,6 +208,54 @@ final class AdminUserOperation implements Operation
             . 'first.',
             $this->roles->label($widest),
         ));
+    }
+
+    /**
+     * Refuses touching an account that holds a role the person doing it does
+     * not hold.
+     *
+     * The other half of the same review finding, and the half with teeth. The
+     * rule before this one stopped somebody *granting* a role they do not
+     * have; it said nothing about whose row they were editing. So an editor
+     * who may manage administrators could open a superadmin's row and set its
+     * password -- which is not escalation by permission, it is simply signing
+     * in as them afterwards. Deleting or deactivating one is the same shape
+     * with the damage pointing the other way.
+     *
+     * So: you may manage accounts at or below your own level, and not above
+     * it. Somebody holding the widest role is exempt for the reason they are
+     * exempt everywhere here -- the rule would only ever fire on the honest.
+     *
+     * An account holding no roles at all is below everybody, which is the
+     * right answer: it can do nothing, so managing it grants nothing.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function refuseIfTheAccountIsAboveTheActor(OperationContext $context, array $row): void
+    {
+        $actor = $context->actor;
+
+        if ($actor === null) {
+            throw new OperationRefused(
+                'This admin cannot tell who is making this change, so it will not let anybody change '
+                . "somebody else's account. Whoever wired this handler has to pass the signed-in user.",
+            );
+        }
+
+        if (\in_array($this->roles->widest(), $actor->roles, true)) {
+            return;
+        }
+
+        foreach ($this->rolesOf($row['roles'] ?? null) as $held) {
+            if (!\in_array($held, $actor->roles, true)) {
+                throw new OperationRefused(\sprintf(
+                    'You cannot change an account that has the %s role, because you do not have it '
+                    . 'yourself -- and setting its password would mean signing in as it. Ask somebody '
+                    . 'who does.',
+                    $this->roles->label($held),
+                ));
+            }
+        }
     }
 
     /**
