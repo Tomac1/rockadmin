@@ -60,6 +60,20 @@ final class RootSchema
                     . 'copying or registering.',
                 example: ['resources/rockadmin', 'vendor/company/admin-theme'],
             ),
+            'public_url' => new SchemaKey(
+                ValueType::String,
+                default: '',
+                description: 'Where this admin is reachable from outside, as an absolute URL with no '
+                    . 'trailing slash. It is used for the links in mail, and only there -- every page '
+                    . 'of the admin itself builds relative URLs and needs none of this.\n\n'
+                    . 'It is configuration rather than something read from the request on purpose. A '
+                    . 'link built from the Host header is a link an attacker can choose by sending '
+                    . 'one, which turns a password reset into a way of collecting reset tokens: the '
+                    . 'mail goes to the right person and the link points at the wrong server. Left '
+                    . 'empty, a reset link cannot be built and the admin says so rather than sending '
+                    . 'a message nobody can use.',
+                example: 'https://admin.cyklobazar.cz',
+            ),
             'auth' => new SchemaKey(
                 ValueType::Array,
                 description: 'How hard it is to guess a password, and how long a reset link lasts. '

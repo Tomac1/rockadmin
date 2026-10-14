@@ -51,6 +51,12 @@ $passwordId = 'ra-login-password';
             <h1 class="ra-login-brand"><?= $e($view->shell->brand) ?></h1>
             <p class="ra-login-title"><?= $e($view->title) ?></p>
 
+            <?php if ($view->notice !== null) { ?>
+                <div class="ra-alert ra-alert--info ra-login-notice" role="status">
+                    <p class="ra-alert__title ra-login-notice-text"><?= $e($view->notice) ?></p>
+                </div>
+            <?php } ?>
+
             <?php if ($view->message !== null) { ?>
                 <div class="ra-alert ra-alert--error ra-login-message" role="alert">
                     <p class="ra-alert__title ra-login-message-text"><?= $e($view->message) ?></p>
