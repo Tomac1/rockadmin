@@ -10,6 +10,7 @@ use RockAdmin\Auth\Argon2idHasher;
 use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\LoginOutcome;
 use RockAdmin\Auth\SqlAuthenticator;
+use RockAdmin\Auth\Throttle;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\Migrator;
@@ -350,7 +351,11 @@ final class LoginTest extends DatabaseTestCase
         int $perIp = 20,
         int $window = 900,
     ): SqlAuthenticator {
-        return new SqlAuthenticator($connection, new Argon2idHasher(), $perEmail, $perIp, $window);
+        return new SqlAuthenticator(
+            $connection,
+            new Argon2idHasher(),
+            new Throttle($connection, $perEmail, $perIp, $window),
+        );
     }
 
     private function fresh(?Connection $connection): Connection

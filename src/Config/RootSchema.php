@@ -60,6 +60,58 @@ final class RootSchema
                     . 'copying or registering.',
                 example: ['resources/rockadmin', 'vendor/company/admin-theme'],
             ),
+            'auth' => new SchemaKey(
+                ValueType::Array,
+                description: 'How hard it is to guess a password, and how long a reset link lasts. '
+                    . 'The defaults are deliberately survivable: an administrator who has genuinely '
+                    . 'forgotten their password tries a handful of variants, and a lockout they '
+                    . 'cannot sit out is a support ticket.',
+                children: new Schema([
+                    'attempts_per_email' => new SchemaKey(
+                        ValueType::Int,
+                        default: 10,
+                        description: 'Sign-in attempts one address may make inside the window before '
+                            . 'the next is refused. Ten leaves room for somebody trying the variants '
+                            . 'they might have used, and is nowhere near enough to guess anything an '
+                            . 'Argon2id hash is protecting.',
+                        example: 5,
+                    ),
+                    'attempts_per_ip' => new SchemaKey(
+                        ValueType::Int,
+                        default: 20,
+                        description: 'Attempts one machine may make, counting every address it tried. '
+                            . 'Larger than the per-address allowance on purpose: one office address '
+                            . 'carries every administrator behind it, and one confused colleague must '
+                            . 'not lock out the rest.',
+                        example: 40,
+                    ),
+                    'window_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 15,
+                        description: 'How long both allowances are counted over, and therefore how '
+                            . 'long somebody waits after exhausting one. Fifteen minutes is a wait '
+                            . 'that can be sat out; an hour is one that gets reported as an outage.',
+                        example: 30,
+                    ),
+                    'reset_lifetime_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 60,
+                        description: 'How long a password-reset link works for, from specification 10. '
+                            . 'It is single-use whatever this says -- the lifetime is the second '
+                            . 'limit, for a link that was never used and is sitting in a mailbox.',
+                        example: 30,
+                    ),
+                    'invite_lifetime_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 2880,
+                        description: 'How long an invitation link works for. Longer than a reset, '
+                            . 'because nobody asked for it and it waits for somebody to read their '
+                            . 'mail: two days covers a weekend, and an invitation that expired '
+                            . 'unseen is a second message somebody has to send by hand.',
+                        example: 10080,
+                    ),
+                ]),
+            ),
             'mail' => new SchemaKey(
                 ValueType::Array,
                 description: 'How the admin sends a password reset or an invitation. The default '

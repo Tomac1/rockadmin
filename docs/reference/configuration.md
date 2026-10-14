@@ -32,6 +32,18 @@ Writable directories, relative to the project root.
 | `logs` | string | — | `storage/logs/rockadmin` | Errors, mail and the audit trail. Must be outside the document root. **Required.** |
 | `cache` | string | — | `storage/cache/rockadmin` | Where the compiled configuration is written. It can hold resolved {{env.*}} values, so it must be outside the document root. *Performance:* Without it the configuration is read and validated on every request. |
 
+## `auth`
+
+How hard it is to guess a password, and how long a reset link lasts. The defaults are deliberately survivable: an administrator who has genuinely forgotten their password tries a handful of variants, and a lockout they cannot sit out is a support ticket.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `attempts_per_email` | int | `10` | `5` | Sign-in attempts one address may make inside the window before the next is refused. Ten leaves room for somebody trying the variants they might have used, and is nowhere near enough to guess anything an Argon2id hash is protecting. |
+| `attempts_per_ip` | int | `20` | `40` | Attempts one machine may make, counting every address it tried. Larger than the per-address allowance on purpose: one office address carries every administrator behind it, and one confused colleague must not lock out the rest. |
+| `window_minutes` | int | `15` | `30` | How long both allowances are counted over, and therefore how long somebody waits after exhausting one. Fifteen minutes is a wait that can be sat out; an hour is one that gets reported as an outage. |
+| `reset_lifetime_minutes` | int | `60` | `30` | How long a password-reset link works for, from specification 10. It is single-use whatever this says -- the lifetime is the second limit, for a link that was never used and is sitting in a mailbox. |
+| `invite_lifetime_minutes` | int | `2880` | `10080` | How long an invitation link works for. Longer than a reset, because nobody asked for it and it waits for somebody to read their mail: two days covers a weekend, and an invitation that expired unseen is a second message somebody has to send by hand. |
+
 ## `mail`
 
 How the admin sends a password reset or an invitation. The default driver writes each message to a file instead of sending it, so an installation with no mail server still has a working password reset: the link is in the file.

@@ -14,6 +14,7 @@ use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\LoginOutcome;
 use RockAdmin\Auth\LoginResult;
 use RockAdmin\Auth\SqlAuthenticator;
+use RockAdmin\Auth\Throttle;
 use RockAdmin\Db\Connection;
 use RockAdmin\Db\DbException;
 use RockAdmin\Db\MySqlDialect;
@@ -85,17 +86,26 @@ final class SqlAuthenticatorTest extends TestCase
         int $perEmail = 10,
         int $perIp = 20,
     ): SqlAuthenticator {
-        return new SqlAuthenticator(
-            new Connection(new FakePdo($rows), new MySqlDialect()),
-            $hasher,
-            $perEmail,
-            $perIp,
-        );
+        return $this->authenticatorOn(new FakePdo($rows), $hasher, $perEmail, $perIp);
     }
 
-    private function authenticatorOn(FakePdo $pdo): SqlAuthenticator
-    {
-        return new SqlAuthenticator(new Connection($pdo, new MySqlDialect()), new CountingHasher());
+    /**
+     * The authenticator and its throttle over one connection.
+     *
+     * They share it on purpose: the throttle's two counts and the
+     * authenticator's own reads come back from the same scripted `FakePdo` in
+     * the order they are issued, which is what makes the statement-order
+     * assertions below mean anything.
+     */
+    private function authenticatorOn(
+        FakePdo $pdo,
+        CountingHasher $hasher = new CountingHasher(),
+        int $perEmail = 10,
+        int $perIp = 20,
+    ): SqlAuthenticator {
+        $connection = new Connection($pdo, new MySqlDialect());
+
+        return new SqlAuthenticator($connection, $hasher, new Throttle($connection, $perEmail, $perIp));
     }
 
     /** @return list<string> */
@@ -126,9 +136,9 @@ final class SqlAuthenticatorTest extends TestCase
         $unknownHasher = new CountingHasher();
         $wrongHasher = new CountingHasher();
 
-        $unknown = (new SqlAuthenticator(new Connection($unknownPdo, new MySqlDialect()), $unknownHasher))
+        $unknown = $this->authenticatorOn($unknownPdo, $unknownHasher)
             ->attempt('nobody@example.com', 'secret', '10.0.0.1');
-        $wrong = (new SqlAuthenticator(new Connection($wrongPdo, new MySqlDialect()), $wrongHasher))
+        $wrong = $this->authenticatorOn($wrongPdo, $wrongHasher)
             ->attempt('jana@example.com', 'wrong', '10.0.0.1');
 
         $this->assertCount(1, $unknownHasher->verified, 'The unknown email did no verification.');
@@ -228,7 +238,7 @@ final class SqlAuthenticatorTest extends TestCase
         $pdo = new FakePdo([[['n' => 3]], [['n' => 0]]]);
         $hasher = new CountingHasher();
 
-        $result = (new SqlAuthenticator(new Connection($pdo, new MySqlDialect()), $hasher, 3, 20))
+        $result = $this->authenticatorOn($pdo, $hasher, 3, 20)
             ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $this->assertSame(LoginOutcome::Throttled, $result->outcome);
@@ -240,7 +250,7 @@ final class SqlAuthenticatorTest extends TestCase
     {
         $pdo = new FakePdo([[['n' => 0]], [['n' => 5]]]);
 
-        $result = (new SqlAuthenticator(new Connection($pdo, new MySqlDialect()), new CountingHasher(), 10, 5))
+        $result = $this->authenticatorOn($pdo, new CountingHasher(), 10, 5)
             ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $this->assertSame(LoginOutcome::Throttled, $result->outcome);
@@ -253,19 +263,11 @@ final class SqlAuthenticatorTest extends TestCase
      */
     public function testARefusalNeverSaysWhichLimitWasHit(): void
     {
-        $byEmail = (new SqlAuthenticator(
-            new Connection(new FakePdo([[['n' => 9]], [['n' => 0]]]), new MySqlDialect()),
-            new CountingHasher(),
-            9,
-            20,
-        ))->attempt('jana@example.com', 'secret', '10.0.0.1');
+        $byEmail = $this->authenticatorOn(new FakePdo([[['n' => 9]], [['n' => 0]]]), new CountingHasher(), 9, 20)
+            ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
-        $byIp = (new SqlAuthenticator(
-            new Connection(new FakePdo([[['n' => 0]], [['n' => 9]]]), new MySqlDialect()),
-            new CountingHasher(),
-            10,
-            9,
-        ))->attempt('jana@example.com', 'secret', '10.0.0.1');
+        $byIp = $this->authenticatorOn(new FakePdo([[['n' => 0]], [['n' => 9]]]), new CountingHasher(), 10, 9)
+            ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $this->assertSame($byEmail->message, $byIp->message);
 
@@ -286,11 +288,8 @@ final class SqlAuthenticatorTest extends TestCase
         $wrong = $this->authenticator([...$this->noAttempts(), [], []])
             ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
-        $throttled = (new SqlAuthenticator(
-            new Connection(new FakePdo([[['n' => 3]], [['n' => 0]]]), new MySqlDialect()),
-            new CountingHasher(),
-            3,
-        ))->attempt('jana@example.com', 'secret', '10.0.0.1');
+        $throttled = $this->authenticatorOn(new FakePdo([[['n' => 3]], [['n' => 0]]]), new CountingHasher(), 3)
+            ->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $this->assertSame(LoginOutcome::Refused, $wrong->outcome);
         $this->assertSame(LoginOutcome::Throttled, $throttled->outcome);
@@ -334,8 +333,7 @@ final class SqlAuthenticatorTest extends TestCase
         $pdo = new FakePdo([...$this->noAttempts(), [], [$this->row()], [], [], [], []]);
         $hasher = new CountingHasher(needsRehash: true);
 
-        (new SqlAuthenticator(new Connection($pdo, new MySqlDialect()), $hasher))
-            ->attempt('jana@example.com', 'secret', '10.0.0.1');
+        $this->authenticatorOn($pdo, $hasher)->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $update = $pdo->executed[4];
 
@@ -349,8 +347,7 @@ final class SqlAuthenticatorTest extends TestCase
         $pdo = new FakePdo([...$this->noAttempts(), [], [$this->row()], [], [], []]);
         $hasher = new CountingHasher(needsRehash: false);
 
-        (new SqlAuthenticator(new Connection($pdo, new MySqlDialect()), $hasher))
-            ->attempt('jana@example.com', 'secret', '10.0.0.1');
+        $this->authenticatorOn($pdo, $hasher)->attempt('jana@example.com', 'secret', '10.0.0.1');
 
         $this->assertSame(0, $hasher->hashes);
 
@@ -372,8 +369,10 @@ final class SqlAuthenticatorTest extends TestCase
 
         $this->authenticatorOn($pdo)->attempt('  Jana@Example.COM ', 'secret', '10.0.0.1');
 
-        $this->assertSame('jana@example.com', $pdo->executed[0]->bindings[0]);
-        $this->assertSame('jana@example.com', $pdo->executed[2]->bindings[0]);
+        // The throttle binds its kind first, so the address is the second
+        // value of its count and of the row it writes.
+        $this->assertSame('jana@example.com', $pdo->executed[0]->bindings[1]);
+        $this->assertSame('jana@example.com', $pdo->executed[2]->bindings[1]);
         $this->assertStringContainsString('LOWER(email)', $pdo->executed[3]->text);
         $this->assertSame(['jana@example.com'], $pdo->executed[3]->bindings);
     }
@@ -390,7 +389,7 @@ final class SqlAuthenticatorTest extends TestCase
 
         $this->authenticatorOn($pdo)->attempt('jana@example.com', 'secret', str_repeat('9', 200));
 
-        $recorded = $pdo->executed[2]->bindings[1];
+        $recorded = $pdo->executed[2]->bindings[2];
 
         $this->assertIsString($recorded);
         $this->assertSame(45, \strlen($recorded));

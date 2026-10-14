@@ -48,40 +48,32 @@ use RockAdmin\Db\Sql;
  */
 final class SqlAuthenticator implements Authenticator
 {
-    /**
-     * How many attempts inside the window each key is allowed before the next
-     * one is refused.
-     *
-     * Ten per email and twenty per address, over fifteen minutes. An
-     * administrator who has genuinely forgotten their password tries a handful
-     * of variants, and ten leaves room for that without a support ticket;
-     * fifteen minutes is a wait somebody can sit out, which matters while
-     * password reset does not exist (milestone 9) and a lockout has no
-     * self-service way out. Twenty per address because a single office address
-     * carries every administrator behind it, and one confused colleague must
-     * not lock out the rest — and because twenty attempts per quarter hour is
-     * nowhere near enough to guess anything an Argon2id hash is protecting.
-     *
-     * They are constructor parameters and not configuration keys: nothing in
-     * `Schema` describes authentication yet, and rule 5 says a key that exists
-     * is a key that is documented and generated into the reference. When that
-     * section is written these become its first three entries.
-     */
     public function __construct(
         private readonly Connection $connection,
         private readonly PasswordHasher $hasher = new Argon2idHasher(),
-        private readonly int $attemptsPerEmail = 10,
-        private readonly int $attemptsPerIp = 20,
-        private readonly int $windowSeconds = 900,
+        /**
+         * How many attempts an address and a machine get inside the window.
+         *
+         * This was three numbers on this constructor, and the docblock they
+         * carried said they would become configuration keys "when that
+         * section is written". That section is `auth.*` now and `Throttle`
+         * is what reads it, so this class holds no numbers at all -- which is
+         * the right place for them to have gone: how often somebody may try
+         * is a policy, and verifying a password is not.
+         *
+         * Optional, because a great many tests build an authenticator to
+         * check one password and have no table of attempts at all. Without
+         * one nothing is counted and nothing is refused.
+         */
+        private readonly ?Throttle $throttle = null,
     ) {
     }
 
     public function attempt(string $email, string $password, string $ip): LoginResult
     {
-        $address = $this->normaliseIp($ip);
         $normalised = $this->normaliseEmail($email);
 
-        if ($this->isThrottled($normalised, $address)) {
+        if ($this->throttle?->isExhausted(Throttle::LOGIN, $normalised, $ip) === true) {
             return LoginResult::throttled();
         }
 
@@ -89,7 +81,7 @@ final class SqlAuthenticator implements Authenticator
         // success writes use: the attempt is the throttle's only evidence, and
         // a later failure -- a broken row, a rolled-back stamp -- must not
         // take it with it.
-        $this->record($normalised, $address);
+        $this->throttle?->record(Throttle::LOGIN, $normalised, $ip);
 
         $row = $this->rowByEmail($normalised);
         $stored = $row === null ? null : $row['password'];
@@ -105,7 +97,7 @@ final class SqlAuthenticator implements Authenticator
 
         $user = $this->userFrom($row);
 
-        $this->connection->transaction(function () use ($user, $password, $hash, $normalised): void {
+        $this->connection->transaction(function () use ($user, $password, $hash): void {
             if ($this->hasher->needsRehash($hash)) {
                 $this->connection->execute(new Sql(
                     'UPDATE ra_users SET password = ? WHERE id = ?',
@@ -118,11 +110,13 @@ final class SqlAuthenticator implements Authenticator
                 [$this->now(), $user->id],
             ));
 
-            $this->connection->execute(new Sql(
-                'DELETE FROM ra_login_attempts WHERE email = ?',
-                [$normalised],
-            ));
         });
+
+        // After the transaction rather than inside it: clearing the budget is
+        // not part of the sign-in, and a failure to clear it must not undo a
+        // sign-in that worked. The cost of it failing is one wasted attempt
+        // out of ten.
+        $this->throttle?->clear(Throttle::LOGIN, $normalised);
 
         return LoginResult::success($user);
     }
@@ -177,34 +171,6 @@ final class SqlAuthenticator implements Authenticator
      */
     public function logout(AuthUser $user): void
     {
-    }
-
-    private function isThrottled(string $email, string $ip): bool
-    {
-        $cutoff = $this->cutoff();
-
-        $byEmail = $this->count(new Sql(
-            'SELECT COUNT(*) FROM ra_login_attempts WHERE email = ? AND at >= ?',
-            [$email, $cutoff],
-        ));
-
-        $byIp = $this->count(new Sql(
-            'SELECT COUNT(*) FROM ra_login_attempts WHERE ip = ? AND at >= ?',
-            [$ip, $cutoff],
-        ));
-
-        // Both are asked, always, rather than short-circuiting on the first:
-        // the two statements are the same on every path, which is one fewer
-        // way for the response time to say something.
-        return $byEmail >= $this->attemptsPerEmail || $byIp >= $this->attemptsPerIp;
-    }
-
-    private function record(string $email, string $ip): void
-    {
-        $this->connection->execute(new Sql(
-            'INSERT INTO ra_login_attempts (email, ip, at) VALUES (?, ?, ?)',
-            [$email, $ip, $this->now()],
-        ));
     }
 
     /**
@@ -293,13 +259,6 @@ final class SqlAuthenticator implements Authenticator
         );
     }
 
-    private function count(Sql $sql): int
-    {
-        $value = $this->connection->scalar($sql);
-
-        return \is_scalar($value) ? (int) $value : 0;
-    }
-
     /**
      * Both servers answer a boolean differently, and the driver's own settings
      * change the answer again: PostgreSQL hands back `'t'`, MySQL a
@@ -343,19 +302,9 @@ final class SqlAuthenticator implements Authenticator
         return mb_substr(mb_strtolower(trim($email)), 0, 255);
     }
 
-    /** `ra_login_attempts.ip` is VARCHAR(45) — long enough for IPv6, and no longer. */
-    private function normaliseIp(string $ip): string
-    {
-        return mb_substr(trim($ip), 0, 45);
-    }
-
     private function now(): string
     {
         return gmdate('Y-m-d H:i:s');
     }
 
-    private function cutoff(): string
-    {
-        return gmdate('Y-m-d H:i:s', time() - $this->windowSeconds);
-    }
 }
