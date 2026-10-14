@@ -90,6 +90,62 @@ final class AdminUsers
     }
 
     /**
+     * What this account has been granted: its roles and its workspaces, read
+     * from the table.
+     *
+     * Null when there is no such row, which a caller must tell apart from "it
+     * holds nothing": the first means the check cannot be made and the second
+     * means there is nothing to protect.
+     *
+     * It exists because the alternative was reading them out of the row an
+     * operation is handed -- and that row carries the columns the *page*
+     * names, so a page whose form happened to leave `roles` out would have
+     * made every check over them pass. A rule about privileges cannot depend
+     * on a page file remembering to mention them.
+     *
+     * @return ?array{roles: list<string>, workspaces: list<string>}
+     */
+    public function grantsFor(string $id): ?array
+    {
+        $rows = $this->connection->select(new Sql(
+            'SELECT roles, workspaces FROM ra_users WHERE id = ?',
+            [$id],
+        ));
+
+        if ($rows === []) {
+            return null;
+        }
+
+        return [
+            'roles' => self::names($rows[0]['roles'] ?? null),
+            'workspaces' => self::names($rows[0]['workspaces'] ?? null),
+        ];
+    }
+
+    /**
+     * A stored JSON column as a list of names.
+     *
+     * Anything that is not a list of scalars reads as empty rather than being
+     * guessed at, and empty is the safe direction here: every caller uses it
+     * to decide what somebody is allowed to touch.
+     *
+     * @return list<string>
+     */
+    private static function names(mixed $stored): array
+    {
+        $decoded = json_decode(self::text($stored), true);
+        $names = [];
+
+        foreach (\is_array($decoded) ? $decoded : [] as $name) {
+            if (\is_scalar($name)) {
+                $names[] = (string) $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * How many *other* active accounts hold this role.
      *
      * The question behind "you cannot remove the last superadmin": before

@@ -384,6 +384,41 @@ final class AdminUserOperationTest extends DatabaseTestCase
         self::assertSame('A Colleague', $this->text($this->rowFor($connection, 'colleague@example.com')['name']));
     }
 
+    /**
+     * The cross-tenant half of the same rule.
+     *
+     * Specification 9.3 says administrators are not tenant-scoped -- they are
+     * granted access to workspaces -- so two accounts with the same role and
+     * different workspaces are not peers. Setting the password of somebody who
+     * works in a workspace you cannot see is how you come to work in it.
+     */
+    #[DataProvider('connections')]
+    public function testAnAdministratorCannotTouchAnAccountFromAWorkspaceTheyDoNotHold(
+        ?Connection $connection,
+    ): void {
+        $connection = $this->requireConnection($connection);
+        $this->existing($connection, 'jana@example.com', 'a-password-here', ['superadmin']);
+        $editor = $this->existing($connection, 'editor@example.com', 'a-password-here', ['viewer']);
+        $elsewhere = (new AdminUsers($connection))
+            ->create('motobazar@example.com', 'Somebody Else', 'a-password-here', ['viewer'], ['motobazar']);
+
+        $response = $this->post($connection, 'update', [
+            FormFields::ID => $elsewhere,
+            'email' => 'motobazar@example.com',
+            'name' => 'Taken Over',
+            'password' => 'a-password-the-editor-knows',
+            'roles' => ['viewer'],
+            'is_active' => '1',
+        ], $editor, ['viewer']);
+
+        self::assertSame(422, $response->status, "Somebody set another workspace's administrator's password.");
+        self::assertStringContainsString('because you do not', $response->body);
+        self::assertSame(
+            'Somebody Else',
+            $this->text($this->rowFor($connection, 'motobazar@example.com')['name']),
+        );
+    }
+
     // --- invitations ---
 
     #[DataProvider('connections')]
@@ -521,7 +556,11 @@ final class AdminUserOperationTest extends DatabaseTestCase
             $flashes,
             $urls,
             new \RockAdmin\Auth\SqlAuditLog($connection),
-            new \RockAdmin\Auth\AuthUser($actorId, 'actor@example.com', 'Actor', $actorRoles),
+            // Working in cyklobazar, which is where `existing()` puts the
+            // accounts under test: two administrators with the same role but
+            // different tenants are not peers, and the actor has to be
+            // somewhere for the ordinary cases to be ordinary.
+            new \RockAdmin\Auth\AuthUser($actorId, 'actor@example.com', 'Actor', $actorRoles, ['cyklobazar']),
             Operations::of(['ra_admin_user' => $this->operation($connection, $renderer, $urls)]),
         );
     }

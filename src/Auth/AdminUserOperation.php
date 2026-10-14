@@ -81,7 +81,7 @@ final class AdminUserOperation implements Operation
             'create' => $this->create($context, $values, $writes),
             'update' => $this->update($context, $row, $values, $writes),
             'delete' => $this->delete($context, $row, $writes),
-            self::INVITE => $this->invite($context, $row),
+            self::INVITE => $this->invite($context, $row),  // checked inside, like the others
             default => throw new OperationRefused(\sprintf(
                 "This page does not know how to '%s' an administrator.",
                 $context->operation,
@@ -119,8 +119,8 @@ final class AdminUserOperation implements Operation
         array $values,
         WriteHandler $writes,
     ): ?WriteResult {
-        $this->refuseIfTheAccountIsAboveTheActor($context, $row);
-        $this->refuseIfItLocksTheBuilding($context, $row, $values);
+        $this->refuseIfTheAccountIsAboveTheActor($context);
+        $this->refuseIfItLocksTheBuilding($context, $values);
         $this->refuseIfItGrantsMoreThanTheActorHolds($context, $values);
 
         $password = $this->plainPassword($values);
@@ -139,8 +139,8 @@ final class AdminUserOperation implements Operation
     /** @param array<string, mixed> $row */
     private function delete(OperationContext $context, array $row, WriteHandler $writes): ?WriteResult
     {
-        $this->refuseIfTheAccountIsAboveTheActor($context, $row);
-        $this->refuseIfItLocksTheBuilding($context, $row, ['is_active' => false]);
+        $this->refuseIfTheAccountIsAboveTheActor($context);
+        $this->refuseIfItLocksTheBuilding($context, ['is_active' => false]);
 
         if ((string) $context->key === ($context->actor->id ?? '')) {
             throw new OperationRefused(
@@ -155,6 +155,8 @@ final class AdminUserOperation implements Operation
     /** @param array<string, mixed> $row */
     private function invite(OperationContext $context, array $row): null
     {
+        $this->refuseIfTheAccountIsAboveTheActor($context);
+
         $email = $this->text($row['email'] ?? null);
 
         if ($email === '') {
@@ -177,14 +179,20 @@ final class AdminUserOperation implements Operation
      * deleting it. A page cannot express this, because it is a rule about the
      * table rather than about the row.
      *
-     * @param array<string, mixed> $row
+     * Like the check above it, what the account currently holds is read from
+     * the table rather than from the row this operation was handed: the row
+     * carries whatever columns the page names, and a page that did not name
+     * `roles` would have turned this safeguard off without saying so.
+     *
      * @param array<string, mixed> $values
      */
-    private function refuseIfItLocksTheBuilding(OperationContext $context, array $row, array $values): void
+    private function refuseIfItLocksTheBuilding(OperationContext $context, array $values): void
     {
         $widest = $this->roles->widest();
 
-        if ($widest === '' || !\in_array($widest, $this->rolesOf($row['roles'] ?? null), true)) {
+        $holds = $this->users->grantsFor((string) $context->key)['roles'] ?? [];
+
+        if ($widest === '' || !\in_array($widest, $holds, true)) {
             // This account does not hold the widest role, so nothing it does
             // can be the last one losing it.
             return;
@@ -229,9 +237,21 @@ final class AdminUserOperation implements Operation
      * An account holding no roles at all is below everybody, which is the
      * right answer: it can do nothing, so managing it grants nothing.
      *
-     * @param array<string, mixed> $row
+     * **Workspaces count as well as roles.** Two administrators with the same
+     * role but different tenants are not peers: setting the password of
+     * somebody who works in a workspace you cannot see is how you come to work
+     * in it. Specification 9.3 says administrators are not tenant-scoped --
+     * they are granted access to workspaces -- and this is what keeps that
+     * grant from being self-service.
+     *
+     * **What the account holds is read from the table, not from the row this
+     * operation was handed.** That row carries the columns the *page* names,
+     * so a page whose form left the roles field out would have made this check
+     * pass for everybody -- a rule about privileges cannot depend on a page
+     * file remembering to mention them. A row that has gone away refuses too:
+     * "I cannot tell" is not "it is fine".
      */
-    private function refuseIfTheAccountIsAboveTheActor(OperationContext $context, array $row): void
+    private function refuseIfTheAccountIsAboveTheActor(OperationContext $context): void
     {
         $actor = $context->actor;
 
@@ -246,13 +266,32 @@ final class AdminUserOperation implements Operation
             return;
         }
 
-        foreach ($this->rolesOf($row['roles'] ?? null) as $held) {
-            if (!\in_array($held, $actor->roles, true)) {
+        $held = $this->users->grantsFor((string) $context->key);
+
+        if ($held === null) {
+            throw new OperationRefused(
+                'That administrator is no longer there, so this admin cannot tell what they were '
+                . 'allowed to do. Reload the page.',
+            );
+        }
+
+        foreach ($held['roles'] as $role) {
+            if (!\in_array($role, $actor->roles, true)) {
                 throw new OperationRefused(\sprintf(
                     'You cannot change an account that has the %s role, because you do not have it '
                     . 'yourself -- and setting its password would mean signing in as it. Ask somebody '
                     . 'who does.',
-                    $this->roles->label($held),
+                    $this->roles->label($role),
+                ));
+            }
+        }
+
+        foreach ($held['workspaces'] as $workspace) {
+            if (!\in_array($workspace, $actor->workspaces, true)) {
+                throw new OperationRefused(\sprintf(
+                    "You cannot change an account that works in '%s', because you do not. Setting "
+                    . 'its password would be a way of working there yourself.',
+                    $workspace,
                 ));
             }
         }
@@ -390,22 +429,6 @@ final class AdminUserOperation implements Operation
     private function name(array $values): string
     {
         return $this->text($values['name'] ?? null);
-    }
-
-    /**
-     * A stored JSON column read back as a list of role names.
-     *
-     * @return list<string>
-     */
-    private function rolesOf(mixed $stored): array
-    {
-        if (\is_string($stored)) {
-            $decoded = json_decode($stored, true);
-
-            return $this->listOf($decoded);
-        }
-
-        return $this->listOf($stored);
     }
 
     /** @return list<string> */
