@@ -76,11 +76,28 @@ final class FieldValidator
                 $errors[] = new ValidationError($field->key, $message);
             }
 
-            // A checkbox is the one field whose absence is a value: an
-            // unticked box sends nothing at all, and "nothing" there means
-            // false rather than "leave this column alone".
-            if ($field->type === FieldType::Checkbox) {
-                $values[$key] = $submission->has($field->key);
+            // Two field types whose absence is a value rather than a
+            // silence, and they are the two the browser sends nothing for.
+            //
+            // An unticked checkbox sends nothing at all, and "nothing" there
+            // means false rather than "leave this column alone".
+            //
+            // A multiselect with nothing chosen sends nothing either, and it
+            // means the empty list for the same reason: somebody who removes
+            // every role from an administrator and saves has said something,
+            // and reading it as "no change" would quietly keep the roles they
+            // just took away. `coerce()` already said a list column's absence
+            // is an empty list; until this line it could not act on it,
+            // because the value never reached it -- so a cleared multiselect
+            // kept its old value on an update, and on a create left a NOT NULL
+            // column unwritten, which PostgreSQL refuses with SQLSTATE 23502
+            // and MySQL does or does not depending on its mode. Found by the
+            // administrators page, which is the first page in this project to
+            // have a multiselect over a NOT NULL column.
+            if ($field->type === FieldType::Checkbox || $field->type === FieldType::Multiselect) {
+                $values[$key] = $field->type === FieldType::Checkbox
+                    ? $submission->has($field->key)
+                    : $this->coerce($field, $submission->value($field->key));
             } elseif ($submission->has($field->key)) {
                 $values[$key] = $this->coerce($field, $submission->value($field->key));
             }

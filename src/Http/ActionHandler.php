@@ -224,7 +224,13 @@ final class ActionHandler implements Handler
             return $this->perform($performed, $performed->action, $key, $returnTo);
         }
 
-        return $this->delete($page, $returnTo, $key);
+        // The built-in delete, which has no action to carry a handler -- so
+        // the page's form is asked for one. A form block's `handler` covers
+        // create, update *and* delete, which is what the reference says it
+        // does; without this line it covered two of the three and the
+        // omission would only show up as a row that went away without the
+        // project's own rule being asked.
+        return $this->delete($page, $returnTo, $key, $page->writeHandler());
     }
 
     /**
