@@ -70,6 +70,41 @@ final class Roles
         return array_keys($this->permissions);
     }
 
+    /**
+     * The role that can reach the most, by name.
+     *
+     * Asked by whoever has to pick a role without being told one: `_setup`
+     * when it makes an installation's first account, and the administrators
+     * page when it decides whether removing somebody would lock the building.
+     *
+     * Counted rather than detected. `fromConfig()` expands every pattern
+     * against the catalogue of generated permissions, so by the time a role is
+     * in here `['*']` and `['*.view']` are both plain lists and neither
+     * contains a star -- the widest resolved set is the honest reading of "the
+     * role that can reach everything", and it does not depend on an
+     * installation calling it `superadmin` rather than `owner` or `spravce`.
+     *
+     * Ties go to the first declared. An installation with no roles at all
+     * answers '', which is a configuration with no superuser and not something
+     * to invent one for.
+     */
+    public function widest(): string
+    {
+        $widest = '';
+        $most = -1;
+
+        foreach ($this->names() as $name) {
+            $count = \count($this->permissions($name));
+
+            if ($count > $most) {
+                $widest = $name;
+                $most = $count;
+            }
+        }
+
+        return $widest;
+    }
+
     public function has(string $role): bool
     {
         return isset($this->permissions[$role]);

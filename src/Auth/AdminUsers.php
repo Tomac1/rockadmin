@@ -30,6 +30,15 @@ use RockAdmin\Db\Sql;
  */
 final class AdminUsers
 {
+    /**
+     * What the one account created by `_setup` writes into `founder`.
+     *
+     * A word rather than a flag, because the column is a claim and not a
+     * boolean: a unique index over a boolean would permit one `false` as well
+     * as one `true`, which is the opposite of what every other row needs.
+     */
+    public const string FOUNDER = 'yes';
+
     public function __construct(
         private readonly Connection $connection,
         private readonly PasswordHasher $hasher = new Argon2idHasher(),
@@ -81,6 +90,39 @@ final class AdminUsers
     }
 
     /**
+     * How many *other* active accounts hold this role.
+     *
+     * The question behind "you cannot remove the last superadmin": before
+     * taking the role away from somebody, deactivating them or deleting them,
+     * somebody has to know whether anyone else can still reach everything. An
+     * installation that locks itself out has no way back that does not involve
+     * a database client.
+     *
+     * Decoded in PHP rather than asked of the database. MySQL and PostgreSQL
+     * both have JSON containment operators and they are spelled differently,
+     * so a `Dialect` difference would exist for a query over a table that
+     * holds five rows. Reading them and looking is the smaller thing.
+     */
+    public function othersHolding(string $role, string $exceptId): int
+    {
+        $found = 0;
+
+        foreach ($this->connection->select(new Sql('SELECT id, roles, is_active FROM ra_users')) as $row) {
+            if (self::text($row['id'] ?? null) === $exceptId || !self::truthy($row['is_active'] ?? null)) {
+                continue;
+            }
+
+            $roles = json_decode(self::text($row['roles'] ?? null), true);
+
+            if (\is_array($roles) && \in_array($role, $roles, true)) {
+                $found++;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Writes a new password for this address, hashed.
      *
      * Answers how many rows it changed rather than nothing, because the caller
@@ -105,11 +147,20 @@ final class AdminUsers
      * deliberate state rather than an accident, and it is why the column is
      * nullable in migration 001.
      *
+     * `$founder` marks the one account `_setup` creates. A unique index
+     * (migration 004) permits exactly one row to carry it, so two people
+     * setting up the same fresh installation at the same moment end with one
+     * administrator rather than two -- the second insert is refused by the
+     * database, at the moment it happens, with no lock taken and no isolation
+     * level to reason about. Everybody else writes NULL, and both servers
+     * permit any number of those in a unique index.
+     *
      * @param  list<string> $roles
      * @param  list<string> $workspaces
-     * @throws DbException when the address is already taken, which the unique
-     *                     index refuses rather than this checking first --
-     *                     checking first is a race, the index is not
+     * @throws DbException when the address is already taken, or when another
+     *                     founder exists -- both refused by an index rather
+     *                     than checked for first, because checking first is a
+     *                     race and an index is not
      */
     public function create(
         string $email,
@@ -117,6 +168,7 @@ final class AdminUsers
         ?string $plain,
         array $roles,
         array $workspaces,
+        bool $founder = false,
     ): string {
         $bindings = [
             self::address($email),
@@ -126,10 +178,11 @@ final class AdminUsers
             self::json($roles),
             self::json($workspaces),
             gmdate('Y-m-d H:i:s'),
+            $founder ? self::FOUNDER : null,
         ];
 
         $insert = 'INSERT INTO ra_users (email, password, name, is_active, roles, workspaces, '
-            . 'created_at) VALUES (?, ?, ?, ?, ?, ?, ?)';
+            . 'created_at, founder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
 
         // The same split `SqlWriteHandler` makes, and for the same reason:
         // PostgreSQL hands the generated key back from the INSERT itself,

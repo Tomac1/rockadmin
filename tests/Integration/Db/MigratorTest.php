@@ -90,7 +90,7 @@ final class MigratorTest extends DatabaseTestCase
         foreach ([
             'ra_users' => [
                 'id', 'email', 'password', 'name', 'is_active', 'roles', 'workspaces',
-                'auth_provider', 'auth_subject', 'last_login_at', 'created_at',
+                'auth_provider', 'auth_subject', 'last_login_at', 'created_at', 'founder',
             ],
             'ra_login_attempts' => ['id', 'email', 'ip', 'at', 'kind'],
             'ra_password_resets' => ['id', 'email', 'token_hash', 'expires_at', 'used_at'],

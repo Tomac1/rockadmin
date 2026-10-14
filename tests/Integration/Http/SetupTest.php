@@ -14,6 +14,7 @@ use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Connection;
+use RockAdmin\Db\DbException;
 use RockAdmin\Db\Migrator;
 use RockAdmin\Db\Sql;
 use RockAdmin\Http\ArraySessionStore;
@@ -201,6 +202,51 @@ final class SetupTest extends DatabaseTestCase
             $connection->select(new Sql('SELECT id FROM ra_users')),
             'A form left open in a tab created a second administrator.',
         );
+    }
+
+    /**
+     * The race the emptiness check cannot close, closed by an index.
+     *
+     * Two requests reaching `_setup` on a fresh installation both read "no
+     * administrators" before either writes one, and their addresses differ --
+     * so the unique index on the address lets both through. `founder` is the
+     * column only one row may hold, and this is what it is for: an endpoint
+     * that by its nature has no authentication, during the minute between
+     * `migrate` and somebody filling the form in.
+     */
+    #[DataProvider('connections')]
+    public function testOnlyOneAccountCanEverBeTheFounder(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $users = new AdminUsers($connection);
+
+        $users->create('first@example.com', 'First', 'a-password-here', ['superadmin'], [], founder: true);
+
+        try {
+            $users->create('second@example.com', 'Second', 'a-password-here', ['superadmin'], [], founder: true);
+
+            self::fail('A second founder was created, so two strangers can both set an admin up.');
+        } catch (DbException $e) {
+            self::assertStringContainsString('23', (string) $e->sqlState, 'Refused by something other than the index.');
+        }
+
+        self::assertCount(1, $connection->select(new Sql('SELECT id FROM ra_users')));
+    }
+
+    #[DataProvider('connections')]
+    public function testAnOrdinaryAccountClaimsNothing(?Connection $connection): void
+    {
+        // Every other row writes NULL, and both servers permit any number of
+        // those in a unique index -- otherwise the second administrator an
+        // installation ever creates would be refused.
+        $connection = $this->requireConnection($connection);
+        $users = new AdminUsers($connection);
+
+        $users->create('first@example.com', 'First', 'a-password-here', ['superadmin'], [], founder: true);
+        $users->create('second@example.com', 'Second', 'a-password-here', ['viewer'], []);
+        $users->create('third@example.com', 'Third', 'a-password-here', ['viewer'], []);
+
+        self::assertCount(3, $connection->select(new Sql('SELECT id FROM ra_users')));
     }
 
     #[DataProvider('connections')]

@@ -32,11 +32,15 @@ use RockAdmin\View\ShellView;
  * somebody is already in it, which is the one fact this page would otherwise
  * be giving away for free.
  *
- * **The check is on the write, not only on the form.** Two people opening the
- * page on a fresh installation at the same time is the obvious race, and the
- * unobvious one is a form left open in a tab for an hour. Both end at the same
- * place: the POST re-asks, and the database's unique index on the address is
- * the backstop behind that.
+ * **The check is on the write, not only on the form**, and behind it is a
+ * claim the database enforces. Two people opening the page on a fresh
+ * installation at the same moment is the obvious race, and a form left open in
+ * a tab for an hour is the unobvious one. The POST re-asks -- which closes the
+ * second -- and for the first the account carries `founder`, a column a unique
+ * index permits exactly one row to hold (migration 004). The index is what
+ * makes "first wins" true rather than likely: the window between reading
+ * "there are no administrators" and writing one is small, and on an endpoint
+ * that by its nature has no authentication, small is not the same as closed.
  *
  * **The account is a superadmin with every workspace**, and the page says so
  * before it is created. It is the account that creates the others, so it needs
@@ -114,11 +118,26 @@ final class SetupHandler implements Handler
         }
 
         try {
-            $this->users->create($email, trim($name), $password, [$this->role()], $this->workspaces->names());
+            $this->users->create(
+                $email,
+                trim($name),
+                $password,
+                [$this->role()],
+                $this->workspaces->names(),
+                founder: true,
+            );
         } catch (DbException) {
-            // The unique index on the address, which is the backstop behind
-            // the emptiness check above: between that check and this write,
-            // somebody else may have done exactly the same thing.
+            // Where the race actually ends. The emptiness check above is a
+            // read followed by a write, and between the two another request
+            // can do the same thing -- two people opening this page on a fresh
+            // installation, or a stranger who found the URL in the minute
+            // between `migrate` and somebody filling the form in. Their
+            // addresses differ, so the unique index on the address does not
+            // catch it; `founder` does, and the database refuses the second
+            // insert at the moment it happens.
+            //
+            // The loser is told what a late arrival is told: this installation
+            // already has an administrator.
             throw new NotFoundException(self::GONE);
         }
 
@@ -139,37 +158,18 @@ final class SetupHandler implements Handler
     /**
      * The role the first account is given: the widest one configured.
      *
-     * Asked of the roles themselves rather than by looking for one called
-     * `superadmin` -- roles are configuration and an installation is free to
-     * call its own `owner` or `spravce`. And asked by counting what each one
-     * resolves to rather than by looking for a literal `*`: `Roles` expands
-     * every pattern against the catalogue of generated permissions, so by the
-     * time they are here `['*']` and `['*.view']` are both plain lists and
-     * neither contains a star. The widest set is the honest reading of "the
-     * role that can reach everything", and it is the one an installation's
-     * first account has to have -- it is the account that creates the others,
-     * so it must be able to reach the page that does.
+     * It is the account that creates the others, so it has to be able to reach
+     * the page that does. `Roles::widest()` is where the choosing lives, and
+     * why it counts rather than looking for a literal `*`.
      *
-     * Ties go to the first declared, and an installation with no roles at all
-     * gets an empty one: an account with no role can sign in and see nothing,
-     * which reads as a broken admin, so the page says that is what it is about
-     * to make rather than pretending otherwise.
+     * An installation with no roles at all gets an empty one: an account with
+     * no role can sign in and see nothing, which reads as a broken admin, so
+     * the page says that is what it is about to make rather than pretending
+     * otherwise.
      */
     private function role(): string
     {
-        $widest = '';
-        $most = -1;
-
-        foreach ($this->roles->names() as $name) {
-            $count = \count($this->roles->permissions($name));
-
-            if ($count > $most) {
-                $widest = $name;
-                $most = $count;
-            }
-        }
-
-        return $widest;
+        return $this->roles->widest();
     }
 
     private function draw(string $email = '', string $name = '', ?string $message = null, int $status = 200): Response
