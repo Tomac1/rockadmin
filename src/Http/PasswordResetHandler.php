@@ -44,6 +44,29 @@ use Throwable;
  * attempt record and no wrong-password counter behind it. It does clear that
  * address's login lockout, because otherwise somebody who reset their password
  * precisely because they had been locked out would still be locked out.
+ *
+ * **Two things this does not promise, said here rather than assumed.**
+ *
+ * *Sessions already open survive a reset.* Somebody who changes their password
+ * because they think somebody else has it is not thereby signing that person
+ * out. Specification 9.1 is explicit about what "logout everywhere" needs
+ * before it can be built honestly -- a `sessions_valid_from` column stamped at
+ * the change, and a `SessionStore` that records when a session began, which it
+ * does not -- and equally explicit that stamping a column nothing reads would
+ * look exactly like the feature while every other session stayed live. So it
+ * is v1.1, and until then this says so instead of implying otherwise.
+ *
+ * *The time a request takes still differs.* The words, the status code and the
+ * page are identical for an address that exists and one that does not, and the
+ * test compares the renderings to keep them so. What cannot be equalised here
+ * is the work: an address that exists costs a token, a rendered message and a
+ * send, and an SMTP send is measured in hundreds of milliseconds. Equalising it
+ * properly means doing the send out of band -- a queue, or a response flushed
+ * before the work, neither of which exists in an SDK with no dependencies and
+ * no control over the host's SAPI. What stands between that signal and a
+ * usable oracle is the throttle: ten requests per address and twenty per
+ * machine per quarter hour, which is not a rate anybody enumerates a staff
+ * list at. It is a residual rather than a defence, and it is written down.
  */
 final class PasswordResetHandler implements Handler
 {
@@ -189,14 +212,14 @@ final class PasswordResetHandler implements Handler
                 $this->lifetimeMinutes,
             ));
         } catch (Throwable $e) {
-            $this->flashes->add('danger', 'A password reset could not be sent. Tell whoever '
-                . 'administers this installation.');
-
-            // The flash above is never drawn to the person who asked -- this
-            // page shows no flashes, and the next page they see is the login
-            // form. It is here so that an administrator who is signed in
-            // elsewhere in the same session sees it, and so that the failure
-            // is not swallowed in silence.
+            // Nothing is flashed, and that is the fix for a leak this code had
+            // for one commit. A flash lands in the session of whoever asked,
+            // and the login page they are sent to next draws one -- so "a
+            // password reset could not be sent" would appear for addresses
+            // that exist and not for addresses that do not, which is the
+            // disclosure this whole handler is shaped around, arriving by the
+            // back door. The failure goes where only the installation can see
+            // it.
             error_log('RockAdmin: a password reset for an administrator could not be sent: ' . $e->getMessage());
         }
     }

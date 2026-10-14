@@ -31,7 +31,9 @@ use RockAdmin\Auth\Gate;
 use RockAdmin\Auth\Identity;
 use RockAdmin\Auth\LoginResult;
 use RockAdmin\Auth\PasswordResets;
+use RockAdmin\Auth\Permission;
 use RockAdmin\Auth\RequestScope;
+use RockAdmin\Auth\Roles;
 use RockAdmin\Auth\RowWorkspace;
 use RockAdmin\Auth\SessionWorkspace;
 use RockAdmin\Auth\SqlAuditLog;
@@ -72,6 +74,7 @@ use RockAdmin\Http\Request;
 use RockAdmin\Http\Response;
 use RockAdmin\Http\Route;
 use RockAdmin\Http\Router;
+use RockAdmin\Http\SetupHandler;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Http\WorkspaceHandler;
 use RockAdmin\Mail\Mailers;
@@ -380,6 +383,33 @@ if ($connection !== null) {
     ] as $route) {
         $handlers->register($route, $passwords);
     }
+
+    // `_setup` is how a freshly migrated installation gets its first
+    // administrator without writing an Argon2id hash into the database by
+    // hand. It 404s the moment one exists -- and `demo/seed.php` creates
+    // three, so in this demo it is reachable only on a database that has been
+    // migrated but not seeded. That is the state a real installation is in
+    // for about a minute, and the one worth being able to look at.
+    $setup = new SetupHandler(
+        new AdminUsers($connection),
+        $identity,
+        new SqlAuthenticator($connection),
+        // The same roles the gate is built from, read again rather than
+        // reached for through it: `Gate` answers questions about permissions
+        // and does not hand out its catalogue, and an accessor whose only
+        // caller is this one page would be a hole in that for a convenience.
+        Roles::fromConfig($config->roles(), Permission::catalogue($pages)),
+        $workspaces,
+        $csrf,
+        $renderer,
+        $assets,
+        $urls,
+        $brand,
+        $darkMode,
+    );
+
+    $handlers->register('setup.form', $setup);
+    $handlers->register('setup.submit', $setup);
 }
 
 $handlers->register(

@@ -26,6 +26,7 @@ use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Mail\Mailbox;
 use RockAdmin\Mail\Mailer;
+use RockAdmin\Mail\MailException;
 use RockAdmin\Mail\Message;
 use RockAdmin\Mail\MessageFactory;
 use RockAdmin\Tests\Support\DatabaseTestCase;
@@ -323,6 +324,65 @@ final class PasswordResetFlowTest extends DatabaseTestCase
         self::assertSame(500, $response->status);
         self::assertStringContainsString('public_url', $response->body);
         self::assertSame([], $this->sent);
+    }
+
+    /**
+     * A mailer that is broken must not say so to the person asking.
+     *
+     * This leaked for exactly one commit: the failure was flashed, a flash
+     * lands in the session of whoever asked, and the login page they are sent
+     * to next draws one -- so "a password reset could not be sent" appeared
+     * for addresses that exist and not for addresses that do not. The
+     * disclosure this handler is shaped around, arriving by the back door.
+     */
+    #[DataProvider('connections')]
+    public function testABrokenMailerIsNotReportedToWhoeverAsked(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $response = $this->handlerWithBrokenMailer($connection)->handle(
+            new Route('password.request.submit', []),
+            new Request('POST', 'password/reset', body: [
+                Csrf::FIELD => (new Csrf($this->session))->token(),
+                PasswordResetHandler::EMAIL_FIELD => self::ADDRESS,
+            ]),
+        );
+
+        self::assertSame(200, $response->status, 'A broken mailer 500s for addresses that exist.');
+        self::assertStringContainsString('If that address belongs to an administrator', $response->body);
+
+        $login = $this->login($connection)->handle(new Route('login.form', []), new Request('GET', 'login'));
+
+        self::assertStringNotContainsString('could not be sent', $login->body);
+        self::assertStringNotContainsString('ra-login-notice', $login->body, 'Something was flashed.');
+    }
+
+    private function handlerWithBrokenMailer(Connection $connection): PasswordResetHandler
+    {
+        $urls = new UrlGenerator('/admin');
+        $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
+
+        return new PasswordResetHandler(
+            new AdminUsers($connection),
+            new PasswordResets($connection),
+            new Throttle($connection, 10, 100),
+            new Identity($this->session, new SqlAuthenticator($connection)),
+            new class () implements Mailer {
+                public function send(Message $message): void
+                {
+                    throw new MailException('the mail server is not there');
+                }
+            },
+            new MessageFactory($renderer, new Mailbox('admin@example.com', 'Admin'), 'RockAdmin'),
+            new Csrf($this->session),
+            $renderer,
+            new Assets($urls),
+            new FlashBag($this->session),
+            $urls,
+            'RockAdmin',
+            '10.0.0.1',
+            'https://admin.example.com',
+        );
     }
 
     // --- harness ---
