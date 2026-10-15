@@ -26,6 +26,8 @@ use RockAdmin\Db\WriteHandler;
 use RockAdmin\Db\WriteResult;
 use RockAdmin\Form\DefaultValue;
 use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FileWriteResult;
+use RockAdmin\Form\FileWrites;
 use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Form\Submission;
@@ -162,6 +164,16 @@ final class ActionHandler implements Handler
          * host has no tenants of its own needs nothing switched.
          */
         private readonly ?WorkspaceContext $workspaces = null,
+        /**
+         * What becomes of the files a form carries.
+         *
+         * Optional, because a page with no `file` field never needs one and
+         * a great many tests build this handler to exercise one write. A page
+         * that does declare one and reaches a handler built without this
+         * saves the row and silently drops the upload, which is why `save()`
+         * refuses that combination rather than letting it happen.
+         */
+        private readonly ?FileWrites $files = null,
     ) {
     }
 
@@ -180,6 +192,19 @@ final class ActionHandler implements Handler
 
     public function handle(Route $route, Request $request): Response
     {
+        // Before the token, because the token is part of what went missing.
+        // A POST over `post_max_size` reaches here with its whole body
+        // discarded by PHP -- no fields, no files, nothing raised -- and
+        // checking the token first answers "this form was open too long" to
+        // somebody whose only mistake was a large photograph.
+        if ($request->bodyWasDiscarded()) {
+            throw new PayloadTooLargeException(
+                'That upload was larger than this server accepts, so none of the form arrived. Try '
+                . 'a smaller file, or ask whoever administers this installation to raise '
+                . 'post_max_size and upload_max_filesize.',
+            );
+        }
+
         $this->requireToken($request);
 
         $name = $route->param('page');
@@ -757,6 +782,12 @@ final class ActionHandler implements Handler
         string $key,
         ?HandlerReference $handler = null,
     ): Response {
+        // Read before the row goes, because afterwards there is nothing to
+        // read it from -- and queued rather than deleted, because the
+        // transaction can still take the row back and a file cannot be
+        // un-deleted.
+        $orphans = $this->filesOfRow($page, $key);
+
         try {
             $write = $this->apply($page, 'delete', $key, [], $handler);
         } catch (OperationRefused $e) {
@@ -785,6 +816,7 @@ final class ActionHandler implements Handler
             return Response::redirect($returnTo);
         }
 
+        $this->forgetAfterCommit($orphans);
         $this->record('delete', $page, $write);
         $this->runPending();
 
@@ -808,7 +840,7 @@ final class ActionHandler implements Handler
         $isCreate = $action === 'create';
         $key = $isCreate ? null : $this->requireKey($request, $page);
 
-        $submission = Submission::fromBody($request->body, $form);
+        $submission = Submission::fromBody($request->body, $form, $request->files);
         $result = $this->validator->validate($form, $submission);
 
         if ($result->failed()) {
@@ -846,9 +878,26 @@ final class ActionHandler implements Handler
             ? [...$values, ...$this->scopeFor($page)]
             : array_diff_key($values, $this->scopeFor($page));
 
+        // The files, stored before the write because a row cannot point at
+        // bytes that do not exist yet. Everything that refuses the write from
+        // here on hands the keys back to `discard()`, so a save that did not
+        // happen leaves nothing behind.
+        $files = $this->storeFiles($page, $form, $submission, $request, $key);
+
+        $missing = $this->files?->missing($form, $files->columns, $this->storedFiles($page, $form, $key)) ?? [];
+
+        if ($missing !== []) {
+            $this->files?->discard($files->written);
+
+            return $this->reject($page, $region, $submission, $missing, $key, $returnTo);
+        }
+
+        $values = [...$values, ...$files->columns];
+
         try {
             $write = $this->apply($page, $isCreate ? 'create' : 'update', $key, $values, $form->handler);
         } catch (OperationRefused $e) {
+            $this->files?->discard($files->written);
             // The project's logic refusing a submission is a refused
             // submission, so it is answered the way validation is: the form
             // again, with what was typed, and the reason above it. A flash and
@@ -866,8 +915,12 @@ final class ActionHandler implements Handler
             // The row went away while this form was open. Redrawing the form
             // would offer to save into nothing; the honest answer is that
             // what was being edited no longer exists.
+            $this->files?->discard($files->written);
+
             throw new NotFoundException($e->getMessage(), previous: $e);
         } catch (DbException $e) {
+            $this->files?->discard($files->written);
+
             if ($e->sqlStateClass() !== '23') {
                 throw $e;
             }
@@ -883,11 +936,19 @@ final class ActionHandler implements Handler
         }
 
         if ($write === null) {
+            // Nothing was written, so nothing points at what was just stored.
+            $this->files?->discard($files->written);
             $this->runPending();
             $this->flashes->info("Nothing was saved: {$page->title} needed no change.");
 
             return Response::redirect($returnTo);
         }
+
+        // Queued, not done: the row is written but the transaction around a
+        // bulk action may still roll it back, and a file deleted for a row
+        // that stayed exactly as it was is gone for good. An orphan is the
+        // better failure, and the only one this ordering can produce.
+        $this->forgetAfterCommit($files->superseded);
 
         $this->record($isCreate ? 'create' : 'update', $page, $write);
         $this->runPending();
@@ -918,6 +979,13 @@ final class ActionHandler implements Handler
         array $errors,
         ?string $key,
         string $returnTo,
+        /**
+         * 422 for everything the form itself refused, and 413 for the one
+         * case where the form never arrived: a body PHP discarded for being
+         * too large. The page drawn is the same page; what differs is what a
+         * proxy, a log and a browser's own tooling make of the answer.
+         */
+        int $status = 422,
     ): Response {
         // Inside the row's workspace, because redrawing a form is a render
         // and a render asks the project for things -- the options of a select,
@@ -933,10 +1001,11 @@ final class ActionHandler implements Handler
             $errors,
             $key,
             $returnTo,
+            $status,
             &$response,
         ): void {
             $view = $this->region->reject($page, $region, $submission, $errors, $key, $returnTo);
-            $response = $this->forms->document($page, $view, 422);
+            $response = $this->forms->document($page, $view, $status);
         });
 
         return $response ?? throw new LogicException('Redrawing the form produced no response.');
@@ -1102,6 +1171,145 @@ final class ActionHandler implements Handler
             array_values(array_unique($columns)),
             $this->scopeFor($page),
         ) ?? [];
+    }
+
+    /**
+     * Stores whatever the submission uploaded, or refuses the save if it
+     * cannot.
+     *
+     * A page that declares a `file` field and reaches a handler built with no
+     * `FileWrites` is a wiring mistake that would otherwise save the row and
+     * drop the photograph, with nothing anywhere saying so. It fails loudly
+     * instead, naming the page.
+     */
+    private function storeFiles(
+        PageDefinition $page,
+        FormDefinition $form,
+        Submission $submission,
+        Request $request,
+        ?string $key,
+    ): FileWriteResult {
+        if ($this->files === null) {
+            foreach ($form->fields as $field) {
+                if ($field->type->isFile()) {
+                    throw new LogicException(\sprintf(
+                        "Page '%s' has a file field ('%s') and this handler was built without a "
+                        . 'FileWrites, so there is nowhere to put what was uploaded. Pass one -- '
+                        . 'saving the row without the file would look exactly like it worked.',
+                        $page->name,
+                        $field->key,
+                    ));
+                }
+            }
+
+            return new FileWriteResult();
+        }
+
+        return $this->files->apply(
+            $page,
+            $form,
+            $submission,
+            $request->body,
+            $this->storedFiles($page, $form, $key),
+        );
+    }
+
+    /**
+     * The file columns of the row being edited, read from the database.
+     *
+     * Not from the form: what a replacement replaces is whatever is stored,
+     * and a hidden input carrying the old key would be a browser deciding
+     * which file to delete.
+     *
+     * @return array<string, mixed>
+     */
+    private function storedFiles(PageDefinition $page, FormDefinition $form, ?string $key): array
+    {
+        if ($key === null || $this->files === null) {
+            return [];
+        }
+
+        $columns = [];
+
+        foreach ($form->fields as $name => $field) {
+            if ($field->type->isFile()) {
+                $columns[] = (string) $name;
+            }
+        }
+
+        if ($columns === []) {
+            return [];
+        }
+
+        return $this->reader->byKey($page->entity, $key, $columns, $this->scopeFor($page)) ?? [];
+    }
+
+    /**
+     * The files a row holds, across every form this page declares.
+     *
+     * Read before a delete, for the same reason the superseded key is read
+     * before an update: the row is the only record of which files were its
+     * own, and once it is gone they are bytes nobody can name.
+     *
+     * A page with no file field answers an empty list without asking the
+     * database anything.
+     *
+     * @return list<string>
+     */
+    private function filesOfRow(PageDefinition $page, string $key): array
+    {
+        if ($this->files === null) {
+            return [];
+        }
+
+        $columns = [];
+
+        foreach ($page->regions as $region) {
+            foreach ($region->form->fields ?? [] as $name => $field) {
+                if ($field->type->isFile()) {
+                    $columns[] = (string) $name;
+                }
+            }
+        }
+
+        if ($columns === []) {
+            return [];
+        }
+
+        $row = $this->reader->byKey($page->entity, $key, array_values(array_unique($columns)), $this->scopeFor($page));
+        $keys = [];
+
+        foreach ($row ?? [] as $value) {
+            if ($this->files->owns($value) && \is_string($value)) {
+                $keys[] = $value;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * Queues files for deletion once the write is real.
+     *
+     * The same queue an operation's `afterCommit()` uses, and for the same
+     * reason -- a transaction can take back a row and cannot take back a
+     * deletion. A failure here is swallowed: the save succeeded, the person
+     * has been told so, and "the old photograph is still in the bucket" is
+     * not a sentence that helps them.
+     *
+     * @param list<string> $keys
+     */
+    private function forgetAfterCommit(array $keys): void
+    {
+        if ($keys === [] || $this->files === null) {
+            return;
+        }
+
+        $files = $this->files;
+
+        $this->pending[] = static function () use ($files, $keys): void {
+            $files->discard($keys);
+        };
     }
 
     /**
