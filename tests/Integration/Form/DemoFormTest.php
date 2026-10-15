@@ -16,6 +16,7 @@ use RockAdmin\Db\Sql;
 use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FileWrites;
 use RockAdmin\Form\FormFields;
 use RockAdmin\Form\FormRegion;
 use RockAdmin\Http\ActionHandler;
@@ -28,6 +29,9 @@ use RockAdmin\Http\Route;
 use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Storage\FileLink;
+use RockAdmin\Storage\LocalStorage;
+use RockAdmin\Storage\Storage;
 use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\DatabaseTestCase;
 use RockAdmin\View\Assets;
@@ -64,11 +68,15 @@ final class DemoFormTest extends DatabaseTestCase
 {
     private SessionStore $session;
 
+    private string $storageRoot;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->session = new ArraySessionStore();
+        $this->storageRoot = str_replace(DIRECTORY_SEPARATOR, '/', sys_get_temp_dir())
+            . '/ra-demo-files-' . bin2hex(random_bytes(6));
 
         foreach (self::connections() as [$connection]) {
             if ($connection !== null) {
@@ -85,7 +93,28 @@ final class DemoFormTest extends DatabaseTestCase
             }
         }
 
+        self::removeDirectory($this->storageRoot);
+
         parent::tearDown();
+    }
+
+    private static function removeDirectory(string $path): void
+    {
+        if (is_dir($path)) {
+            foreach (scandir($path) ?: [] as $entry) {
+                if ($entry !== '.' && $entry !== '..') {
+                    self::removeDirectory($path . '/' . $entry);
+                }
+            }
+
+            @rmdir($path);
+
+            return;
+        }
+
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     /**
@@ -115,7 +144,11 @@ final class DemoFormTest extends DatabaseTestCase
             "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
-            . 'created_at TIMESTAMP)',
+            // `photo` holds a storage key, as demo/seed.php creates it. The
+            // demo's ads page shows it in the grid and uploads to it from the
+            // form, so a fixture without it cannot answer the query that page
+            // actually builds.
+            . 'photo VARCHAR(255), created_at TIMESTAMP)',
         ));
         $connection->execute(new Sql(
             'INSERT INTO ra_test_users (id, company_id, name, email) VALUES (?, ?, ?, ?)',
@@ -199,6 +232,7 @@ final class DemoFormTest extends DatabaseTestCase
                 Access::gateFor($this->repository()),
                 Access::identity(),
                 $this->requestScope(),
+                $this->storage(),
             ),
             new FieldValidator(),
             new SqlWriteHandler($connection),
@@ -209,6 +243,27 @@ final class DemoFormTest extends DatabaseTestCase
             $csrf,
             new FlashBag($this->session),
             $urls,
+            null,
+            null,
+            null,
+            null,
+            null,
+            // The demo's ads page has a file field now, and a handler built
+            // without this refuses to save the row at all -- deliberately,
+            // because saving it without the file would look exactly like it
+            // worked.
+            new FileWrites($this->storage()),
+        );
+    }
+
+    /** Where this test's uploads go: a directory of its own, swept in tearDown. */
+    private function storage(): Storage
+    {
+        return new LocalStorage(
+            $this->storageRoot,
+            $this->urls(),
+            '',
+            new FileLink($this->session),
         );
     }
 
@@ -292,7 +347,7 @@ final class DemoFormTest extends DatabaseTestCase
         $this->assertNotNull($form);
 
         $this->assertSame(
-            ['title', 'description', 'price', 'state', 'featured', 'published_on', 'created_at'],
+            ['title', 'description', 'price', 'state', 'photo', 'featured', 'published_on', 'created_at'],
             array_keys($form->fields),
         );
         $this->assertSame(['published_on'], $form->resetOnCopy);

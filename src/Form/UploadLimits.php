@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Form;
 
+use RockAdmin\Config\Config;
 use RockAdmin\Page\FieldDefinition;
 
 /**
@@ -36,6 +37,38 @@ final class UploadLimits
             'application/pdf',
         ],
     ) {
+    }
+
+    /**
+     * What `uploads.*` says, with the defaults above for anything it leaves
+     * out.
+     *
+     * One reader, the way `Storages` and `Mailers` are one reader each: an
+     * installation that raises `uploads.max_bytes` raises it for the field,
+     * for the validator and for the message a refusal shows, and nowhere is
+     * there a second copy of the number to forget.
+     */
+    public static function fromConfig(Config $config): self
+    {
+        $bytes = $config->get('uploads.max_bytes');
+        $types = $config->get('uploads.types');
+
+        $allowed = [];
+
+        if (\is_array($types)) {
+            foreach ($types as $type) {
+                if (\is_string($type) && $type !== '') {
+                    $allowed[] = strtolower($type);
+                }
+            }
+        }
+
+        $defaults = new self();
+
+        return new self(
+            \is_int($bytes) && $bytes > 0 ? $bytes : $defaults->maxBytes,
+            $allowed === [] ? $defaults->types : $allowed,
+        );
     }
 
     /** The limits this field actually enforces: the installation's, narrowed by its own. */

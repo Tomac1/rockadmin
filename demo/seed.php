@@ -186,7 +186,10 @@ function seedOneServer(string $label, array $server): void
         "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
-            . 'created_at TIMESTAMP)',
+            // `photo` holds a storage key -- `ads/2026/10/<32 hex>.jpg` --
+            // and never a path or a URL. 255 is what `StorageKey` allows at
+            // most, so the column cannot truncate one.
+            . 'photo VARCHAR(255), created_at TIMESTAMP)',
         'CREATE TABLE ra_test_tags (id INTEGER PRIMARY KEY, ad_id INTEGER, label VARCHAR(50))',
     ] as $ddl) {
         $connection->execute(new Sql($ddl));

@@ -43,6 +43,36 @@ return [
     'public_url' => getenv('RA_PUBLIC_URL') !== false ? getenv('RA_PUBLIC_URL') : '',
 
     /*
+     * Uploaded files, in a directory beside the logs.
+     *
+     * `storage/uploads` is inside the demo folder, which the built-in server
+     * also serves -- so this demo would be the one arrangement the
+     * documentation warns about, were the files reachable by their path. They
+     * are not: a key is not a path, the directory has no index, and the
+     * only way to a file is `/_file/{key}` with a signature made for the
+     * session asking. A real project still puts this outside the document
+     * root, and `docs/guides/files-and-images.md` says so first.
+     *
+     * An R2 bucket is the same four lines with `driver => 's3'`; the guide
+     * has them.
+     */
+    'storage' => [
+        'driver' => 'local',
+        'path' => __DIR__ . '/../storage/uploads',
+        'link_minutes' => 10,
+    ],
+
+    /*
+     * What may be uploaded at all. Smaller than the 5 MB default, because a
+     * photograph of a bicycle is not a scan of a book and a demo is a good
+     * place to show the refusal working.
+     */
+    'uploads' => [
+        'max_bytes' => 2097152,
+        'types' => ['image/jpeg', 'image/png', 'image/webp'],
+    ],
+
+    /*
      * The default driver, spelled out rather than left implicit, because the
      * point of this demo is that every key is one a project would set. It
      * writes each message to storage/logs/mail as an .eml a mail client opens;
