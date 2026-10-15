@@ -44,11 +44,22 @@ final class CurlHttpClient implements HttpClient
 
         $received = [];
 
+        $method = $method === '' ? 'GET' : strtoupper($method);
+
         curl_setopt_array($handle, [
-            // An empty method would make curl send a GET, which is not
-            // what the caller asked for -- and is the one value its own type
+            // An empty method would make curl send a GET, which is not what
+            // the caller asked for -- and is the one value its own type
             // refuses.
-            CURLOPT_CUSTOMREQUEST => $method === '' ? 'GET' : $method,
+            CURLOPT_CUSTOMREQUEST => $method,
+            // HEAD is the one verb curl cannot be told about by name alone.
+            // With CUSTOMREQUEST it sends the right request line and then
+            // waits for a body the server will never send, because the whole
+            // point of HEAD is that there is none -- so the call hangs until
+            // the timeout and reports a connection that failed. Found against
+            // a real bucket, where `exists()` took thirty seconds to answer
+            // "could not be reached"; every scripted test passed, because a
+            // fake client has no such rule to break.
+            CURLOPT_NOBODY => $method === 'HEAD',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_SSL_VERIFYPEER => true,

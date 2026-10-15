@@ -40,7 +40,15 @@ final class S3Storage implements Storage
     public function __construct(
         private readonly HttpClient $http,
         private readonly SignatureV4 $signer,
-        /** The API endpoint with scheme and no path: `https://<account>.r2.cloudflarestorage.com`. */
+        /**
+         * The API endpoint: scheme and host, and no path.
+         *
+         * R2 also publishes a bucket-scoped form of the same address, ending
+         * in the bucket name, and putting that here is the easy mistake --
+         * easy because it *works*: the bucket is appended again, every verb
+         * agrees with every other, and the files land one directory deeper
+         * than anybody will look for them. It is refused for that reason.
+         */
         private readonly string $endpoint,
         private readonly string $bucket,
         /**
@@ -62,6 +70,18 @@ final class S3Storage implements Storage
          */
         private readonly string $publicBaseUrl = '',
     ) {
+        $path = parse_url($endpoint, PHP_URL_PATH);
+
+        if (\is_string($path) && trim($path, '/') !== '') {
+            throw new StorageException(\sprintf(
+                "storage.endpoint is '%s', which has a path. The bucket goes in storage.bucket and "
+                . 'nowhere else -- left here it is appended twice, which works and quietly stores '
+                . "everything under '%s/%s/'. Drop the path.",
+                $endpoint,
+                trim($path, '/'),
+                $this->bucket,
+            ));
+        }
     }
 
     public function put(string $key, string $contents, string $contentType): void
