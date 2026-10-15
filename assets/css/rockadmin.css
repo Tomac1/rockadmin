@@ -725,3 +725,34 @@ select[multiple].ra-select {
     font-size: var(--text-md, 0.8125rem);
     color: var(--text-primary, #0f172a);
 }
+
+/*
+ * The dashboard's page cards.
+ *
+ * The card itself is the design system's; what is missing there is the shape
+ * of a set of them, which is a grid that reflows rather than a fixed number
+ * of columns -- the same menu is four pages on one installation and forty on
+ * another.
+ */
+.ra-dashboard-pages {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: var(--space-4, 1rem);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ra-dashboard-card {
+    display: block;
+    height: 100%;
+    text-decoration: none;
+}
+
+.ra-dashboard-card-title {
+    display: block;
+}
+
+.ra-dashboard-empty {
+    color: var(--text-muted);
+}

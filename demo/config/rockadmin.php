@@ -22,6 +22,17 @@ return [
     // this is what makes it possible to look at, not only read about.
     'url_mode' => getenv('RA_URL_MODE') !== false ? getenv('RA_URL_MODE') : 'path',
     'debug' => true,
+    /*
+     * The navigation. Each key is a page, which is also its permission: the
+     * editor and the viewer never see Administrators, because
+     * `demo/config/roles.php` gives `administrators.*` to the superadmin
+     * alone and `Menu` draws nothing the gate would refuse.
+     */
+    'menu' => [
+        'dashboard' => ['label' => 'Dashboard', 'route' => 'dashboard'],
+        'ads' => ['label' => 'Ads'],
+        'administrators' => ['label' => 'Administrators'],
+    ],
     'paths' => [
         'logs' => __DIR__ . '/../storage/logs',
     ],

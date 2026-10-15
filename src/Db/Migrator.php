@@ -217,6 +217,22 @@ final class Migrator
     }
 
     /**
+     * What a migration would run, for a host that cannot run it here.
+     *
+     * Shared hosting with a web-based database client is still how a great
+     * many PHP projects are deployed, and `--dry-run` printing statements
+     * somebody can paste is the difference between this SDK being installable
+     * there and not. The statements are dialect-expanded, so what is printed
+     * is what this server would have executed and not a template of it.
+     *
+     * @return list<string>
+     */
+    public function sqlFor(string $name): array
+    {
+        return $this->statements($name);
+    }
+
+    /**
      * The file's statements, with `{{ddl.*}}` expanded for this server.
      *
      * Statements are separated by a semicolon at the end of a line. That is a

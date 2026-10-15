@@ -110,6 +110,42 @@ The record of what happened: one row in ra_activity_log per write.
 | --- | --- | --- | --- | --- |
 | `enabled` | bool | `true` | `false` | Records every create, update and delete with who did it and a diff of what changed. On by default, because history that was not collected cannot be recovered afterwards; turn it off only where another system already keeps the same record. |
 
+## `menu.*`
+
+The navigation, keyed by item. The key is the item's identity and its permission: an entry keyed 'ads' links to the ads page, is hidden from anybody the gate would refuse ads.view, and is marked active while that page is open. Say where an item goes with 'route' for one of the admin's own named routes or 'url' for anything else -- and with neither for the common case, where the key names a page.
+
+Every entry of `menu`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `label` | string | — | `Ads` | What the link says. Defaults to the key, which is rarely what you want. |
+| `route` | string | — | `dashboard` | One of the admin's own named routes, e.g. 'dashboard'. |
+| `url` | string | — | `https://cyklobazar.cz` | An address, taken as written -- including an absolute one, because a link out of the admin belongs in the menu too. |
+| `icon` | string | — | `box` | An icon name the theme understands. The bundled theme draws none yet. |
+
+## `menu.*.children.*`
+
+A dropdown under this item, keyed the same way and filtered by the same permissions.
+
+Every entry of `menu.*.children`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `label` | string | — | `Ads` | What the link says. Defaults to the key, which is rarely what you want. |
+| `route` | string | — | `dashboard` | One of the admin's own named routes, e.g. 'dashboard'. |
+| `url` | string | — | `https://cyklobazar.cz` | An address, taken as written -- including an absolute one, because a link out of the admin belongs in the menu too. |
+| `icon` | string | — | `box` | An icon name the theme understands. The bundled theme draws none yet. |
+
+## `database`
+
+How to reach the database, for a project with no connection to lend. A host that has one passes it to the bootstrap instead, which is the better answer wherever it is available: one connection, one place holding the password, and transactions that do not diverge when the project writes alongside the admin. A closure given to the bootstrap wins over these keys.  Write them as {{env.*}} placeholders. The configuration file is committed and must be identical in every environment, which a literal password is not.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `dsn` | string | `` | `{{env.RA_DSN}}` | A PDO connection string. Empty means the admin has no database of its own to open, which is a legitimate state: every page that needs rows says so plainly rather than failing. |
+| `user` | string | `` | `{{env.RA_DB_USER}}` | The database user. |
+| `password` | string | `` | `{{env.RA_DB_PASSWORD}}` | The database password. Never a literal in a committed file. |
+
 ## `theme`
 
 The default look. Replace it wholesale with a stylesheet in assets.css.
