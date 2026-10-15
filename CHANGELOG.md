@@ -35,7 +35,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   dialect-neutral migration file, and `Migrator`, which applies pending
   migrations in name order, records each with a checksum, refuses to continue
   when an applied migration has been edited since, and is safe to run on every
-  deploy. `bin/ra-migrate.php` is the script a project calls until the CLI
-  exists.
+  deploy.
+- The bootstrap: `Setup` for what a host supplies, `Admin::boot()` for the
+  composition of every layer, `Services` for what the boot produced, and
+  `RockAdmin::handle()` / `RockAdmin::serve()` as the line a project writes.
+  The demo's 801-line composition root became 71 lines, and a project
+  integrating RockAdmin no longer copies one.
+- The command line, `vendor/bin/rockadmin`: `init`, `make:page`, `doctor`,
+  `migrate`, `user:create`, `validate`, `schema`, `cache:build` and
+  `cache:clear`. Every command loads the same `config/rockadmin/bootstrap.php`
+  the web entry point does, so they operate on the installation a request
+  would get. It replaces `bin/ra-migrate.php`, which is gone.
+- `menu` as a configuration key, keyed by page — which is also the permission
+  that decides who sees each item — and a built-in dashboard, so an
+  installation answers its own front door without the host writing one.
+- `database.dsn`, `database.user` and `database.password`, for a project with
+  no connection to lend. A `pdo` closure on the bootstrap still wins.
+
+### Changed
+
+- Paths in the configuration resolve against the project root the bootstrap
+  names, as specification 11.4 has always said and nothing implemented.
+- `paths.cache` was removed. Where the compiled configuration lives cannot be
+  written in the configuration, because it is read first; it is `cachePath`
+  on `Setup`, and setting it makes the whole configuration one `include`.
+- An unset `{{env.*}}` no longer fails validation on `public_url` or the
+  `database.*` keys: those are the keys every project writes as placeholders,
+  and not having set one yet is a state rather than an error.
+- The "looks like a secret" warning no longer fires on the four keys that
+  exist to hold secrets. A warning that fires on the correct arrangement is
+  one people learn to ignore.
+- An admin whose `storage.path` is empty now starts, and refuses the first
+  upload with the same explanation, instead of refusing to boot at all.
+- The audit log is told who is writing at the write rather than when the
+  handlers were wired, so an installation that keeps one `Admin` cannot
+  record every change under the first administrator to sign in.
 
 [Unreleased]: https://github.com/tomac1/rockadmin/commits/main

@@ -102,7 +102,7 @@ function demoUsers(): array
  * Creates the `ra_*` tables and puts the three administrators in `ra_users`.
  *
  * `Migrator` first, because nothing below has a table to write to otherwise,
- * and it is the same class `bin/ra-migrate.php` calls — the demo does not get
+ * and it is the same class `rockadmin migrate` calls — the demo does not get
  * its own DDL, or the shipped schema would have two spellings.
  *
  * Re-runnable, like the rest of this script: the three rows are deleted by

@@ -9,10 +9,10 @@ use Throwable;
 /**
  * Applies the SDK's own `.sql` files and records what it applied.
  *
- * Specification 11 puts the CLI in a later milestone, so this is a class a
- * project calls — `bin/ra-migrate.php` is the one-line script that ships with
- * it, and the command will wrap the same class rather than repeat it. The DDL
- * lives in `migrations/` and is shipped with the SDK on purpose: hand-copying
+ * `rockadmin migrate` is the command that drives it, and a project that would
+ * rather call it from its own deploy hook loses nothing by doing so — the
+ * command wraps this class rather than repeating it. The DDL lives in
+ * `migrations/` and is shipped with the SDK on purpose: hand-copying
  * it into each host's own migration system would fork the schema per project,
  * which is the one thing the `ra_` prefix exists to prevent.
  *
@@ -214,6 +214,22 @@ final class Migrator
                 $e instanceof DbException ? $e->sqlState : null,
             );
         }
+    }
+
+    /**
+     * What a migration would run, for a host that cannot run it here.
+     *
+     * Shared hosting with a web-based database client is still how a great
+     * many PHP projects are deployed, and `--dry-run` printing statements
+     * somebody can paste is the difference between this SDK being installable
+     * there and not. The statements are dialect-expanded, so what is printed
+     * is what this server would have executed and not a template of it.
+     *
+     * @return list<string>
+     */
+    public function sqlFor(string $name): array
+    {
+        return $this->statements($name);
     }
 
     /**

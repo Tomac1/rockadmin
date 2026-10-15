@@ -8,7 +8,6 @@ return [
     'brand' => 'RockAdmin',
     'paths' => [
         'logs' => 'storage/logs/rockadmin',
-        'cache' => 'storage/cache/rockadmin',
     ],
     'mail' => ['use' => '@mail:defaults'],
     'assets' => ['css' => ['/css/admin.css', '/css/legacy.css'], 'js' => []],

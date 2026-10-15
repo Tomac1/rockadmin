@@ -90,6 +90,9 @@ final class Resolver
     /** @var list<string> environment names already warned about */
     private array $warnedAbout = [];
 
+    /** @var list<string> the key currently being resolved, outermost first */
+    private array $keyPath = [];
+
     /**
      * The {{config.*}} paths currently being resolved, innermost last.
      *
@@ -119,11 +122,32 @@ final class Resolver
         $resolved = [];
 
         foreach ($config as $name => $value) {
-            $resolved[$name] = $this->value($value);
+            // The key being resolved, kept while it is -- so that a warning
+            // about a secret can tell `database.password`, which is where a
+            // password belongs, from `brand`, which is rendered on every page.
+            $this->keyPath[] = (string) $name;
+
+            try {
+                $resolved[$name] = $this->value($value);
+            } finally {
+                array_pop($this->keyPath);
+            }
         }
 
         return $resolved;
     }
+
+    /**
+     * Keys whose whole purpose is to hold a secret.
+     *
+     * @var list<string>
+     */
+    private const array SECRETS_BELONG_HERE = [
+        'database.password',
+        'mail.password',
+        'storage.secret',
+        'storage.key',
+    ];
 
     /** @return list<string> */
     public function warnings(): array
@@ -411,6 +435,17 @@ final class Resolver
     private function warnIfSecret(string $name): void
     {
         if (\in_array($name, $this->warnedAbout, true)) {
+            return;
+        }
+
+        // A secret in a key that exists to hold one is not a finding. The
+        // warning is about a secret reaching somewhere it can be read --
+        // rendered in a page, printed in a list of settings -- and these
+        // four are read by the driver that needs them and by nothing else.
+        // Warning here anyway would put a line in front of every
+        // installation that configures a database, which is how a warning
+        // becomes something people scroll past.
+        if (\in_array(implode('.', $this->keyPath), self::SECRETS_BELONG_HERE, true)) {
             return;
         }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Tests\Integration\Auth;
 
+use Closure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RockAdmin\Auth\AuditLog;
@@ -230,6 +231,48 @@ final class AuditLogTest extends DatabaseTestCase
     }
 
     /**
+     * Who is writing is asked at the write, not remembered from the wiring.
+     *
+     * The bootstrap builds the handlers once and the audit log's actor used
+     * to be resolved there — which is the same person for the whole of one
+     * request, and the first person for every request if an installation
+     * ever keeps an `Admin` and serves many. A log that names the wrong
+     * administrator is worse than no log, because it is believed; so the
+     * handler is given the question and not the answer.
+     */
+    #[DataProvider('connections')]
+    public function testTheLogNamesWhoeverIsWritingNowAndNotWhoWasSignedInWhenItWasWired(
+        ?Connection $connection,
+    ): void {
+        $connection = $this->fresh($connection);
+
+        $signedIn = new AuthUser('7', 'jana@example.com', 'Jana', ['editor']);
+        $actor = static function () use (&$signedIn): AuthUser {
+            return $signedIn;
+        };
+
+        $this->post($connection, 'create', [
+            'title' => 'Horské kolo',
+            'price' => '12000',
+            'user_id' => (string) self::OWNER_ID,
+        ], $actor);
+
+        // The next request is somebody else's, on the same wiring.
+        $signedIn = new AuthUser('9', 'petr@example.com', 'Petr', ['editor']);
+
+        $this->post($connection, 'create', [
+            'title' => 'Silniční kolo',
+            'price' => '24000',
+            'user_id' => (string) self::OWNER_ID,
+        ], $actor);
+
+        $log = $this->log($connection);
+
+        self::assertSame('7', $this->text($log[0]['user_id']));
+        self::assertSame('9', $this->text($log[1]['user_id']), 'The second write was logged as the first writer.');
+    }
+
+    /**
      * A page over a table with a password column is ordinary configuration,
      * so a secret can reach this path today. The column's presence in the
      * diff still records that it changed; its value is not stored.
@@ -302,9 +345,13 @@ final class AuditLogTest extends DatabaseTestCase
      *
      * @param array<string, mixed> $body
      */
-    private function post(Connection $connection, string $action, array $body): Response
-    {
-        return $this->actions($connection)->handle(
+    private function post(
+        Connection $connection,
+        string $action,
+        array $body,
+        Closure|AuthUser|null $actor = null,
+    ): Response {
+        return $this->actions($connection, $actor)->handle(
             new Route('action', ['page' => 'audit', 'action' => $action]),
             new Request(
                 'POST',
@@ -314,7 +361,8 @@ final class AuditLogTest extends DatabaseTestCase
         );
     }
 
-    private function actions(Connection $connection): ActionHandler
+    /** @param (\Closure(): ?AuthUser)|AuthUser|null $actor */
+    private function actions(Connection $connection, Closure|AuthUser|null $actor = null): ActionHandler
     {
         $urls = new UrlGenerator('/admin');
         $csrf = new Csrf($this->session);
@@ -344,7 +392,7 @@ final class AuditLogTest extends DatabaseTestCase
             $flashes,
             $urls,
             $this->audit($connection),
-            new AuthUser('7', 'jana@example.com', 'Jana', ['editor']),
+            $actor ?? new AuthUser('7', 'jana@example.com', 'Jana', ['editor']),
         );
     }
 

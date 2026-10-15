@@ -43,13 +43,12 @@ final class RootSchema
                         description: 'Errors, mail and the audit trail. Must be outside the document root.',
                         example: 'storage/logs/rockadmin',
                     ),
-                    'cache' => new SchemaKey(
-                        ValueType::String,
-                        description: 'Where the compiled configuration is written. It can hold '
-                            . 'resolved {{env.*}} values, so it must be outside the document root.',
-                        example: 'storage/cache/rockadmin',
-                        performance: 'Without it the configuration is read and validated on every request.',
-                    ),
+                    // There is no 'cache' key here, and it is worth saying why
+                    // rather than leaving its absence to be noticed: where the
+                    // compiled configuration lives cannot be written in the
+                    // configuration, because it is read before the
+                    // configuration is. It is `cachePath` on the bootstrap's
+                    // `Setup`, which is the one place that is in hand first.
                 ]),
             ),
             'template_paths' => new SchemaKey(
@@ -63,6 +62,11 @@ final class RootSchema
             'public_url' => new SchemaKey(
                 ValueType::String,
                 default: '',
+                // An unset {{env.*}} resolves to null, and this key is one
+                // every project writes that way -- so null has to mean "not
+                // set yet" rather than "your configuration is broken". It
+                // reads as empty, which this key already has an answer for.
+                nullable: true,
                 description: 'Where this admin is reachable from outside, as an absolute URL with no '
                     . 'trailing slash. It is used for the links in mail, and only there -- every page '
                     . 'of the admin itself builds relative URLs and needs none of this.\n\n'
@@ -367,6 +371,62 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'menu' => new SchemaKey(
+                ValueType::Array,
+                default: [],
+                description: 'The navigation, keyed by item. The key is the item\'s identity and its '
+                    . "permission: an entry keyed 'ads' links to the ads page, is hidden from "
+                    . 'anybody the gate would refuse ads.view, and is marked active while that '
+                    . "page is open. Say where an item goes with 'route' for one of the admin's "
+                    . "own named routes or 'url' for anything else -- and with neither for the "
+                    . 'common case, where the key names a page.',
+                example: [
+                    'dashboard' => ['label' => 'Dashboard', 'route' => 'dashboard'],
+                    'ads' => ['label' => 'Ads'],
+                ],
+                each: self::menuItem(self::menuItem(null)),
+            ),
+            'database' => new SchemaKey(
+                ValueType::Array,
+                description: 'How to reach the database, for a project with no connection to lend. '
+                    . 'A host that has one passes it to the bootstrap instead, which is the better '
+                    . 'answer wherever it is available: one connection, one place holding the '
+                    . 'password, and transactions that do not diverge when the project writes '
+                    . "alongside the admin. A closure given to the bootstrap wins over these keys.\n\n"
+                    . 'Write them as {{env.*}} placeholders. The configuration file is committed and '
+                    . 'must be identical in every environment, which a literal password is not.',
+                children: new Schema([
+                    'dsn' => new SchemaKey(
+                        ValueType::String,
+                        default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
+                        description: 'A PDO connection string. Empty means the admin has no database '
+                            . 'of its own to open, which is a legitimate state: every page that '
+                            . 'needs rows says so plainly rather than failing.',
+                        example: '{{env.RA_DSN}}',
+                    ),
+                    'user' => new SchemaKey(
+                        ValueType::String,
+                        default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
+                        description: 'The database user.',
+                        example: '{{env.RA_DB_USER}}',
+                    ),
+                    'password' => new SchemaKey(
+                        ValueType::String,
+                        default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
+                        description: 'The database password. Never a literal in a committed file.',
+                        example: '{{env.RA_DB_PASSWORD}}',
+                    ),
+                ]),
+            ),
             'theme' => new SchemaKey(
                 ValueType::Array,
                 description: 'The default look. Replace it wholesale with a stylesheet in assets.css.',
@@ -383,5 +443,54 @@ final class RootSchema
                 ]),
             ),
         ]);
+    }
+
+    /**
+     * One menu entry, whose children are entries of the same shape.
+     *
+     * The recursion is unrolled rather than expressed, because a schema that
+     * referred to itself could not be built: `menuItem(menuItem(null))` is
+     * two levels — a bar of items, each with one dropdown — which is what the
+     * design system's navigation draws and what a third level would have no
+     * markup for. Passing null is the leaf: an entry that may not nest.
+     */
+    private static function menuItem(?Schema $children): Schema
+    {
+        $keys = [
+            'label' => new SchemaKey(
+                ValueType::String,
+                description: 'What the link says. Defaults to the key, which is rarely what you want.',
+                example: 'Ads',
+            ),
+            'route' => new SchemaKey(
+                ValueType::String,
+                description: "One of the admin's own named routes, e.g. 'dashboard'.",
+                example: 'dashboard',
+            ),
+            'url' => new SchemaKey(
+                ValueType::String,
+                description: 'An address, taken as written -- including an absolute one, because a '
+                    . 'link out of the admin belongs in the menu too.',
+                example: 'https://cyklobazar.cz',
+            ),
+            'icon' => new SchemaKey(
+                ValueType::String,
+                description: 'An icon name the theme understands. The bundled theme draws none yet.',
+                example: 'box',
+            ),
+        ];
+
+        if ($children !== null) {
+            $keys['children'] = new SchemaKey(
+                ValueType::Array,
+                default: [],
+                description: 'A dropdown under this item, keyed the same way and filtered by the '
+                    . 'same permissions.',
+                example: ['ads' => ['label' => 'Ads']],
+                each: $children,
+            );
+        }
+
+        return new Schema($keys);
     }
 }

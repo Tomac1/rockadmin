@@ -140,7 +140,20 @@ final class ActionHandler implements Handler
         private readonly FlashBag $flashes,
         private readonly UrlGenerator $urls,
         private readonly ?AuditLog $audit = null,
-        private readonly ?AuthUser $actor = null,
+        /**
+         * Who the audit log names, resolved when a row is written.
+         *
+         * A `Closure` as well as a user, and the closure is what a bootstrap
+         * passes. Resolving it at wiring time means the handler holds
+         * whoever was signed in when it was built -- which is the same
+         * person for the whole of one request, and the *first* person for
+         * every request if an installation ever builds the admin once and
+         * serves many. An audit trail that names the wrong administrator is
+         * worse than none, because it is believed.
+         *
+         * @var (\Closure(): ?AuthUser)|AuthUser|null
+         */
+        private readonly Closure|AuthUser|null $actor = null,
         /**
          * The project's own write logic, by the name a page file gave it.
          *
@@ -296,6 +309,12 @@ final class ActionHandler implements Handler
         // audit rows for one row's one change would make the log lie about
         // what happened.
         return array_values(array_unique($keys));
+    }
+
+    /** Who is writing, asked now rather than remembered from the wiring. */
+    private function actor(): ?AuthUser
+    {
+        return $this->actor instanceof Closure ? ($this->actor)() : $this->actor;
     }
 
     /**
@@ -1044,7 +1063,7 @@ final class ActionHandler implements Handler
             key: $key,
             scope: $this->scopeFor($page),
             workspace: $workspace,
-            actor: $this->actor,
+            actor: $this->actor(),
         );
 
         if ($handler === null) {
@@ -1394,7 +1413,7 @@ final class ActionHandler implements Handler
         }
 
         try {
-            $this->audit->record($this->actor, $page->name, $action, $write);
+            $this->audit->record($this->actor(), $page->name, $action, $write);
         } catch (Throwable) {
             // Throwable rather than DbException: whatever went wrong, it must
             // not undo a change that has already been committed. The message

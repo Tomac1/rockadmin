@@ -20,7 +20,7 @@ The pages themselves are described in their own files and documented in
 | `debug` | bool | `false` | `true` | Shows what went wrong instead of a neutral error page. Never on in production. |
 | `brand` | string | `RockAdmin` | `Cyklobazar admin` | Shown in the navbar. |
 | `template_paths` | array | `[]` | `['resources/rockadmin', 'vendor/company/admin-theme']` | Directories searched for templates before the SDK's own, highest priority first. A file with the same name as an SDK template replaces it; nothing needs copying or registering. |
-| `public_url` | string | `` | `https://admin.cyklobazar.cz` | Where this admin is reachable from outside, as an absolute URL with no trailing slash. It is used for the links in mail, and only there -- every page of the admin itself builds relative URLs and needs none of this.\n\nIt is configuration rather than something read from the request on purpose. A link built from the Host header is a link an attacker can choose by sending one, which turns a password reset into a way of collecting reset tokens: the mail goes to the right person and the link points at the wrong server. Left empty, a reset link cannot be built and the admin says so rather than sending a message nobody can use. |
+| `public_url` | string or null | `` | `https://admin.cyklobazar.cz` | Where this admin is reachable from outside, as an absolute URL with no trailing slash. It is used for the links in mail, and only there -- every page of the admin itself builds relative URLs and needs none of this.\n\nIt is configuration rather than something read from the request on purpose. A link built from the Host header is a link an attacker can choose by sending one, which turns a password reset into a way of collecting reset tokens: the mail goes to the right person and the link points at the wrong server. Left empty, a reset link cannot be built and the admin says so rather than sending a message nobody can use. |
 | `pages_path` | string | `pages` | `pages` | Where page files live, relative to the configuration directory. One file per page, named after the page: pages/ads.php is reachable at /p/ads. |
 | `per_page` | int | `25` | `50` | Rows in one page of a grid, for regions that do not set their own. *Performance:* A large value makes every grid render slower for everyone; set it per region where a particular page needs more. |
 
@@ -31,7 +31,6 @@ Writable directories, relative to the project root.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `logs` | string | — | `storage/logs/rockadmin` | Errors, mail and the audit trail. Must be outside the document root. **Required.** |
-| `cache` | string | — | `storage/cache/rockadmin` | Where the compiled configuration is written. It can hold resolved {{env.*}} values, so it must be outside the document root. *Performance:* Without it the configuration is read and validated on every request. |
 
 ## `auth`
 
@@ -109,6 +108,42 @@ The record of what happened: one row in ra_activity_log per write.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `enabled` | bool | `true` | `false` | Records every create, update and delete with who did it and a diff of what changed. On by default, because history that was not collected cannot be recovered afterwards; turn it off only where another system already keeps the same record. |
+
+## `menu.*`
+
+The navigation, keyed by item. The key is the item's identity and its permission: an entry keyed 'ads' links to the ads page, is hidden from anybody the gate would refuse ads.view, and is marked active while that page is open. Say where an item goes with 'route' for one of the admin's own named routes or 'url' for anything else -- and with neither for the common case, where the key names a page.
+
+Every entry of `menu`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `label` | string | — | `Ads` | What the link says. Defaults to the key, which is rarely what you want. |
+| `route` | string | — | `dashboard` | One of the admin's own named routes, e.g. 'dashboard'. |
+| `url` | string | — | `https://cyklobazar.cz` | An address, taken as written -- including an absolute one, because a link out of the admin belongs in the menu too. |
+| `icon` | string | — | `box` | An icon name the theme understands. The bundled theme draws none yet. |
+
+## `menu.*.children.*`
+
+A dropdown under this item, keyed the same way and filtered by the same permissions.
+
+Every entry of `menu.*.children`.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `label` | string | — | `Ads` | What the link says. Defaults to the key, which is rarely what you want. |
+| `route` | string | — | `dashboard` | One of the admin's own named routes, e.g. 'dashboard'. |
+| `url` | string | — | `https://cyklobazar.cz` | An address, taken as written -- including an absolute one, because a link out of the admin belongs in the menu too. |
+| `icon` | string | — | `box` | An icon name the theme understands. The bundled theme draws none yet. |
+
+## `database`
+
+How to reach the database, for a project with no connection to lend. A host that has one passes it to the bootstrap instead, which is the better answer wherever it is available: one connection, one place holding the password, and transactions that do not diverge when the project writes alongside the admin. A closure given to the bootstrap wins over these keys.  Write them as {{env.*}} placeholders. The configuration file is committed and must be identical in every environment, which a literal password is not.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `dsn` | string or null | `` | `{{env.RA_DSN}}` | A PDO connection string. Empty means the admin has no database of its own to open, which is a legitimate state: every page that needs rows says so plainly rather than failing. |
+| `user` | string or null | `` | `{{env.RA_DB_USER}}` | The database user. |
+| `password` | string or null | `` | `{{env.RA_DB_PASSWORD}}` | The database password. Never a literal in a committed file. |
 
 ## `theme`
 

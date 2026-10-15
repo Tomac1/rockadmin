@@ -43,6 +43,11 @@ interface Dialect
      * `information_schema.columns` on PostgreSQL; the two name the column
      * holding the column's own name differently ('Field' vs 'column_name'),
      * which `Connection::columns()` reads regardless of which arrives.
+     *
+     * Each row carries the declared type as well -- 'Type' on MySQL,
+     * 'data_type' on PostgreSQL -- which nothing in a request reads and
+     * `make:page` does, to guess a column type from a column rather than
+     * from its name.
      */
     public function columns(string $table): Sql;
 

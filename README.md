@@ -38,12 +38,27 @@ Your project hands RockAdmin a request path; RockAdmin hands back a response.
 In Laravel that is one line:
 
 ```php
-Route::any('/admin/{path?}', fn ($path = '') => RockAdmin::handle($path, basePath: base_path()))
-    ->where('path', '.*');
+Route::any('/admin/{path?}', fn ($path = '') => RockAdmin::handle(
+    $path,
+    basePath: base_path(),
+    pdo: fn () => DB::connection()->getPdo(),
+)->body)->where('path', '.*');
 ```
 
-Without a framework, it is the same call from an `index.php`. Pretty URLs are
-optional — `?ra=p/users` works just as well, so no mod_rewrite is required.
+Without a framework, it is `RockAdmin::serve()` from an `index.php`, which
+reads the path itself. Pretty URLs are optional — `?ra=p/users` works just as
+well, so no mod_rewrite is required.
+
+The installation is four commands, and
+[the installation guide](docs/guides/installation.md) is the long version:
+
+```bash
+composer require tomac1/rockadmin
+vendor/bin/rockadmin init          # writes config/rockadmin/*, commit it
+vendor/bin/rockadmin migrate       # creates the ra_ tables
+vendor/bin/rockadmin user:create   # the first administrator
+vendor/bin/rockadmin doctor        # checks everything else
+```
 
 Everything an admin page does is described in one file kept in git:
 
@@ -137,10 +152,11 @@ schema does not fork per project.
 Run it once per deploy:
 
 ```bash
-php vendor/tomac1/rockadmin/bin/ra-migrate.php "mysql:host=127.0.0.1;dbname=shop" root secret
+vendor/bin/rockadmin migrate            # --dry-run prints the SQL instead
 ```
 
-or, where the application already has a PDO:
+or, where the application would rather call the class from its own deploy
+hook:
 
 ```php
 (new RockAdmin\Db\Migrator(RockAdmin\Db\Connection::fromPdo($pdo)))->migrate();

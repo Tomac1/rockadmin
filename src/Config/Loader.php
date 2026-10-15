@@ -18,10 +18,32 @@ final class Loader
     /** @var list<string> */
     private array $warnings = [];
 
-    /** @param Closure(string): ?string $env */
+    /**
+     * Keys holding a path, resolved against the project root.
+     *
+     * Specification 11.4: configuration is committed once and must be
+     * identical everywhere, so a path in it is relative to the project root
+     * rather than absolute — and relative to the *project* root, not the
+     * document root, because `storage/logs/rockadmin` under `public/` is a
+     * reset link somebody can fetch. The list is here, next to where the
+     * configuration is assembled, rather than spread over the classes that
+     * read each key: one place to look, and one place a new path key has to
+     * be added to.
+     *
+     * `template_paths` is a list of them and is handled with them.
+     */
+    private const PATH_KEYS = ['paths.logs', 'storage.path'];
+
+    /**
+     * @param Closure(string): ?string $env
+     * @param ?string                  $basePath the project root; without it, relative paths are
+     *                                           left as written and resolved by whoever opens them,
+     *                                           which is the working directory
+     */
     public function __construct(
         private readonly string $directory,
         private readonly Closure $env,
+        private readonly ?string $basePath = null,
     ) {
     }
 
@@ -49,6 +71,7 @@ final class Loader
         // Defaults are applied after validation, so the validator judges what the
         // project wrote rather than what we completed for it.
         $resolved = (new Defaults())->apply($resolved, $schema);
+        $resolved = $this->resolvePaths($resolved);
 
         $enums = $definitions->expand($this->read('enums.php'));
         $resolvedEnums = $resolver->resolve($enums);
@@ -77,6 +100,95 @@ final class Loader
     public function warnings(): array
     {
         return $this->warnings;
+    }
+
+    /**
+     * Rewrites every path key that was written relative to the project root.
+     *
+     * An absolute path is left alone, because a host that wrote one meant it
+     * — a bucket mount, a RAM disk, a directory shared between two
+     * applications. Windows drive letters count as absolute, which is what
+     * the second test is for.
+     *
+     * @param  array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private function resolvePaths(array $config): array
+    {
+        if ($this->basePath === null) {
+            return $config;
+        }
+
+        foreach (self::PATH_KEYS as $key) {
+            $value = $this->at($config, $key);
+
+            if (\is_string($value) && $value !== '') {
+                $config = $this->put($config, $key, $this->absolute($value));
+            }
+        }
+
+        $templates = $config['template_paths'] ?? null;
+
+        if (\is_array($templates)) {
+            $resolved = [];
+
+            foreach ($templates as $path) {
+                $resolved[] = \is_string($path) ? $this->absolute($path) : $path;
+            }
+
+            $config['template_paths'] = $resolved;
+        }
+
+        return $config;
+    }
+
+    private function absolute(string $path): string
+    {
+        $isAbsolute = str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+
+        return $isAbsolute ? $path : rtrim((string) $this->basePath, '/\\') . '/' . $path;
+    }
+
+    /** @param array<string, mixed> $config */
+    private function at(array $config, string $path): mixed
+    {
+        $value = $config;
+
+        foreach (explode('.', $path) as $segment) {
+            if (!\is_array($value) || !\array_key_exists($segment, $value)) {
+                return null;
+            }
+
+            $value = $value[$segment];
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private function put(array $config, string $path, string $value): array
+    {
+        $segments = explode('.', $path);
+        $first = array_shift($segments);
+
+        if ($segments === []) {
+            $config[$first] = $value;
+
+            return $config;
+        }
+
+        $child = $config[$first] ?? [];
+
+        /** @var array<string, mixed> $child narrows array<mixed, mixed> */
+        $child = \is_array($child) ? $child : [];
+        $config[$first] = $this->put($child, implode('.', $segments), $value);
+
+        return $config;
     }
 
     /** @return array<string, mixed> */

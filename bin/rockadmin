@@ -1,0 +1,63 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * RockAdmin's command line.
+ *
+ * Installed as `vendor/bin/rockadmin`. It finds the autoloader whether this
+ * package is the project being worked on or a dependency inside somebody
+ * else's vendor directory, and then does nothing else of its own: the
+ * commands are classes, `Application` matches one, and everything an
+ * installation is comes from `config/rockadmin/bootstrap.php`.
+ */
+
+$autoloaders = [
+    // Installed as a dependency: vendor/tomac1/rockadmin/bin/..
+    __DIR__ . '/../../../autoload.php',
+    // This repository itself.
+    __DIR__ . '/../vendor/autoload.php',
+];
+
+foreach ($autoloaders as $autoloader) {
+    if (is_file($autoloader)) {
+        require $autoloader;
+
+        break;
+    }
+}
+
+if (!class_exists(RockAdmin\Console\Application::class)) {
+    fwrite(STDERR, "Cannot find Composer's autoloader. Run composer install.\n");
+
+    exit(1);
+}
+
+use RockAdmin\Console\Application;
+use RockAdmin\Console\CacheCommand;
+use RockAdmin\Console\DoctorCommand;
+use RockAdmin\Console\InitCommand;
+use RockAdmin\Console\MakePageCommand;
+use RockAdmin\Console\MigrateCommand;
+use RockAdmin\Console\Output;
+use RockAdmin\Console\SchemaCommand;
+use RockAdmin\Console\UserCreateCommand;
+use RockAdmin\Console\ValidateCommand;
+
+/** @var list<string> $argv */
+$argv = $_SERVER['argv'] ?? [];
+
+$application = new Application([
+    new InitCommand(),
+    new MakePageCommand(),
+    new DoctorCommand(),
+    new MigrateCommand(),
+    new UserCreateCommand(),
+    new ValidateCommand(),
+    new SchemaCommand(),
+    new CacheCommand(build: true),
+    new CacheCommand(build: false),
+]);
+
+exit($application->run($argv, new Output()));
