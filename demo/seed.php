@@ -196,21 +196,24 @@ function seedOneServer(string $label, array $server): void
     }
 
     foreach ([
-        ['INSERT INTO ra_test_companies (id, name) VALUES (?, ?)', [1, 'Velo s.r.o.']],
-        ['INSERT INTO ra_test_companies (id, name) VALUES (?, ?)', [2, 'Moto a.s.']],
+        ['INSERT INTO ra_test_companies (id, name) VALUES (?, ?)', [1, 'Velo Ltd.']],
+        ['INSERT INTO ra_test_companies (id, name) VALUES (?, ?)', [2, 'Moto Ltd.']],
         ['INSERT INTO ra_test_users (id, company_id, name, email) VALUES (?, ?, ?, ?)',
-            [1, 1, 'Jana', 'jana@example.com']],
+            [1, 1, 'Jana Novak', 'jana@example.com']],
         ['INSERT INTO ra_test_users (id, company_id, name, email) VALUES (?, ?, ?, ?)',
-            [2, 2, 'Petr', 'petr@example.com']],
+            [2, 2, 'Petr Dvorak', 'petr@example.com']],
     ] as [$text, $bindings]) {
         $connection->execute(new Sql($text, $bindings));
     }
 
     $states = ['active', 'active', 'draft', 'active', 'sold'];
+    // English, like everything else in this repository: the demo is what the
+    // screenshots in the README are taken from, and a reader who does not
+    // speak Czech should be able to tell what a column holds.
     $titles = [
-        'Horské kolo', 'Silniční kolo', 'Skútr', 'Elektrokolo', 'Koloběžka',
-        'Dětské kolo', 'Trekové kolo', 'BMX', 'Motorka Honda', 'Přívěsný vozík',
-        'Cyklopočítač', 'Helma Giro',
+        'Mountain bike', 'Road bike', 'Scooter', 'Electric bike', 'Kick scooter',
+        "Children's bike", 'Trekking bike', 'BMX', 'Honda motorcycle', 'Bike trailer',
+        'Cycling computer', 'Giro helmet',
     ];
 
     $adId = 1;
@@ -236,7 +239,7 @@ function seedOneServer(string $label, array $server): void
                 $index % 2 === 0 ? 1 : 2,
                 $userId,
                 $title,
-                "{$title} \u{2014} popis inzerátu, seeded so the textarea has something to draw.",
+                "{$title} \u{2014} a seeded description, so the textarea has something to draw.",
                 $price,
                 $state,
                 $index % 4 === 0,
@@ -246,7 +249,7 @@ function seedOneServer(string $label, array $server): void
             ],
         ));
 
-        foreach (array_slice(['bazar', 'sleva', 'novinka', 'doprava-zdarma'], 0, $index % 3) as $tagLabel) {
+        foreach (array_slice(['used', 'sale', 'new-in', 'free-delivery'], 0, $index % 3) as $tagLabel) {
             $connection->execute(new Sql(
                 'INSERT INTO ra_test_tags (id, ad_id, label) VALUES (?, ?, ?)',
                 [$tagId++, $adId, $tagLabel],

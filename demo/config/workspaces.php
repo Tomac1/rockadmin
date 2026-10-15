@@ -29,12 +29,12 @@ declare(strict_types=1);
  */
 return [
     'cyklobazar' => [
-        'label' => 'Cyklobazar.cz',
+        'label' => 'Bike Market',
         'vars' => ['tenant_id' => 1],
         'pages' => '@all',
     ],
     'motobazar' => [
-        'label' => 'Motobazar.cz',
+        'label' => 'Moto Market',
         'vars' => ['tenant_id' => 2],
         'pages' => '@all',
     ],

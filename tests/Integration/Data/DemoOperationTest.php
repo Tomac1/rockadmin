@@ -180,7 +180,7 @@ final class DemoOperationTest extends DatabaseTestCase
 
         $flashes = $this->flashes();
         self::assertStringContainsString('would be told it was archived', $flashes);
-        self::assertStringContainsString('Cyklobazar.cz', $flashes, 'The notification named no workspace.');
+        self::assertStringContainsString('Bike Market', $flashes, 'The notification named no workspace.');
     }
 
     /**

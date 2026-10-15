@@ -103,6 +103,33 @@ Or let the scaffolder read your database and write the first draft:
 vendor/bin/rockadmin make:page ads --table=ads
 ```
 
+## What it looks like
+
+Every picture here is the demo in this repository, running on the default
+theme with nothing added: `php -S localhost:8080 -t demo demo/index.php`.
+
+**A grid.** One page file produced all of it — the search box, the filters,
+the money column, the enum badge, the JSON column, the joined seller, the
+one-to-many tags, the row controls, the bulk bar and the workspace switcher
+in the navbar.
+
+![A list page: filters, badges, a money column and row actions](https://raw.githubusercontent.com/Tomac1/rockadmin/main/docs/screenshots/grid.jpg)
+
+**A preview, without leaving the page.** The same region the detail URL
+renders, drawn in an offcanvas panel, which is one key in the page file.
+
+![A row previewed in a side panel](https://raw.githubusercontent.com/Tomac1/rockadmin/main/docs/screenshots/preview.jpg)
+
+**A form.** Create, edit and copy are one region drawn three ways, and the
+labels, help text, validation and defaults all come from the same file.
+
+![An edit form with labels, help text and required markers](https://raw.githubusercontent.com/Tomac1/rockadmin/main/docs/screenshots/form.png)
+
+**The front page**, which lists what the person signed in may actually open —
+nothing they cannot.
+
+![The dashboard: a card per page the reader may open](https://raw.githubusercontent.com/Tomac1/rockadmin/main/docs/screenshots/dashboard.png)
+
 ## Design principles
 
 **Everything is a region.** A page is a layout with named slots, and each slot

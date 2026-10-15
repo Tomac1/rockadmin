@@ -110,8 +110,8 @@ return [
                         'label' => 'Workspaces',
                         // Mirrors demo/config/workspaces.php.
                         'options' => [
-                            'cyklobazar' => 'Cyklobazar.cz',
-                            'motobazar' => 'Motobazar.cz',
+                            'cyklobazar' => 'Bike Market',
+                            'motobazar' => 'Moto Market',
                         ],
                         'help' => 'Which sites they may work in. Somebody holding both may also work '
                             . 'across all of them at once.',
