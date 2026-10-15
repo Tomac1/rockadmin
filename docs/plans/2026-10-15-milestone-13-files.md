@@ -210,12 +210,26 @@ raw column value, and escapes it as a URL rather than as text.
 `src/Auth/Gate.php`, `demo/index.php`.
 Test: `tests/Integration/Http/FileRouteTest.php`.
 
-`GET /_file/{key...}`, for the private case: signed-in administrators only,
-streamed from the storage, with the stored content type and
-`Content-Disposition: inline` for images and `attachment` for everything else.
+`GET /_file/{key...}`, for the private case: streamed from the storage, with
+the stored content type and `Content-Disposition: inline` for images and
+`attachment` for everything else.
+
+**The URL is signed, and the gate is the floor rather than the whole answer.**
+A security review of task 1 was right about this: `RouteAccess::Authenticated`
+means any administrator who can sign in can fetch any key, and a random key is
+capability-by-obscurity rather than access control -- which in a multi-tenant
+admin means somebody who works in one workspace can fetch a file belonging to
+another if the key ever reaches them. So a local URL carries an HMAC over the
+key, an expiry and the session it was built for, exactly as the R2 driver
+signs one: the link works for the person it was drawn for, for minutes, and a
+key on its own is worth nothing. Per-page permissions on files remain v1.1
+(specification 13 puts column-level permissions out of v1), and the guide says
+so.
 
 **The test that matters:** an anonymous request for a key that exists is
-refused, and a key with `..` in it never reaches the storage.
+refused, a signed URL from one session does not work in another, an expired
+one does not work at all, and a key with `..` in it never reaches the
+storage.
 
 ---
 
