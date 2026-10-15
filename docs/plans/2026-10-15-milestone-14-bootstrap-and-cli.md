@@ -204,3 +204,60 @@ found a real bug that way and neither had a test that could.
   are commands, so they belong to a CLI milestone, but they are not what stands
   between this SDK and a first integration.
 - Packagist. The package name and the first tag are decisions, not work.
+
+---
+
+## What the tasks actually found
+
+**Task 1–5, the bootstrap.** `demo/index.php` went from 801 lines to 71, and
+the acceptance number in this plan said 60 — the difference is its docblock
+and the fixture-database function, both of which are the demo being a demo.
+
+Three things had to exist before the bootstrap could carry it, and all three
+were holes rather than scope creep: the menu could not be built from
+configuration because `menu` was not a key; the admin's own front door had no
+handler outside the demo; and `paths.*` were never resolved against the
+project root, which specification 11.4 has always asked for.
+
+Two defects were found by booting a fixture rather than the demo:
+
+- **An empty `storage.path` stopped the admin from starting.** The default
+  driver is `local` with no path, so an installation that administers rows and
+  uploads nothing could not run at all until it had chosen a directory for
+  files it will never have. `UnconfiguredStorage` keeps the refusal word for
+  word and moves it to the first upload.
+- **The audit log's actor was resolved at wiring time** — harmless while
+  everything was rebuilt per request, and a trail naming the wrong
+  administrator the moment an installation kept an `Admin`. Found by the
+  review of the first commit; the handler now takes the question rather than
+  the answer.
+
+**Task 6–10, the command line.** Running `init` in an empty directory and then
+walking the four commands found three more:
+
+- `doctor` asked `ra_users` a question before `migrate` had created it, and
+  crashed where a sentence belonged.
+- Every installation that configures a database was warned that
+  `{{env.RA_DB_PASSWORD}}` "looks like a secret" — true, and exactly where a
+  secret belongs. A warning that fires on the correct arrangement is a warning
+  people learn to scroll past.
+- `public_url` and `database.*` written as `{{env.*}}`, which is how `init`
+  writes them, failed validation when the variable was not set: an unset
+  placeholder resolves to null, and null was not allowed. So
+  `rockadmin init && rockadmin validate` failed on a fresh project, which is
+  the first thing anybody does.
+
+**`make:page` wrote a password column into a grid.** Scaffolded against
+`ra_users` — the one table in this repository guaranteed to have one — it
+produced a text column holding everybody's Argon2id hash, and would have
+offered a `password` field writing a plaintext one back. Columns that look
+like secrets are now left out of both, and the generated file says which and
+why. It also wrote two keys the page schema has never had, which the admin
+refused; that is what testing a generator by loading its output is for.
+
+## Where the cache path went
+
+`paths.cache` was removed from the schema. A key saying where the
+configuration is read from cannot live in the configuration, and nothing read
+it: the compiled file is `Setup::$cachePath`, which is in hand before anything
+is loaded.

@@ -23,6 +23,7 @@ use RockAdmin\Auth\SqlAuditLog;
 use RockAdmin\Auth\SqlAuthenticator;
 use RockAdmin\Auth\Throttle;
 use RockAdmin\Auth\Workspaces;
+use RockAdmin\Config\Cache;
 use RockAdmin\Config\Config;
 use RockAdmin\Config\Loader;
 use RockAdmin\Data\Operation;
@@ -126,9 +127,7 @@ final class Admin
     {
         $env = $setup->env ?? self::environment(...);
 
-        $loader = new Loader($setup->configDirectory(), $env, $setup->basePath);
-        $config = $loader->load();
-        $warnings = $loader->warnings();
+        [$config, $warnings] = self::configuration($setup, $env);
 
         $session = $setup->session ?? new NativeSessionStore();
         $urlMode = self::str($config, 'url_mode', 'path');
@@ -180,7 +179,8 @@ final class Admin
                 // somebody is actually asking for the feature that is not set
                 // up -- and `doctor` says it before they get that far.
                 $storage = new UnconfiguredStorage($e->getMessage());
-                $warnings[] = 'Uploads are not configured: ' . $e->getMessage();
+                $warnings[] = 'Uploads are not configured, which only matters if a page has a '
+                    . 'file field or an image column: ' . $e->getMessage();
             }
         }
 
@@ -511,6 +511,39 @@ final class Admin
         ));
 
         return $warnings;
+    }
+
+    /**
+     * The configuration, compiled if this installation compiles it.
+     *
+     * A cache hit skips reading a directory, expanding the definitions,
+     * resolving the placeholders and validating every key -- which is most
+     * of what a request does before it has done anything. It also skips the
+     * loader's warnings, because there was no load to warn about; that is
+     * the trade, and `validate` is where an installation goes looking for
+     * them deliberately.
+     *
+     * @param  Closure(string): ?string $env
+     * @return array{Config, list<string>}
+     */
+    private static function configuration(Setup $setup, Closure $env): array
+    {
+        $cache = $setup->cachePath !== null ? new Cache($setup->cachePath) : null;
+        $cached = $cache?->read();
+
+        if ($cached instanceof Config) {
+            return [$cached, []];
+        }
+
+        $loader = new Loader($setup->configDirectory(), $env, $setup->basePath);
+        $config = $loader->load();
+
+        // Written on the first request that finds it missing, so an
+        // installation that forgot `cache:build` is slow once rather than
+        // slow always -- and a deployment that cleared it heals itself.
+        $cache?->write($config);
+
+        return [$config, $loader->warnings()];
     }
 
     /**

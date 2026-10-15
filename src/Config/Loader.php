@@ -32,7 +32,7 @@ final class Loader
      *
      * `template_paths` is a list of them and is handled with them.
      */
-    private const PATH_KEYS = ['paths.logs', 'paths.cache', 'storage.path'];
+    private const PATH_KEYS = ['paths.logs', 'storage.path'];
 
     /**
      * @param Closure(string): ?string $env

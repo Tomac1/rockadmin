@@ -247,7 +247,7 @@ final class AuditLogTest extends DatabaseTestCase
         $connection = $this->fresh($connection);
 
         $signedIn = new AuthUser('7', 'jana@example.com', 'Jana', ['editor']);
-        $actor = static function () use (&$signedIn): ?AuthUser {
+        $actor = static function () use (&$signedIn): AuthUser {
             return $signedIn;
         };
 

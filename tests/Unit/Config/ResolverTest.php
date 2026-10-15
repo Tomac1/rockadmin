@@ -104,13 +104,45 @@ final class ResolverTest extends TestCase
         $this->assertSame(['per_page' => 50, 'debug' => true, 'none' => null], $resolved);
     }
 
-    public function testASecretLookingVariableIsWarnedAbout(): void
+    public function testASecretLookingVariableIsWarnedAboutWhereItDoesNotBelong(): void
     {
         $resolver = $this->resolver(['MAIL_PASSWORD' => 'hunter2']);
-        $resolver->resolve(['mail' => ['password' => '{{env.MAIL_PASSWORD}}']]);
+        $resolver->resolve(['brand' => '{{env.MAIL_PASSWORD}}']);
 
         $this->assertCount(1, $resolver->warnings());
         $this->assertStringContainsString('MAIL_PASSWORD', $resolver->warnings()[0]);
+    }
+
+    /**
+     * A secret in a key that exists to hold one is not a finding.
+     *
+     * This test used to assert the opposite, and running `doctor` on a fresh
+     * installation is what changed it: every project that configures a
+     * database writes `{{env.*_PASSWORD}}` into `database.password`, and was
+     * warned about it. The warning is about a secret reaching somewhere it
+     * can be read -- rendered in a page, printed in a list of settings -- so
+     * firing it on the correct arrangement only teaches people to scroll
+     * past the warnings that matter.
+     */
+    public function testTheFourKeysThatExistToHoldSecretsAreNotWarnedAbout(): void
+    {
+        $resolver = $this->resolver([
+            'MAIL_PASSWORD' => 'hunter2',
+            'RA_DB_PASSWORD' => 'hunter2',
+            'R2_SECRET_ACCESS_KEY' => 'hunter2',
+            'R2_ACCESS_KEY_ID' => 'hunter2',
+        ]);
+
+        $resolver->resolve([
+            'mail' => ['password' => '{{env.MAIL_PASSWORD}}'],
+            'database' => ['password' => '{{env.RA_DB_PASSWORD}}'],
+            'storage' => [
+                'secret' => '{{env.R2_SECRET_ACCESS_KEY}}',
+                'key' => '{{env.R2_ACCESS_KEY_ID}}',
+            ],
+        ]);
+
+        $this->assertSame([], $resolver->warnings());
     }
 
     public function testAnOrdinaryVariableIsNotWarnedAbout(): void

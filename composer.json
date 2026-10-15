@@ -1,7 +1,15 @@
 {
     "name": "tomac1/rockadmin",
     "description": "A dependency-free PHP administration SDK. Mount it on a URL, describe your pages in configuration, and get a working admin.",
-    "keywords": ["admin", "administration", "crud", "datagrid", "backend", "sdk", "framework-agnostic"],
+    "keywords": [
+        "admin",
+        "administration",
+        "crud",
+        "datagrid",
+        "backend",
+        "sdk",
+        "framework-agnostic"
+    ],
     "type": "library",
     "license": "MIT",
     "homepage": "https://github.com/tomac1/rockadmin",
@@ -33,12 +41,19 @@
             "RockAdmin\\Demo\\": "demo/src/"
         }
     },
+    "bin": [
+        "bin/rockadmin"
+    ],
     "scripts": {
         "test": "phpunit",
         "stan": "phpstan analyse",
         "cs": "php-cs-fixer fix --dry-run --diff",
         "cs:fix": "php-cs-fixer fix",
-        "check": ["@cs", "@stan", "@test"],
+        "check": [
+            "@cs",
+            "@stan",
+            "@test"
+        ],
         "docs:reference": "php bin/generate-reference.php"
     },
     "config": {

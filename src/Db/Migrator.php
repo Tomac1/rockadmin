@@ -9,10 +9,10 @@ use Throwable;
 /**
  * Applies the SDK's own `.sql` files and records what it applied.
  *
- * Specification 11 puts the CLI in a later milestone, so this is a class a
- * project calls — `bin/ra-migrate.php` is the one-line script that ships with
- * it, and the command will wrap the same class rather than repeat it. The DDL
- * lives in `migrations/` and is shipped with the SDK on purpose: hand-copying
+ * `rockadmin migrate` is the command that drives it, and a project that would
+ * rather call it from its own deploy hook loses nothing by doing so — the
+ * command wraps this class rather than repeating it. The DDL lives in
+ * `migrations/` and is shipped with the SDK on purpose: hand-copying
  * it into each host's own migration system would fork the schema per project,
  * which is the one thing the `ra_` prefix exists to prevent.
  *

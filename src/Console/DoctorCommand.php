@@ -81,13 +81,11 @@ final class DoctorCommand implements Command
 
         $services = $admin->services;
 
-        foreach (['paths.logs', 'paths.cache'] as $key) {
+        foreach (['paths.logs'] as $key) {
             $path = $services->config->get($key, '');
 
             if (!\is_string($path) || $path === '') {
-                $output->dim("  - {$key} is not set." . ($key === 'paths.cache'
-                    ? ' The configuration is read and validated on every request.'
-                    : ''));
+                $output->dim("  - {$key} is not set.");
 
                 continue;
             }
@@ -129,7 +127,12 @@ final class DoctorCommand implements Command
                 \count($pending) . ' migration(s) have not been applied. Run `rockadmin migrate`.',
             );
 
-            if ((new AdminUsers($connection))->none()) {
+            if ($pending !== []) {
+                // Asking ra_users anything before the migration that creates
+                // it is a crash where a plain sentence belongs -- and the
+                // line above has already said what to do about it.
+                $output->dim('  - Skipping the administrator check until the migrations have run.');
+            } elseif ((new AdminUsers($connection))->none()) {
                 $output->warning(
                     '! There are no administrators yet. Run `rockadmin user:create`, or open /_setup, '
                     . 'which is reachable only while this is true.',

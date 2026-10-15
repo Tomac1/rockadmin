@@ -20,7 +20,7 @@ The pages themselves are described in their own files and documented in
 | `debug` | bool | `false` | `true` | Shows what went wrong instead of a neutral error page. Never on in production. |
 | `brand` | string | `RockAdmin` | `Cyklobazar admin` | Shown in the navbar. |
 | `template_paths` | array | `[]` | `['resources/rockadmin', 'vendor/company/admin-theme']` | Directories searched for templates before the SDK's own, highest priority first. A file with the same name as an SDK template replaces it; nothing needs copying or registering. |
-| `public_url` | string | `` | `https://admin.cyklobazar.cz` | Where this admin is reachable from outside, as an absolute URL with no trailing slash. It is used for the links in mail, and only there -- every page of the admin itself builds relative URLs and needs none of this.\n\nIt is configuration rather than something read from the request on purpose. A link built from the Host header is a link an attacker can choose by sending one, which turns a password reset into a way of collecting reset tokens: the mail goes to the right person and the link points at the wrong server. Left empty, a reset link cannot be built and the admin says so rather than sending a message nobody can use. |
+| `public_url` | string or null | `` | `https://admin.cyklobazar.cz` | Where this admin is reachable from outside, as an absolute URL with no trailing slash. It is used for the links in mail, and only there -- every page of the admin itself builds relative URLs and needs none of this.\n\nIt is configuration rather than something read from the request on purpose. A link built from the Host header is a link an attacker can choose by sending one, which turns a password reset into a way of collecting reset tokens: the mail goes to the right person and the link points at the wrong server. Left empty, a reset link cannot be built and the admin says so rather than sending a message nobody can use. |
 | `pages_path` | string | `pages` | `pages` | Where page files live, relative to the configuration directory. One file per page, named after the page: pages/ads.php is reachable at /p/ads. |
 | `per_page` | int | `25` | `50` | Rows in one page of a grid, for regions that do not set their own. *Performance:* A large value makes every grid render slower for everyone; set it per region where a particular page needs more. |
 
@@ -31,7 +31,6 @@ Writable directories, relative to the project root.
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
 | `logs` | string | — | `storage/logs/rockadmin` | Errors, mail and the audit trail. Must be outside the document root. **Required.** |
-| `cache` | string | — | `storage/cache/rockadmin` | Where the compiled configuration is written. It can hold resolved {{env.*}} values, so it must be outside the document root. *Performance:* Without it the configuration is read and validated on every request. |
 
 ## `auth`
 
@@ -142,9 +141,9 @@ How to reach the database, for a project with no connection to lend. A host that
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `dsn` | string | `` | `{{env.RA_DSN}}` | A PDO connection string. Empty means the admin has no database of its own to open, which is a legitimate state: every page that needs rows says so plainly rather than failing. |
-| `user` | string | `` | `{{env.RA_DB_USER}}` | The database user. |
-| `password` | string | `` | `{{env.RA_DB_PASSWORD}}` | The database password. Never a literal in a committed file. |
+| `dsn` | string or null | `` | `{{env.RA_DSN}}` | A PDO connection string. Empty means the admin has no database of its own to open, which is a legitimate state: every page that needs rows says so plainly rather than failing. |
+| `user` | string or null | `` | `{{env.RA_DB_USER}}` | The database user. |
+| `password` | string or null | `` | `{{env.RA_DB_PASSWORD}}` | The database password. Never a literal in a committed file. |
 
 ## `theme`
 

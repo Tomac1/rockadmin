@@ -54,6 +54,23 @@ final class Setup
          */
         public readonly string $baseUrl = '/',
         /**
+         * The compiled configuration, and the one path configuration cannot
+         * hold.
+         *
+         * Set it and the whole of `rockadmin.php`, the pages, the roles and
+         * the enumerations become a single `include` sitting in opcache,
+         * instead of a directory read and validated on every request. It is
+         * written on the first request that finds it missing, and
+         * `rockadmin cache:build` writes it ahead of time so that the first
+         * visitor after a deploy does not pay for it.
+         *
+         * The file holds resolved `{{env.*}}` values -- which is to say
+         * secrets -- and absolute paths for this machine, so it belongs
+         * outside the document root and is never committed. Clear it on
+         * deploy, or `cache:clear`.
+         */
+        public readonly ?string $cachePath = null,
+        /**
          * The database, borrowed rather than opened again.
          *
          * One connection, one place holding the password, and transactions

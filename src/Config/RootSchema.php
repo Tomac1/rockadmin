@@ -43,13 +43,12 @@ final class RootSchema
                         description: 'Errors, mail and the audit trail. Must be outside the document root.',
                         example: 'storage/logs/rockadmin',
                     ),
-                    'cache' => new SchemaKey(
-                        ValueType::String,
-                        description: 'Where the compiled configuration is written. It can hold '
-                            . 'resolved {{env.*}} values, so it must be outside the document root.',
-                        example: 'storage/cache/rockadmin',
-                        performance: 'Without it the configuration is read and validated on every request.',
-                    ),
+                    // There is no 'cache' key here, and it is worth saying why
+                    // rather than leaving its absence to be noticed: where the
+                    // compiled configuration lives cannot be written in the
+                    // configuration, because it is read before the
+                    // configuration is. It is `cachePath` on the bootstrap's
+                    // `Setup`, which is the one place that is in hand first.
                 ]),
             ),
             'template_paths' => new SchemaKey(
@@ -63,6 +62,11 @@ final class RootSchema
             'public_url' => new SchemaKey(
                 ValueType::String,
                 default: '',
+                // An unset {{env.*}} resolves to null, and this key is one
+                // every project writes that way -- so null has to mean "not
+                // set yet" rather than "your configuration is broken". It
+                // reads as empty, which this key already has an answer for.
+                nullable: true,
                 description: 'Where this admin is reachable from outside, as an absolute URL with no '
                     . 'trailing slash. It is used for the links in mail, and only there -- every page '
                     . 'of the admin itself builds relative URLs and needs none of this.\n\n'
@@ -395,6 +399,9 @@ final class RootSchema
                     'dsn' => new SchemaKey(
                         ValueType::String,
                         default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
                         description: 'A PDO connection string. Empty means the admin has no database '
                             . 'of its own to open, which is a legitimate state: every page that '
                             . 'needs rows says so plainly rather than failing.',
@@ -403,12 +410,18 @@ final class RootSchema
                     'user' => new SchemaKey(
                         ValueType::String,
                         default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
                         description: 'The database user.',
                         example: '{{env.RA_DB_USER}}',
                     ),
                     'password' => new SchemaKey(
                         ValueType::String,
                         default: '',
+                        // Written as {{env.*}} by everybody, and unset on a laptop
+                        // that has not been set up yet: null means not set.
+                        nullable: true,
                         description: 'The database password. Never a literal in a committed file.',
                         example: '{{env.RA_DB_PASSWORD}}',
                     ),

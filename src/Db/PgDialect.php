@@ -44,7 +44,7 @@ final class PgDialect implements Dialect
     public function columns(string $table): Sql
     {
         return new Sql(
-            'SELECT column_name FROM information_schema.columns '
+            'SELECT column_name, data_type, is_nullable FROM information_schema.columns '
             . 'WHERE table_schema = current_schema() AND table_name = ? '
             . 'ORDER BY ordinal_position',
             [$table],

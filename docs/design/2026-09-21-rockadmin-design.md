@@ -1451,9 +1451,15 @@ carries nothing environment-specific.
 ```php
 'paths' => [
     'logs'  => 'storage/logs/rockadmin',   // required
-    'cache' => 'storage/cache/rockadmin',
 ],
 ```
+
+> **Implementation note (milestone 14).** This block listed a `cache` key as
+> well, and the implementation does not have one: where the compiled
+> configuration lives cannot be written in the configuration, because it is
+> read before the configuration is. It is `cachePath` on the `Setup` the
+> bootstrap returns, which is the one thing in hand first. Everything the
+> paragraph below says about the project root applies to it unchanged.
 
 Relative to the **project root, not the document root**. The document root is
 `public/` under Laravel; logs placed relative to it would be web-readable, and
