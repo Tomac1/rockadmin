@@ -303,6 +303,66 @@ final class FileWriteFlowTest extends DatabaseTestCase
         }
     }
 
+    /**
+     * A key belonging somewhere else is not this page's to destroy.
+     *
+     * Found by a security review as an asymmetry rather than as an exploit,
+     * and that is the right way to read it: `FormRegion` already refused to
+     * *show* a file whose key was not under this page's folder, while
+     * deleting one went on the shape of the key alone -- the weaker check on
+     * the more destructive act. A column can hold such a key after an
+     * injection, a hand-edited database or an import from an older version,
+     * and none of those is a reason to delete somebody else's file.
+     */
+    #[DataProvider('connections')]
+    public function testAKeyFromAnotherPageIsNotDeletedWhenTheFileIsReplaced(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $foreign = $this->foreignFile();
+
+        $this->post($connection, 'create', ['title' => 'Horské kolo'], $this->upload());
+        $id = $this->idOf($connection);
+
+        // As if the column had been pointed at another page's file.
+        $connection->execute(new Sql('UPDATE ra_test_photos SET photo = ? WHERE id = ?', [$foreign, $id]));
+
+        $this->post($connection, 'update', [FormFields::ID => $id, 'title' => 'Horské kolo'], $this->upload(self::gif()));
+
+        self::assertFileExists(
+            $this->storageRoot . '/' . $foreign,
+            "Replacing a photograph deleted another page's file.",
+        );
+    }
+
+    #[DataProvider('connections')]
+    public function testAKeyFromAnotherPageSurvivesTheRowBeingDeleted(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+        $foreign = $this->foreignFile();
+
+        $this->post($connection, 'create', ['title' => 'Horské kolo'], $this->upload());
+        $id = $this->idOf($connection);
+        $connection->execute(new Sql('UPDATE ra_test_photos SET photo = ? WHERE id = ?', [$foreign, $id]));
+
+        $this->post($connection, 'delete', [FormFields::ID => $id]);
+
+        self::assertSame([], $connection->select(new Sql('SELECT id FROM ra_test_photos')));
+        self::assertFileExists(
+            $this->storageRoot . '/' . $foreign,
+            'Deleting a row deleted a file belonging to another page.',
+        );
+    }
+
+    /** A file stored under another page's folder, as that page would have written it. */
+    private function foreignFile(): string
+    {
+        $key = 'invoices/2026/10/' . bin2hex(random_bytes(16)) . '.pdf';
+
+        (new LocalStorage($this->storageRoot))->put($key, self::png(), 'image/png');
+
+        return $key;
+    }
+
     // --- harness ---
 
     /** @param array<string, mixed> $body */

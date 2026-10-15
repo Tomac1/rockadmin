@@ -1280,7 +1280,10 @@ final class ActionHandler implements Handler
         $keys = [];
 
         foreach ($row ?? [] as $value) {
-            if ($this->files->owns($value) && \is_string($value)) {
+            // Scoped to this page, not merely shaped like a key: a row
+            // may carry one belonging somewhere else, and deleting the row is
+            // not a licence to delete that.
+            if ($this->files->ownedBy($value, $page) && \is_string($value)) {
                 $keys[] = $value;
             }
         }

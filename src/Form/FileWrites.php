@@ -75,7 +75,7 @@ final class FileWrites
                 continue;
             }
 
-            $current = $this->currentKey($field, $stored);
+            $current = $this->currentKey($page, $field, $stored);
             $upload = $submission->file($key);
 
             if ($upload !== null && $upload->succeeded()) {
@@ -162,16 +162,35 @@ final class FileWrites
     }
 
     /**
-     * Whether this is a key this admin would have written.
+     * Whether this is a key this admin would have written, and one this page
+     * wrote.
      *
-     * Asked of a column's value before it is treated as a file -- by the
-     * handler collecting what a deleted row owned, and by this class
-     * deciding what an upload supersedes. A column holding something else is
-     * a column to leave alone: it is not ours to delete.
+     * Asked of a column's value before anything is deleted -- by the handler
+     * collecting what a deleted row owned, and by this class deciding what an
+     * upload supersedes.
+     *
+     * **Both halves, and the page half is the one a review had to point out.**
+     * `FormRegion` already refused to *show* a file whose key was not under
+     * this page's folder; deleting one was left on the shape of the key
+     * alone, which is the weaker check on the more destructive act. A column
+     * can hold a key belonging to somewhere else -- an injection, a
+     * hand-edited database, an import from an older version -- and the answer
+     * to "this is not ours" must be the same whether the question is about
+     * drawing it or about destroying it. It is not ours to delete.
+     *
+     * **Renaming a page strands its files**, and that is the price of tying
+     * ownership to the page's name: keys written under the old name stop
+     * being shown and stop being deleted, and become orphans the moment the
+     * rename lands. It is the safe direction -- nothing is destroyed by a
+     * rename -- and it is the kind of thing to know before renaming rather
+     * than afterwards, so it is written here and in the guide.
      */
-    public function owns(mixed $value): bool
+    public function ownedBy(mixed $value, PageDefinition $page): bool
     {
-        return \is_string($value) && $value !== '' && $this->storage->accepts($value);
+        return \is_string($value)
+            && $value !== ''
+            && $this->storage->accepts($value)
+            && FileTypes::isUnder($value, $page->name);
     }
 
     /** @throws StorageException when the bytes did not land, which must fail the write */
@@ -226,11 +245,11 @@ final class FileWrites
     }
 
     /** @param array<string, mixed> $stored */
-    private function currentKey(FieldDefinition $field, array $stored): ?string
+    private function currentKey(PageDefinition $page, FieldDefinition $field, array $stored): ?string
     {
         $value = $stored[$field->key] ?? null;
 
-        return $this->owns($value) && \is_string($value) ? $value : null;
+        return $this->ownedBy($value, $page) && \is_string($value) ? $value : null;
     }
 
     /** @param array<array-key, mixed> $body */
