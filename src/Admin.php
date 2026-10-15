@@ -228,6 +228,8 @@ final class Admin
             $account,
             $brand,
             $darkMode,
+            new ShellWorkspaces($workspaces, $activeWorkspace, $identity, $urls),
+            $urls,
         ));
 
         $login = new LoginHandler(

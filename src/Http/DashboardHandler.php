@@ -11,6 +11,7 @@ use RockAdmin\View\PageView;
 use RockAdmin\View\Renderer;
 use RockAdmin\View\ShellAccount;
 use RockAdmin\View\ShellView;
+use RockAdmin\View\ShellWorkspaces;
 
 /**
  * The admin's front page.
@@ -41,6 +42,17 @@ final class DashboardHandler implements Handler
         private readonly ShellAccount $account,
         private readonly string $brand,
         private readonly string $darkMode,
+        /**
+         * The workspace switcher, which is in the navbar of every other page.
+         *
+         * Found by photographing the admin for the README: the switcher
+         * disappeared on the dashboard, because this handler built its own
+         * shell and was the one that had never been given one. A control
+         * that is present everywhere except one page reads as a bug in the
+         * page somebody is looking at.
+         */
+        private readonly ?ShellWorkspaces $workspaces = null,
+        private readonly ?UrlGenerator $urls = null,
     ) {
     }
 
@@ -55,6 +67,12 @@ final class DashboardHandler implements Handler
             userName: $this->account->userName(),
             logoutUrl: $this->account->logoutUrl(),
             darkMode: $this->darkMode,
+            workspaces: $this->workspaces?->all() ?? [],
+            // Where switching comes back to. Not `ShellWorkspaces::pageUrl()`,
+            // which names a page route: the dashboard is not a page, and
+            // sending somebody to `/p/dashboard` after switching would be a
+            // 404 at the end of an action that worked.
+            currentUrl: $this->urls?->route('dashboard') ?? '',
             // Never the URL without the token: the Log out button would
             // answer 403, which is the kind of bug that looks like a session
             // problem for an afternoon.
