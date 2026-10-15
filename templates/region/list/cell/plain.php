@@ -20,6 +20,11 @@ $typeSlug = match ($view->type) {
     \RockAdmin\Page\ColumnType::Int => 'int',
     \RockAdmin\Page\ColumnType::Bool => 'bool',
     \RockAdmin\Page\ColumnType::Enum => 'enum',
+    // An image column reaches this file when its display is `plain`, which
+    // is a page asking for the file's name instead of the picture. It keeps
+    // its own slug: "every image cell" stays targetable whichever of the two
+    // ways it is drawn.
+    \RockAdmin\Page\ColumnType::Image => 'image',
     \RockAdmin\Page\ColumnType::Text,
     \RockAdmin\Page\ColumnType::Money,
     \RockAdmin\Page\ColumnType::Datetime,

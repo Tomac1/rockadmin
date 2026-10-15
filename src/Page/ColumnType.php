@@ -27,6 +27,16 @@ enum ColumnType: string
     case Json = 'json';
 
     /**
+     * A column holding a storage key, shown as the file it names.
+     *
+     * The value is what `file` field wrote -- `ads/2026/10/8f3a....jpg` --
+     * and never a URL, because a URL is a decision about a bucket and an
+     * expiry that is made when something is about to be rendered. Which is
+     * here.
+     */
+    case Image = 'image';
+
+    /**
      * A column of controls rather than of data (spec 8.5).
      *
      * It names no database column, so it is excluded from the select list and
@@ -84,6 +94,10 @@ enum ColumnType: string
         return match ($this) {
             self::Bool => Display::Check,
             self::Enum => Display::Badge,
+            // An image column defaults to showing the picture: somebody
+            // who wrote `type: image` meant the photograph, and a page that
+            // wants the filename says `display: plain`.
+            self::Image => Display::Image,
             self::Text, self::Int, self::Money, self::Datetime, self::Json, self::Actions => Display::Plain,
         };
     }
@@ -106,6 +120,10 @@ enum ColumnType: string
             ),
             self::Bool => \in_array($display, [Display::Check, Display::YesNo, Display::Badge], true),
             self::Enum => \in_array($display, [Display::Badge, Display::Plain], true),
+            // `plain` is the useful second reading of an image column: the
+            // file's name as text, for a grid where forty thumbnails would
+            // be forty requests and nobody is looking at the pictures anyway.
+            self::Image => \in_array($display, [Display::Image, Display::Plain], true),
             self::Money, self::Datetime, self::Json, self::Actions => $display === Display::Plain,
         };
     }
@@ -124,7 +142,7 @@ enum ColumnType: string
             // a column of controls reads as a group when they line up against
             // the edge they were drawn from.
             self::Money, self::Int, self::Actions => 'end',
-            self::Text, self::Datetime, self::Bool, self::Enum, self::Json => 'start',
+            self::Text, self::Datetime, self::Bool, self::Enum, self::Json, self::Image => 'start',
         };
     }
 }

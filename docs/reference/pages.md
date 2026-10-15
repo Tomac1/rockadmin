@@ -130,10 +130,10 @@ Every entry of `regions.*.columns`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
+| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — `image`, which holds the storage key of an uploaded picture and shows the picture itself — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
 | `label` | string | — | `First Name` | The column header, shown above the values. Defaults at load to the key, title-cased. |
 | `source` | string | — | `user.name` | A source path: the database column or expression to read. Defaults to the key. Use `.` to join a relation, `->` to traverse JSON. Must not be set on a column carrying `collection`. |
-| `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress or percent. Defaults to the type's own. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
+| `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress, percent or image. Defaults to the type's own — an `image` column shows the picture, and `display: plain` on one asks for the file's name instead. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
 | `sortable` | bool | `false` | `true` | Whether the column header is a sort link. |
 | `searchable` | bool | `false` | `true` | Whether the region's search box looks here. |
 | `align` | string | — | `end` | Horizontal alignment: start or end, with left and right accepted as aliases for them. Defaults to the type's own — numbers align to the end so they are readable when skimmed down a column. |

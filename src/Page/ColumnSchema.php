@@ -23,9 +23,10 @@ final class ColumnSchema
             'type' => new SchemaKey(
                 ValueType::String,
                 default: 'text',
-                description: 'What the column holds: text, int, money, datetime, bool, enum or json — or '
-                    . '`actions`, which holds controls rather than a value and takes an `items` list instead '
-                    . 'of a source.',
+                description: 'What the column holds: text, int, money, datetime, bool, enum or json — '
+                    . '`image`, which holds the storage key of an uploaded picture and shows the picture '
+                    . 'itself — or `actions`, which holds controls rather than a value and takes an '
+                    . '`items` list instead of a source.',
                 example: 'text',
             ),
             'label' => new SchemaKey(
@@ -42,9 +43,11 @@ final class ColumnSchema
             ),
             'display' => new SchemaKey(
                 ValueType::String,
-                description: 'How the column looks: plain, badge, check, yesno, progress or percent. '
-                    . 'Defaults to the type\'s own. Not every type allows every display. A cell links to '
-                    . 'the row\'s detail page independently of this, via the `link` key.',
+                description: 'How the column looks: plain, badge, check, yesno, progress, percent or '
+                    . 'image. Defaults to the type\'s own — an `image` column shows the picture, and '
+                    . '`display: plain` on one asks for the file\'s name instead. Not every type allows '
+                    . 'every display. A cell links to the row\'s detail page independently of this, via '
+                    . 'the `link` key.',
                 example: 'badge',
             ),
             'sortable' => new SchemaKey(
