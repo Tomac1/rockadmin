@@ -13,11 +13,18 @@ can store a byte today.
 
 ## Decisions this plan makes
 
-**`Storage` is a seam, two implementations ship, and this partly disagrees
-with the specification.** Section 3 names "an S3 uploader" as precisely the
-kind of thing that should be an interface in the core plus an implementation
-the project installs. I am shipping `S3Storage` in the core anyway, and the
-disagreement is worth stating rather than glossing:
+**`Storage` is a seam, two implementations ship, and the second one is a
+protocol rather than a vendor.** S3 is an API that R2, MinIO, Backblaze B2,
+DigitalOcean Spaces, Wasabi and Amazon itself all speak, which is very likely
+why section 3 writes "an S3 uploader" rather than naming a company: one driver
+covers every one of them, and "the R2 driver" would have been the wrong name
+for it.
+
+That section names an S3 uploader as the kind of thing that should be an
+interface in the core plus an implementation the project installs, and
+shipping `S3Storage` in the core is a departure from that — smaller than it
+first looked, because what the sentence is really about is not depending on a
+library, and this does not:
 
 - the same argument that justified two hundred lines of socket SMTP applies
   here almost word for word — SigV4 is `hash_hmac('sha256', …)` repeated five
@@ -233,21 +240,29 @@ storage.
 
 ---
 
-### Task 7: R2
+### Task 7: S3, which is how R2 is spoken to
 
 **Files:** create `src/Storage/S3Storage.php`, `SignatureV4.php`,
-`src/Http/HttpClient.php`, `CurlHttpClient.php`, `StreamHttpClient.php`.
-Test: `tests/Unit/Storage/S3StorageTest.php`,
-`tests/Integration/Storage/R2Test.php` (skipped unless `RA_TEST_R2_*` is set).
+`src/Http/HttpClient.php`, `HttpResponse.php`, `CurlHttpClient.php`,
+`StreamHttpClient.php`, `HttpClients.php`.
+Test: `tests/Unit/Storage/SignatureV4Test.php`,
+`tests/Unit/Storage/S3StorageTest.php`,
+`tests/Integration/Storage/S3Test.php` (skipped unless `RA_TEST_S3_*` is set).
 
-SigV4 by hand, path-style addressing against the account endpoint, `auto` as
-the region, and presigned GET for reading. The HTTP client is a seam so the
-signature and the failure paths are testable without a network.
+SigV4 by hand, path-style addressing, the region from configuration (`auto`
+for R2), and presigned GET for reading — which costs no network call, because
+presigning is a signature and not a request. The HTTP client is a seam, for
+the same reason `SmtpTransport` is one: the signature and every failure path
+are testable without a network, and a host that would rather use its own
+client passes one.
+
+Nothing in it is R2-specific. R2 is an endpoint, a bucket and `auto`; the same
+class answers for MinIO on a laptop and for Amazon in production.
 
 **The test that matters:** a signature computed against AWS's own published
-test vectors matches byte for byte — that is the one part of this that cannot
-be "nearly right", because a wrong signature fails identically to wrong
-credentials and the server will not say which.
+test vector matches byte for byte. That is the one part of this that cannot be
+nearly right — a wrong signature fails identically to wrong credentials, and
+no server will say which.
 
 ---
 
