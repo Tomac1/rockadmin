@@ -86,6 +86,13 @@ final class Gate
         // none of them can name a `page.action` that the catalogue would
         // contain.
         'dashboard' => RouteAccess::Authenticated,
+        // Authenticated rather than per-page: a key says which file it is and
+        // not which page it belongs to, so there is nothing here to check a
+        // page permission against. Specification 13 puts row-level and
+        // column-level permissions out of v1, and this inherits that --
+        // somebody who may open any page may fetch any uploaded file. It is
+        // written down in the guide rather than left to be discovered.
+        'file' => RouteAccess::Authenticated,
         'logout' => RouteAccess::Authenticated,
 
         // Switching workspace: unhandled. Any signed-in user may ask; whether

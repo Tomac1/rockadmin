@@ -126,6 +126,117 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'storage' => new SchemaKey(
+                ValueType::Array,
+                description: 'Where uploaded files are kept. The default driver writes them to a '
+                    . 'directory and the admin serves them, which needs nothing configured but a '
+                    . 'path; the s3 driver talks to Cloudflare R2 or anything else speaking the same '
+                    . 'API, with no library installed.',
+                children: new Schema([
+                    'driver' => new SchemaKey(
+                        ValueType::String,
+                        default: 'local',
+                        description: 'local or s3. A project that already has its own disk '
+                            . 'abstraction -- Laravel Storage, Flysystem -- wires a Storage object '
+                            . 'in the bootstrap instead and neither of these runs.',
+                        example: 's3',
+                    ),
+                    'path' => new SchemaKey(
+                        ValueType::String,
+                        default: '',
+                        description: 'For the local driver: the directory files live in, relative to '
+                            . 'the project root. **It must be outside the document root.** A '
+                            . 'directory of uploads inside it is a directory a stranger can fetch by '
+                            . 'guessing, and on a server that runs PHP by file extension rather than '
+                            . 'by location, one they may be able to execute.',
+                        example: 'storage/uploads',
+                    ),
+                    'public_url' => new SchemaKey(
+                        ValueType::String,
+                        default: '',
+                        description: 'Serve files from this address instead of through the admin, as '
+                            . 'an absolute URL with no trailing slash. Empty -- the default -- means '
+                            . 'every file goes through a route only a signed-in administrator can '
+                            . 'use. Setting it is a decision that the files behind it are public to '
+                            . 'anybody who learns the address, which is right for product photos and '
+                            . 'wrong for scanned invoices.',
+                        example: 'https://cdn.cyklobazar.cz/uploads',
+                    ),
+                    'bucket' => new SchemaKey(
+                        ValueType::String,
+                        description: 'For the s3 driver: the bucket name.',
+                        example: 'cyklobazar-uploads',
+                        nullable: true,
+                    ),
+                    'endpoint' => new SchemaKey(
+                        ValueType::String,
+                        description: 'For the s3 driver: the API endpoint, with scheme and no path. '
+                            . 'R2 gives you one per account, and it is not the public bucket address '
+                            . '-- that one goes in public_url.',
+                        example: 'https://{{env.R2_ACCOUNT}}.r2.cloudflarestorage.com',
+                        nullable: true,
+                    ),
+                    'region' => new SchemaKey(
+                        ValueType::String,
+                        default: 'auto',
+                        description: "The region a signature is computed for. R2 uses 'auto' and so "
+                            . 'does this; an S3 bucket needs its own, and getting it wrong fails '
+                            . 'exactly like a wrong password because the server will not say which.',
+                        example: 'eu-central-1',
+                    ),
+                    'key' => new SchemaKey(
+                        ValueType::String,
+                        description: 'For the s3 driver: the access key id.',
+                        example: '{{env.R2_ACCESS_KEY_ID}}',
+                        nullable: true,
+                    ),
+                    'secret' => new SchemaKey(
+                        ValueType::String,
+                        description: 'For the s3 driver: the secret. Write it as {{env.*}} and keep '
+                            . 'it out of git -- this file is committed, and the configuration cache '
+                            . 'is written with the value resolved, which is why that cache lives '
+                            . 'outside the document root.',
+                        example: '{{env.R2_SECRET_ACCESS_KEY}}',
+                        nullable: true,
+                    ),
+                    'link_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 10,
+                        description: 'How long a signed link to a private file stays good for. Long '
+                            . 'enough to open a page and look at it, short enough that a URL copied '
+                            . 'out of a browser history is no use tomorrow.',
+                        example: 5,
+                    ),
+                ]),
+            ),
+            'uploads' => new SchemaKey(
+                ValueType::Array,
+                description: 'What a file field accepts. A field may narrow both of these and may '
+                    . 'not widen them: whatever a page file says, nothing larger or stranger than '
+                    . 'this is written anywhere.',
+                children: new Schema([
+                    'max_bytes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 5_242_880,
+                        description: 'The largest file accepted, in bytes. Five megabytes by default, '
+                            . "which is a photograph. PHP's own upload_max_filesize and post_max_size "
+                            . 'cap this from below whatever it says, and a request over that limit '
+                            . 'arrives with its whole body discarded -- which the admin notices and '
+                            . 'reports as a size problem rather than as a failed form.',
+                        example: 2_097_152,
+                    ),
+                    'types' => new SchemaKey(
+                        ValueType::Array,
+                        default: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
+                        description: 'The content types accepted anywhere in this admin, as an '
+                            . 'allowlist. The type is read from the bytes rather than from what the '
+                            . 'browser claimed, and the stored file gets the extension this admin '
+                            . 'maps that type to -- so an upload called invoice.php.jpg is stored as '
+                            . '.jpg whatever is inside it.',
+                        example: ['image/jpeg', 'image/png'],
+                    ),
+                ]),
+            ),
             'mail' => new SchemaKey(
                 ValueType::Array,
                 description: 'How the admin sends a password reset or an invitation. The default '
