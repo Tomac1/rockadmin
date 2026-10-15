@@ -47,6 +47,24 @@ final class FormFieldView
         public readonly ?string $step = null,
         public readonly ?int $rows = null,
         public readonly ?string $pattern = null,
+        /**
+         * The file this row already has, for a `file` field.
+         *
+         * Null for every other type, and for a row that has none. A control
+         * cannot show a stored file the way a text input shows a stored
+         * string -- the bytes are elsewhere -- so what it shows instead is
+         * this: a name, an address, and whether it is something to draw.
+         */
+        public readonly ?StoredFileView $file = null,
+        /**
+         * The name of the checkbox that removes the stored file.
+         *
+         * Named by the region rather than spelled in the template, because
+         * the write path reads it back by the same constant and two
+         * hand-written spellings of one contract is one rename away from a
+         * form whose remove box does nothing.
+         */
+        public readonly string $removeField = '',
     ) {
     }
 

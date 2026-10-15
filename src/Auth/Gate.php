@@ -86,6 +86,15 @@ final class Gate
         // none of them can name a `page.action` that the catalogue would
         // contain.
         'dashboard' => RouteAccess::Authenticated,
+        // Authenticated is the floor here and not the whole answer: a key
+        // says which file it is and not which page it belongs to, so there is
+        // nothing at this level to check a page permission against. What
+        // closes the gap is the signature on the URL -- `FileLink` signs it
+        // for one session and a few minutes, so a key on its own is worth
+        // nothing and `FileHandler` refuses it. Per-page and per-row
+        // permissions on files stay v1.1, which specification 13 puts
+        // column-level permissions out of v1 for; the guide says so.
+        'file' => RouteAccess::Authenticated,
         'logout' => RouteAccess::Authenticated,
 
         // Switching workspace: unhandled. Any signed-in user may ask; whether

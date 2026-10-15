@@ -422,7 +422,11 @@ final class DemoOperationTest extends DatabaseTestCase
             "CREATE TABLE ra_test_ads (id {$key}, tenant_id INTEGER NOT NULL DEFAULT 1, user_id INTEGER, "
             . 'title VARCHAR(200) NOT NULL, description TEXT, price INTEGER, state VARCHAR(20), '
             . "featured {$boolean} NOT NULL DEFAULT {$false}, published_on DATE, stats {$json}, "
-            . 'created_at TIMESTAMP)',
+            // `photo` holds a storage key, as demo/seed.php creates it. The
+            // demo's ads page shows it in the grid and uploads to it from the
+            // form, so a fixture without it cannot answer the query that page
+            // actually builds.
+            . 'photo VARCHAR(255), created_at TIMESTAMP)',
         ));
         $connection->execute(new Sql(
             'INSERT INTO ra_test_users (id, company_id, name, email) VALUES (?, ?, ?, ?)',

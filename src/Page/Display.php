@@ -20,6 +20,9 @@ enum Display: string
     case Progress = 'progress';
     case Percent = 'percent';
 
+    /** Draws the file a storage key names, for an `image` column. */
+    case Image = 'image';
+
     /** @throws PageException when the value names no display */
     public static function parse(string $value): self
     {

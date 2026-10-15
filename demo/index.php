@@ -50,7 +50,9 @@ use RockAdmin\Db\SqlRowSource;
 use RockAdmin\Db\SqlWriteHandler;
 use RockAdmin\Demo\ArchiveAd;
 use RockAdmin\Form\FieldValidator;
+use RockAdmin\Form\FileWrites;
 use RockAdmin\Form\FormRegion;
+use RockAdmin\Form\UploadLimits;
 use RockAdmin\Grid\ActionBuilder;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\ListRegion;
@@ -60,6 +62,7 @@ use RockAdmin\Http\ActionHandler;
 use RockAdmin\Http\Csrf;
 use RockAdmin\Http\DetailHandler;
 use RockAdmin\Http\ErrorHandler;
+use RockAdmin\Http\FileHandler;
 use RockAdmin\Http\FormHandler;
 use RockAdmin\Http\Handler;
 use RockAdmin\Http\HandlerRegistry;
@@ -81,6 +84,8 @@ use RockAdmin\Http\WorkspaceHandler;
 use RockAdmin\Mail\Mailers;
 use RockAdmin\Mail\MessageFactory;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Storage\FileLink;
+use RockAdmin\Storage\Storages;
 use RockAdmin\View\AssetHandler;
 use RockAdmin\View\Assets;
 use RockAdmin\View\ButtonView;
@@ -320,8 +325,24 @@ $account = new ShellAccount($identity, $urls, $csrf);
 // the templates at step 10.
 $menu = new Menu($menuItems, $gate, $identity, $pages);
 
+/*
+ * Uploaded files (milestone 13).
+ *
+ * Two objects, and the second is the one worth looking at. `Storages` reads
+ * `storage.driver` and hands back a directory or a bucket -- moving this demo
+ * to R2 is four lines in rockadmin.php and nothing here. `FileLink` signs the
+ * URL a local file is served from, with the session's own secret: the route
+ * being authenticated keeps strangers out, and the signature is what keeps
+ * one administrator out of another's files. The S3 driver signs with the
+ * bucket's credentials instead and ignores this.
+ */
+$fileLink = new FileLink($session, $configInt($config, 'storage.link_minutes', 10) * 60);
+$storage = Storages::fromConfig($config, $urls, null, $fileLink);
+$uploads = UploadLimits::fromConfig($config);
+
 $handlers = new HandlerRegistry();
 $handlers->register('assets', new AssetHandler());
+$handlers->register('file', new FileHandler($storage, $fileLink));
 
 /**
  * Signing in and out.
@@ -509,14 +530,17 @@ if ($connection !== null) {
     $listRegion = new ListRegion(
         $rows,
         new QueryFactory(scope: $requestScope),
-        new CellFormatter(),
+        // With a storage in hand an `image` column draws the picture; the
+        // key is resolved here, at render time, and never written into the
+        // page by whatever put it in the column.
+        new CellFormatter($storage),
         $urls,
         $gate,
         $identity,
         $csrf,
         $requestScope,
     );
-    $previewRegion = new PreviewRegion($rows, new CellFormatter(), $requestScope);
+    $previewRegion = new PreviewRegion($rows, new CellFormatter($storage), $requestScope);
 
     // The page header's own configured controls (spec 8.5). The same three
     // decisions a grid's action cell makes -- the gate, the URL from the
@@ -605,7 +629,7 @@ if ($connection !== null) {
     // there is nothing to tell and the argument is left out.
     $rowWorkspace = new RowWorkspace($requestScope, $reader);
 
-    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity, $requestScope);
+    $formRegion = new FormRegion($reader, $urls, $csrf, $gate, $identity, $requestScope, $storage);
     $forms = new FormHandler(
         $pages,
         $formRegion,
@@ -626,7 +650,7 @@ if ($connection !== null) {
     $handlers->register('action', new ActionHandler(
         $pages,
         $formRegion,
-        new FieldValidator(),
+        new FieldValidator($uploads),
         new SqlWriteHandler($connection),
         $reader,
         $requestScope,
@@ -644,6 +668,12 @@ if ($connection !== null) {
         $actor,
         $operations,
         $rowWorkspace,
+        null,
+        // One write path, files included: the file is stored before the row
+        // is written and the old one is forgotten after the commit, so a
+        // refused write leaves nothing behind and a successful one leaves no
+        // orphan.
+        new FileWrites($storage),
     ));
 } else {
     // No database configured: still render the shell and the page header for

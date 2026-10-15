@@ -901,6 +901,58 @@ final class PageRepository
     }
 
     /**
+     * A file field's own limits, and the refusal when they belong to another
+     * kind of field.
+     *
+     * Declared on something that is not a `file` they would sit in the page
+     * file doing nothing, which is the silently-dead configuration this
+     * loader exists to catch -- the same rule `pattern` on a checkbox already
+     * follows.
+     *
+     * Whether the types a field asks for are ones the installation allows is
+     * *not* decided here: `uploads.types` is in `rockadmin.php` and a page
+     * repository does not read it. The write path narrows one by the other,
+     * and a field asking for more than the installation allows gets less.
+     *
+     * @param  array<string, mixed>        $fieldConfig
+     * @return array{0: list<string>, 1: ?int}
+     */
+    private function fileLimits(string $pageName, string $fieldKey, FieldType $type, array $fieldConfig): array
+    {
+        $accept = [];
+
+        foreach (\is_array($fieldConfig['accept'] ?? null) ? $fieldConfig['accept'] : [] as $entry) {
+            if (\is_string($entry) && $entry !== '') {
+                $accept[] = strtolower(trim($entry));
+            }
+        }
+
+        $maxBytes = \is_int($fieldConfig['max_bytes'] ?? null) ? $fieldConfig['max_bytes'] : null;
+
+        if ($type !== FieldType::File && ($accept !== [] || $maxBytes !== null)) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' is a '%s' and declares 'accept' or 'max_bytes', which only a "
+                    . "'file' field reads. Either the type is wrong or the keys are.",
+                $pageName,
+                $fieldKey,
+                $type->value,
+            ));
+        }
+
+        if ($maxBytes !== null && $maxBytes <= 0) {
+            throw new PageException(\sprintf(
+                "Page '%s': field '%s' has a max_bytes of %d, which accepts nothing. Leave it out to "
+                    . "use the installation's own limit.",
+                $pageName,
+                $fieldKey,
+                $maxBytes,
+            ));
+        }
+
+        return [$accept, $maxBytes];
+    }
+
+    /**
      * What a `post` writes to the row it was drawn for.
      *
      * Specification 8.5 gives `archive` as its example of a `post` and never
@@ -1913,6 +1965,8 @@ final class PageRepository
             ));
         }
 
+        [$accept, $maxBytes] = $this->fileLimits($pageName, $fieldKey, $type, $fieldConfig);
+
         return new FieldDefinition(
             key: $fieldKey,
             label: $label,
@@ -1929,6 +1983,8 @@ final class PageRepository
             step: $step,
             rows: $rows,
             pattern: $pattern,
+            accept: $accept,
+            maxBytes: $maxBytes,
         );
     }
 

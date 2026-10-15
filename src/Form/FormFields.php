@@ -49,6 +49,25 @@ final class FormFields
      */
     public const BULK = '_bulk';
 
+    /**
+     * The prefix of the checkbox that takes a stored file off a row.
+     *
+     * `_remove_photo` for a field called `photo`. A file control cannot
+     * express "clear this" the way an emptied text input does -- an empty
+     * file input means "upload nothing", which on an edit means "keep what is
+     * there" -- so removing one needs a second control, and the two halves
+     * have to agree on its name.
+     *
+     * Prefixed like the others, so it cannot collide with a column.
+     */
+    public const REMOVE_PREFIX = '_remove_';
+
+    /** The name of the control that removes this field's stored file. */
+    public static function removeFor(string $field): string
+    {
+        return self::REMOVE_PREFIX . $field;
+    }
+
     /** @return list<string> every reserved key, for a refusal that names them all */
     public static function reserved(): array
     {

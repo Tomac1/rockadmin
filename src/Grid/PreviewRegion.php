@@ -123,7 +123,7 @@ final class PreviewRegion
             return null;
         }
 
-        $fields = $this->fieldViews($region, $row);
+        $fields = $this->fieldViews($page, $region, $row);
 
         return new PreviewView(
             key: $region->key,
@@ -166,12 +166,14 @@ final class PreviewRegion
      * @param  array<string, mixed> $row
      * @return list<FieldView>
      */
-    private function fieldViews(RegionDefinition $region, array $row): array
+    private function fieldViews(PageDefinition $page, RegionDefinition $region, array $row): array
     {
         $views = [];
 
         foreach ($region->fields as $field) {
-            $cell = $this->cells->format($field, $row[$field->key] ?? null);
+            // The page's name travels with the value, so an `image` field
+            // resolves only keys this page wrote.
+            $cell = $this->cells->format($field, $row[$field->key] ?? null, null, $page->name);
 
             $views[] = new FieldView($field->key, $field->label, $cell, $this->isWide($field, $cell));
         }

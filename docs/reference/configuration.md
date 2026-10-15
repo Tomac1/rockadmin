@@ -45,6 +45,31 @@ How hard it is to guess a password, and how long a reset link lasts. The default
 | `reset_lifetime_minutes` | int | `60` | `30` | How long a password-reset link works for, from specification 10. It is single-use whatever this says -- the lifetime is the second limit, for a link that was never used and is sitting in a mailbox. |
 | `invite_lifetime_minutes` | int | `2880` | `10080` | How long an invitation link works for. Longer than a reset, because nobody asked for it and it waits for somebody to read their mail: two days covers a weekend, and an invitation that expired unseen is a second message somebody has to send by hand. |
 
+## `storage`
+
+Where uploaded files are kept. The default driver writes them to a directory and the admin serves them, which needs nothing configured but a path; the s3 driver talks to Cloudflare R2 or anything else speaking the same API, with no library installed.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `driver` | string | `local` | `s3` | local or s3. A project that already has its own disk abstraction -- Laravel Storage, Flysystem -- wires a Storage object in the bootstrap instead and neither of these runs. |
+| `path` | string | `` | `storage/uploads` | For the local driver: the directory files live in, relative to the project root. **It must be outside the document root.** A directory of uploads inside it is a directory a stranger can fetch by guessing, and on a server that runs PHP by file extension rather than by location, one they may be able to execute. |
+| `public_url` | string | `` | `https://cdn.cyklobazar.cz/uploads` | Serve files from this address instead of through the admin, as an absolute URL with no trailing slash. Empty -- the default -- means every file goes through a route only a signed-in administrator can use. Setting it is a decision that the files behind it are public to anybody who learns the address, which is right for product photos and wrong for scanned invoices. |
+| `bucket` | string or null | — | `cyklobazar-uploads` | For the s3 driver: the bucket name. |
+| `endpoint` | string or null | — | `https://{{env.R2_ACCOUNT}}.r2.cloudflarestorage.com` | For the s3 driver: the API endpoint, with scheme and no path. R2 gives you one per account, and it is not the public bucket address -- that one goes in public_url. |
+| `region` | string | `auto` | `eu-central-1` | The region a signature is computed for. R2 uses 'auto' and so does this; an S3 bucket needs its own, and getting it wrong fails exactly like a wrong password because the server will not say which. |
+| `key` | string or null | — | `{{env.R2_ACCESS_KEY_ID}}` | For the s3 driver: the access key id. |
+| `secret` | string or null | — | `{{env.R2_SECRET_ACCESS_KEY}}` | For the s3 driver: the secret. Write it as {{env.*}} and keep it out of git -- this file is committed, and the configuration cache is written with the value resolved, which is why that cache lives outside the document root. |
+| `link_minutes` | int | `10` | `5` | How long a signed link to a private file stays good for. Long enough to open a page and look at it, short enough that a URL copied out of a browser history is no use tomorrow. |
+
+## `uploads`
+
+What a file field accepts. A field may narrow both of these and may not widen them: whatever a page file says, nothing larger or stranger than this is written anywhere.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `max_bytes` | int | `5242880` | `2097152` | The largest file accepted, in bytes. Five megabytes by default, which is a photograph. PHP's own upload_max_filesize and post_max_size cap this from below whatever it says, and a request over that limit arrives with its whole body discarded -- which the admin notices and reports as a size problem rather than as a failed form. |
+| `types` | array | `['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']` | `['image/jpeg', 'image/png']` | The content types accepted anywhere in this admin, as an allowlist. The type is read from the bytes rather than from what the browser claimed, and the stored file gets the extension this admin maps that type to -- so an upload called invoice.php.jpg is stored as .jpg whatever is inside it. |
+
 ## `mail`
 
 How the admin sends a password reset or an invitation. The default driver writes each message to a file instead of sending it, so an installation with no mail server still has a working password reset: the link is in the file.

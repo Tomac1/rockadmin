@@ -49,6 +49,7 @@ final class CellPartial
             Display::YesNo => 'region/list/cell/yesno',
             Display::Progress => 'region/list/cell/progress',
             Display::Percent => 'region/list/cell/percent',
+            Display::Image => 'region/list/cell/image',
             Display::Plain => match ($cell->type) {
                 // An actions column holds controls rather than a value (spec
                 // 8.5), so it has a partial of its own under the same name its
@@ -61,6 +62,11 @@ final class CellPartial
                 ColumnType::Text,
                 ColumnType::Int,
                 ColumnType::Bool,
+                // An image column shown plainly is its file's name as text,
+                // which is what a grid of forty rows usually wants: forty
+                // thumbnails is forty requests for pictures nobody is
+                // looking at.
+                ColumnType::Image,
                 ColumnType::Enum => 'region/list/cell/plain',
             },
         };

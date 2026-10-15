@@ -255,7 +255,14 @@ final class ListRegion
             foreach ($region->columns as $column) {
                 $cells[] = $column->type->isActions()
                     ? $this->actionCell($page->name, $column, $row, $page->entity->key)
-                    : $this->cells->format($column, $row[$column->key] ?? null, $column->link ? $url : null);
+                    : $this->cells->format(
+                        $column,
+                        $row[$column->key] ?? null,
+                        $column->link ? $url : null,
+                        // Which page this row is on, so that an `image`
+                        // column resolves only keys this page wrote.
+                        $page->name,
+                    );
             }
 
             if ($this->scope?->isAcrossAllWorkspaces($page) === true) {

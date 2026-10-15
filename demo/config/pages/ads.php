@@ -147,6 +147,15 @@ return [
                         'placeholder' => 'Title contains…',
                     ],
                 ],
+                // Milestone 13. The column holds a storage key and
+                // nothing else -- never a URL, never a path. The grid turns
+                // it into an address when it draws the row, which is when
+                // the answer is known: a signed link that works for this
+                // session for the next ten minutes.
+                'photo' => [
+                    'type' => 'image',
+                    'label' => 'Photo',
+                ],
                 'user_name' => [
                     'type' => 'text',
                     'label' => 'Seller',
@@ -255,6 +264,21 @@ return [
                         // has no way to display.
                         'options' => '@enum:ad_state',
                         'default' => 'draft',
+                    ],
+                    // A `file` field has no value of its own: it is not
+                    // posted back, it cannot be defaulted, and what it writes
+                    // to the column is a key the storage assigned from the
+                    // uploaded bytes. `accept` narrows the installation's
+                    // `uploads.types` -- it may narrow and never widen -- and
+                    // the remove box clears the column and forgets the file
+                    // after the transaction commits.
+                    'photo' => [
+                        'type' => 'file',
+                        'label' => 'Photo',
+                        'accept' => ['image/jpeg', 'image/png'],
+                        'max_bytes' => 1048576,
+                        'help' => 'A JPEG or a PNG, up to 1 MB. The type is read from the file itself, '
+                            . 'not from its name.',
                     ],
                     'featured' => [
                         'type' => 'checkbox',

@@ -46,6 +46,10 @@ final class Router
         ['POST', 'a/{page}/{action}',      'action'],
         ['POST', 'w/{workspace}',          'workspace.switch'],
         ['GET',  '_assets/{path...}',      'assets'],
+        // An uploaded file, served by the admin so that the gate sees the
+        // request. The key is the rest of the path because a key has slashes
+        // in it -- `ads/2026/10/8f3a....jpg` is one parameter, not four.
+        ['GET',  '_file/{key...}',         'file'],
         ['GET',  '_diagnostics',           'diagnostics'],
         ['GET',  '_setup',                 'setup.form'],
         ['POST', '_setup',                 'setup.submit'],

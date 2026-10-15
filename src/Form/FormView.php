@@ -52,6 +52,31 @@ final class FormView
     ) {
     }
 
+    /**
+     * Whether this form has anything to upload, which decides how it is
+     * encoded.
+     *
+     * A browser sends files only from a `multipart/form-data` form. Left at
+     * the default encoding, a file field is drawn, filled, submitted -- and
+     * the file is simply not in the request, so the row saves without it and
+     * nothing anywhere says so. That is the worst shape a bug can have, and
+     * it is one no test that builds its own `Request` can see, because such a
+     * test hands the files over directly.
+     *
+     * Asked of the fields rather than carried as a flag: the form draws what
+     * it draws, and a field that is there is a field a browser can fill.
+     */
+    public function hasFiles(): bool
+    {
+        foreach ($this->fields as $field) {
+            if ($field->type->isFile()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function isEdit(): bool
     {
         return !$this->isCreate;

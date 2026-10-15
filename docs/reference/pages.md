@@ -130,10 +130,10 @@ Every entry of `regions.*.columns`.
 
 | Key | Type | Default | Example | What it does |
 | --- | --- | --- | --- | --- |
-| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
+| `type` | string | `text` | `text` | What the column holds: text, int, money, datetime, bool, enum or json — `image`, which holds the storage key of an uploaded picture and shows the picture itself — or `actions`, which holds controls rather than a value and takes an `items` list instead of a source. |
 | `label` | string | — | `First Name` | The column header, shown above the values. Defaults at load to the key, title-cased. |
 | `source` | string | — | `user.name` | A source path: the database column or expression to read. Defaults to the key. Use `.` to join a relation, `->` to traverse JSON. Must not be set on a column carrying `collection`. |
-| `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress or percent. Defaults to the type's own. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
+| `display` | string | — | `badge` | How the column looks: plain, badge, check, yesno, progress, percent or image. Defaults to the type's own — an `image` column shows the picture, and `display: plain` on one asks for the file's name instead. Not every type allows every display. A cell links to the row's detail page independently of this, via the `link` key. |
 | `sortable` | bool | `false` | `true` | Whether the column header is a sort link. |
 | `searchable` | bool | `false` | `true` | Whether the region's search box looks here. |
 | `align` | string | — | `end` | Horizontal alignment: start or end, with left and right accepted as aliases for them. Defaults to the type's own — numbers align to the end so they are readable when skimmed down a column. |
@@ -197,6 +197,8 @@ Every entry of `regions.*.form.fields`.
 | `max` | int | — | `100` | For a `number` field, the largest accepted value. For a text-like field, the longest accepted length. |
 | `step` | string | — | `0.01` | The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. It is passed to the control and is not enforced server-side: a submission of `10.5` against a step of `1` is accepted here, and refused by the column it is written to. |
 | `rows` | int | — | `4` | How many rows tall a `textarea` control is. |
+| `accept` | array | `[]` | `['image/jpeg', 'image/png']` | For a `file` field: the content types this field takes, narrowing `uploads.types`. Empty means whatever the installation allows. It may only narrow -- a field naming a type the installation does not allow is refused when the page loads, rather than at the moment somebody uploads one. |
+| `max_bytes` | int or null | — | `1048576` | For a `file` field: the largest file this one takes, narrowing `uploads.max_bytes`. Null means the installation-wide limit, which is also the ceiling -- this may only lower it. |
 | `pattern` | string | — | `[A-Z]{2}\d{4}` | A regular expression the whole value must match, written without delimiters. It is anchored at both ends, exactly as the HTML `pattern` attribute is, so `[A-Z]{2}\d{4}` accepts `AB1234` and nothing that merely contains it. Not accepted on a `multiselect` or a `checkbox`, whose values a pattern could never be applied to. |
 
 ## `regions.*.form.copy`

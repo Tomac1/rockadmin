@@ -21,6 +21,12 @@
  * page and the verb but not the row. A create has no key and writes no
  * input for one.
  *
+ * **The encoding follows the fields.** A form holding a file field is sent
+ * as `multipart/form-data`, because a browser sends no file from a form
+ * encoded any other way -- it would submit, save the row, and leave the file
+ * behind without a word. Every other form keeps the default encoding, which
+ * is smaller and is what the action handler reads fastest.
+ *
  * `data-ra-region` carries the fragment's identity, as it does on a list and
  * a preview. There is deliberately no `data-ra-behavior`: nothing in
  * `core.js` binds to this form yet, and an attribute that names a behaviour
@@ -33,7 +39,7 @@
  * @var \Closure(string, mixed=): string $partial
  */
 ?>
-<form class="<?= $e($view->classes()) ?>" method="post" action="<?= $href($view->action) ?>" data-ra-region="<?= $e($view->page) ?>">
+<form class="<?= $e($view->classes()) ?>" method="post" action="<?= $href($view->action) ?>"<?php if ($view->hasFiles()) { ?> enctype="multipart/form-data"<?php } ?> data-ra-region="<?= $e($view->page) ?>">
     <h2 class="ra-form-title"><?= $e($view->title) ?></h2>
 
     <?= $partial('region/form/errors', $view) ?>

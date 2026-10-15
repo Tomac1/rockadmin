@@ -11,6 +11,9 @@ use RockAdmin\Config\EnumOption;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
+use RockAdmin\Storage\FileTypes;
+use RockAdmin\Storage\Storage;
+use RockAdmin\Storage\StorageException;
 use RockAdmin\View\Classes;
 
 /**
@@ -84,8 +87,38 @@ final class CellFormatter
         'Y-m-d',
     ];
 
-    public function format(ColumnDefinition $column, mixed $value, ?string $url = null): CellView
-    {
+    public function __construct(
+        /**
+         * Where uploaded files live, for turning an `image` column's key into
+         * something a browser can fetch.
+         *
+         * Optional, because every other column type formats a value it was
+         * handed and a great many callers have no files at all. Without one
+         * an image column shows the file's name, which is honest and is what
+         * a grid of forty rows often wants anyway.
+         */
+        private readonly ?Storage $files = null,
+    ) {
+    }
+
+    public function format(
+        ColumnDefinition $column,
+        mixed $value,
+        ?string $url = null,
+        /**
+         * Which page's row this is, for an `image` column.
+         *
+         * A storage key becomes an address only when it is one this page
+         * wrote -- the same rule the form and the write path follow, and for
+         * the same reason: a column can hold a key belonging somewhere else,
+         * and a grid that signed a link to it would hand out a file this page
+         * has no business showing.
+         *
+         * Null means "do not resolve": a caller with no page in hand gets the
+         * file's name as text, which shows nothing it should not.
+         */
+        ?string $pageName = null,
+    ): CellView {
         // An empty collection -- a one-to-many column with no related rows --
         // reads as deliberately empty for the same reason null does, rather
         // than as the literal text '[]'.
@@ -131,6 +164,7 @@ final class CellFormatter
             ColumnType::Bool => $this->formatBool($column, $value),
             ColumnType::Enum => $this->formatEnum($column, $value),
             ColumnType::Json => $this->formatJson($value),
+            ColumnType::Image => $this->formatImage($value, $pageName),
         };
 
         return new CellView(
@@ -350,6 +384,45 @@ final class CellFormatter
         // variant, so an unmapped state is visible in the grid rather than
         // silently disappearing.
         return [$key, null, null, []];
+    }
+
+    /**
+     * An image column: a thumbnail where the key can be resolved, the file's
+     * name where it cannot.
+     *
+     * Four reasons it falls back to the name, and all four are states a real
+     * installation reaches -- no storage wired, a key belonging to another
+     * page, a value that is not a key at all, and a storage that has no way
+     * to build a URL. None of them is a reason to draw a broken image, and
+     * none is a reason to guess a URL.
+     *
+     * @return array{string, null, null, array<string, scalar|null>}
+     */
+    private function formatImage(mixed $value, ?string $pageName): array
+    {
+        $key = $this->stringify($value);
+        $name = $key === '' ? '' : basename($key);
+
+        if ($this->files === null || $pageName === null || !$this->files->accepts($key)) {
+            return [$name, null, null, []];
+        }
+
+        if (!FileTypes::isUnder($key, $pageName)) {
+            return [$name, null, null, []];
+        }
+
+        try {
+            $address = $this->files->url($key);
+        } catch (StorageException) {
+            // A storage with no way to build a URL -- a local directory wired
+            // without a UrlGenerator and without a public base -- says so by
+            // raising. A grid is the wrong place to learn that: forty rows
+            // would become one 500. The name is what this cell shows, and the
+            // installation finds out from `doctor` and from the form.
+            return [$name, null, null, []];
+        }
+
+        return [$name, null, null, ['src' => $address, 'alt' => $name]];
     }
 
     /** @return array{string, null, null, array<string, scalar|null>} */

@@ -192,6 +192,32 @@ final class FormTemplatesTest extends TestCase
         $this->assertSame('/admin/a/ads/create', $form->getAttribute('action'));
     }
 
+    public function testAFormWithAFileFieldIsEncodedSoThatABrowserActuallySendsTheFile(): void
+    {
+        $html = $this->renderer()->render(
+            'region/form/region',
+            $this->form(fields: [$this->field(key: 'photo', label: 'Photo', type: FieldType::File, value: '')]),
+        );
+        $xpath = $this->dom($html);
+
+        // Found in a browser, not here: the form was drawn, filled and
+        // submitted, the row saved, and the file was simply not in the
+        // request -- a browser sends none from a form encoded the default
+        // way. Nothing said so, which is the worst shape a bug can have.
+        $this->assertSame(
+            'multipart/form-data',
+            $this->one($xpath, '//form')->getAttribute('enctype'),
+        );
+    }
+
+    public function testAFormWithNoFileFieldKeepsTheDefaultEncoding(): void
+    {
+        $html = $this->renderer()->render('region/form/region', $this->form());
+        $xpath = $this->dom($html);
+
+        $this->assertSame('', $this->one($xpath, '//form')->getAttribute('enctype'));
+    }
+
     public function testTheFormCarriesItsCsrfTokenUnderTheNameTheHandlerReadsBack(): void
     {
         $html = $this->renderer()->render('region/form/region', $this->form());
