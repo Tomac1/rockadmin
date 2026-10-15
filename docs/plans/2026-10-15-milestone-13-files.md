@@ -316,3 +316,63 @@ credentials are available; against the local driver regardless.
 - **Per-column file permissions.** Specification 13 puts row-level and
   column-level permissions out of v1, and this inherits that: an administrator
   who may see any page may fetch any uploaded file.
+
+---
+
+## Task 9: the browser pass
+
+Run on 2026-10-15 against the demo (`php -S localhost:8099 -t demo
+demo/index.php`), MySQL, signed in as `super@example.com`, Chrome at
+1568×778. The storage was `local`, in `demo/storage/uploads`.
+
+### What was checked
+
+1. **The grid draws the picture.** `/p/ads` renders the `photo` column as an
+   `<img class="ra-avatar ra-avatar--sm ra-avatar--sq ra-grid-cell-image">`
+   whose `naturalWidth` is 32 — the image was fetched and decoded, not drawn
+   broken. A row with no photo carries `ra-grid-cell-empty` and a
+   `ra-grid-cell-image-missing` span with nothing in it.
+2. **A file uploaded through the form lands as a key.** Creating an ad with a
+   32×32 PNG attached stored
+   `ads/2026/10/91a66bc651fb5835b7983d16c9dee147.png` in the column and the
+   bytes at that path under the uploads directory. The browser called the
+   file `kolo.png`; the name is random and the extension came from the bytes.
+3. **The edit form shows the stored file**, with the remove box beside it and
+   the file input below.
+4. **The preview shows it too** (`/p/ads/14`), through the same formatter.
+5. **An unsigned URL is refused.** Fetching
+   `/_file/ads/2026/10/91a6….png` with no query, while signed in, answers
+   **403** on the admin's own error page, with the message about the link
+   having expired or not having been made for this session.
+
+### What it found: the form was not encoded for files
+
+**A form holding a file field was sent as
+`application/x-www-form-urlencoded`.** The first upload through the browser
+submitted, redirected, flashed "Created Ads 13" — and stored `NULL`. A
+browser sends no file from a form encoded that way, so `$_FILES` was empty,
+`FileWrites` had nothing to store, and nothing anywhere said so.
+
+No test could have caught it as the tests were written: every one of them —
+`FileWriteFlowTest`, `DemoFileTest`, the unit tests — builds its own
+`Request` and hands the files over directly, which is precisely the step a
+browser was getting wrong. This is the second time this milestone that the
+test suite was too polite to its own code.
+
+Fixed by `FormView::hasFiles()`, asked of the fields rather than carried as a
+flag, and an `enctype="multipart/form-data"` on `templates/region/form/region.php`
+when it answers true. `FormTemplatesTest` now asserts both directions —
+`multipart/form-data` with a file field, the default encoding without one.
+
+After the fix the same upload stored the key and the bytes, and every check
+above passed.
+
+### Carried debt, unchanged by this milestone
+
+- Narrow viewports are still broken (1086 px of scroll at 384 px), and want
+  an interlude of their own.
+- JavaScript has still never been switched off for a full pass.
+- `ra_login_attempts` and `ra_password_resets` still grow unbounded; the CLI
+  milestone owns the sweep, and orphaned files now join them.
+- The "New Administrators" plural label still wants a `singular` page-schema
+  key.
