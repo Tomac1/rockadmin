@@ -48,7 +48,17 @@ final class Submission
         $uploads = [];
 
         foreach ($form->editable() as $key => $field) {
-            if (\array_key_exists($key, $body)) {
+            // A file field's value is never taken from the body, and this is
+            // the first of the two places that refuses it. What a `file`
+            // field posts is a file; a *string* posted under its name is
+            // somebody writing a storage key into a column by hand, which
+            // would point the row at any file in the bucket -- another
+            // page's, another tenant's -- with nothing uploaded at all.
+            //
+            // A fourth kind of dropped key, beside undeclared, readonly and
+            // hidden, and the same rule: what the configuration did not
+            // offer, the request cannot set.
+            if (!$field->type->isFile() && \array_key_exists($key, $body)) {
                 $values[$key] = $body[$key];
             }
 

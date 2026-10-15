@@ -101,20 +101,50 @@ final class FileTypes
      */
     public static function keyFor(string $prefix, string $type): string
     {
-        // Trimmed before the fallback, not after: a prefix of nothing but
-        // separators cleans up to nothing, and a key beginning with a slash
-        // is one `StorageKey` refuses -- an upload that fails at the last
-        // step because the page is called `///` is a worse answer than a
-        // folder called `files`.
-        $folder = trim(strtolower(preg_replace('/[^a-z0-9_-]+/i', '-', $prefix) ?? ''), '-');
-
         return \sprintf(
             '%s/%s/%s.%s',
-            $folder === '' ? 'files' : $folder,
+            self::folderFor($prefix),
             gmdate('Y/m'),
             bin2hex(random_bytes(16)),
             self::extensionOf($type),
         );
+    }
+
+    /**
+     * The folder a prefix becomes, which is also what a reader checks a key
+     * against.
+     *
+     * One place, because the two sides have to agree: a key is written under
+     * the folder a page's name slugs to, and a form will only build a URL for
+     * a key that is under its own. Two spellings of this would mean a page
+     * that could sign links to files it did not write.
+     *
+     * Trimmed before the fallback, not after: a prefix of nothing but
+     * separators cleans up to nothing, and a key beginning with a slash is
+     * one `StorageKey` refuses -- an upload that fails at the last step
+     * because the page is called `///` is a worse answer than a folder called
+     * `files`.
+     */
+    public static function folderFor(string $prefix): string
+    {
+        $folder = trim(strtolower(preg_replace('/[^a-z0-9_-]+/i', '-', $prefix) ?? ''), '-');
+
+        return $folder === '' ? 'files' : $folder;
+    }
+
+    /**
+     * Whether this key belongs to that prefix.
+     *
+     * Asked before a URL is built for a value that came out of a column. The
+     * column is data, and data outlives the code that wrote it: a row may
+     * carry a key from another page because somebody edited the database,
+     * because an older version of this admin wrote it, or because a bug
+     * somewhere let a string through. None of those is a reason to hand out a
+     * working link to it.
+     */
+    public static function isUnder(string $key, string $prefix): bool
+    {
+        return str_starts_with($key, self::folderFor($prefix) . '/');
     }
 
     /**

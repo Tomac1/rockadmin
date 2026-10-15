@@ -109,6 +109,16 @@ final class FieldValidator
             // and MySQL does or does not depending on its mode. Found by the
             // administrators page, which is the first page in this project to
             // have a multiselect over a NOT NULL column.
+            if ($field->type->isFile()) {
+                // Nothing. The column's value is a storage key, and the only
+                // thing entitled to decide one is the write path, which has
+                // the bytes. `Submission` already drops a posted string for
+                // this field; this is the second lock on the same door,
+                // because a validator that would write whatever it was given
+                // is a validator one refactor away from doing it again.
+                continue;
+            }
+
             if ($field->type === FieldType::Checkbox || $field->type === FieldType::Multiselect) {
                 $values[$key] = $field->type === FieldType::Checkbox
                     ? $submission->has($field->key)

@@ -128,6 +128,48 @@ final class FileFieldTest extends TestCase
         self::assertArrayNotHasKey('photo', $result->values());
     }
 
+    /**
+     * The injection a security review found in the commit that added this
+     * field, and that the test above was too polite to catch: it posted an
+     * empty body.
+     *
+     * A `file` field's name in the body is a *string*, and nothing uploaded.
+     * Until this was fixed it went straight into the column -- so a tampered
+     * form pointed a row at any file in the bucket, another page's or another
+     * tenant's, with no upload and no permission anywhere in the way.
+     */
+    public function testAStorageKeyPostedAsAStringIsNotAValue(): void
+    {
+        $form = $this->form();
+        $submission = Submission::fromBody(
+            ['photo' => 'ads/2026/10/somebody-elses-invoice.pdf'],
+            $form,
+        );
+
+        self::assertNull($submission->value('photo'), 'The submission kept a posted storage key.');
+
+        $result = (new FieldValidator())->validate($form, $submission);
+
+        self::assertArrayNotHasKey(
+            'photo',
+            $result->values(),
+            'A posted string reached the column, which is a storage key written by hand.',
+        );
+    }
+
+    public function testAPostedStringDoesNotOverrideAGenuineUpload(): void
+    {
+        $form = $this->form();
+        $result = (new FieldValidator())->validate($form, Submission::fromBody(
+            ['photo' => 'ads/2026/10/somebody-elses-invoice.pdf'],
+            $form,
+            ['photo' => $this->upload(contents: self::png())],
+        ));
+
+        self::assertSame([], $result->errors());
+        self::assertArrayNotHasKey('photo', $result->values());
+    }
+
     // --- what the control is handed ---
 
     public function testAStoredImageIsSomethingToDrawAndAPdfIsSomethingToLinkTo(): void

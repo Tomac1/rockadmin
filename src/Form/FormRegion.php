@@ -17,6 +17,7 @@ use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\RegionDefinition;
+use RockAdmin\Storage\FileTypes;
 use RockAdmin\Storage\Storage;
 
 /**
@@ -284,7 +285,7 @@ final class FormRegion
                 continue;
             }
 
-            $fields[] = $this->fieldView($field, $value['value'], $messages[$key] ?? []);
+            $fields[] = $this->fieldView($page, $field, $value['value'], $messages[$key] ?? []);
             unset($messages[$key]);
         }
 
@@ -330,8 +331,12 @@ final class FormRegion
     }
 
     /** @param list<string> $errors */
-    private function fieldView(FieldDefinition $field, mixed $value, array $errors): FormFieldView
-    {
+    private function fieldView(
+        PageDefinition $page,
+        FieldDefinition $field,
+        mixed $value,
+        array $errors,
+    ): FormFieldView {
         $type = $field->hidden ? FieldType::Hidden : $field->type;
 
         return new FormFieldView(
@@ -350,7 +355,7 @@ final class FormRegion
             step: $field->step,
             rows: $field->rows,
             pattern: $field->pattern,
-            file: $this->storedFile($field, $value),
+            file: $this->storedFile($page, $field, $value),
             removeField: $field->type->isFile() ? FormFields::removeFor($field->key) : '',
         );
     }
@@ -363,17 +368,25 @@ final class FormRegion
      * holding something that is not one of our keys, which is a row to leave
      * alone rather than a URL to invent.
      *
+     * **And only a key this page wrote.** A column is data, and data
+     * outlives the code that put it there: a row may carry a key belonging to
+     * another page -- somebody edited the database, an older version of this
+     * admin wrote it, a bug let a string through -- and building a URL for it
+     * would mean a form handing out a working link to a file it has no
+     * business showing. Keys are written under a folder named for their page,
+     * so the check is the one the write already guarantees.
+     *
      * A storage that cannot build a URL is not caught here: it raises, and it
      * should. Written and never showable is a wiring mistake somebody needs
      * to be told about, not one to paper over with an empty control.
      */
-    private function storedFile(FieldDefinition $field, mixed $value): ?StoredFileView
+    private function storedFile(PageDefinition $page, FieldDefinition $field, mixed $value): ?StoredFileView
     {
         if (!$field->type->isFile() || $this->files === null || !\is_string($value) || $value === '') {
             return null;
         }
 
-        if (!$this->files->accepts($value)) {
+        if (!$this->files->accepts($value) || !FileTypes::isUnder($value, $page->name)) {
             return null;
         }
 
