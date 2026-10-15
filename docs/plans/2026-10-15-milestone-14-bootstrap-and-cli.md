@@ -261,3 +261,36 @@ refused; that is what testing a generator by loading its output is for.
 configuration is read from cannot live in the configuration, and nothing read
 it: the compiled file is `Setup::$cachePath`, which is in hand before anything
 is loaded.
+
+## Task 11: the browser pass
+
+Chrome at 1568×778 against `php -S localhost:8099 -t demo demo/index.php`,
+MySQL, the demo seeded.
+
+- The **dashboard** draws: the menu from `rockadmin.php` in the navbar, and a
+  card per page. A card for the page being looked at was drawn at first —
+  a button that does nothing — so the current item is skipped now.
+- **The grid** draws five rows of ads with the configured per-page, the
+  filters, the search box and the workspace switcher, all through
+  `Admin::boot()`.
+- **A write goes through**: editing ad 1 saved, flashed "Saved Ads 1" and
+  redirected to the grid. `ra_activity_log` recorded it against user 1,
+  `super@example.com` — which is the actor fix doing its job in a browser
+  rather than in a test.
+- **The gate filters both menus**: signed in as `viewer@example.com`, the
+  navbar shows Dashboard and Ads, and the dashboard shows one card. No
+  Administrators anywhere, because `roles.php` gives it to the superadmin.
+- The form still carries `enctype="multipart/form-data"` — milestone 13's bug
+  stayed fixed through the rewrite.
+
+Nothing new was found in the browser this time; the three defects this
+milestone found came from running the CLI against an empty directory, which
+is the same kind of check in a different place.
+
+## Carried debt, unchanged
+
+- Narrow viewports are still broken (1086 px of scroll at 384 px).
+- JavaScript has still never been switched off for a full pass.
+- `ra_login_attempts`, `ra_password_resets` and orphaned files still grow
+  without bound. They are commands, so a later CLI milestone owns them.
+- The "New Administrators" plural label still wants a `singular` page key.

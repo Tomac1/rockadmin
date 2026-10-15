@@ -73,6 +73,18 @@ final class MakePageCommand implements Command
         }
 
         $table = $input->option('table') ?? $name;
+
+        // Checked rather than escaped, because this reaches two places where
+        // escaping is not the same job: an identifier in a query, and PHP
+        // source this command writes to disk for the admin to execute later.
+        // A table whose name is not this shape is one to quote by hand.
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table) !== 1) {
+            throw new ConsoleException(
+                "'{$table}' is not a table name this command will write into a generated file. "
+                . 'Letters, digits and underscores; write the page by hand for anything else.',
+            );
+        }
+
         $columns = $this->describe($connection, $table);
 
         $pagesPath = $admin->services->config->get('pages_path', 'pages');
@@ -161,10 +173,10 @@ final class MakePageCommand implements Command
             }
 
             $gridLines[] = \sprintf(
-                "                '%s' => ['type' => '%s', 'label' => '%s'%s],",
-                $column['name'],
+                '                %s => [\'type\' => \'%s\', \'label\' => %s%s],',
+                var_export($column['name'], true),
                 $columnType,
-                $label,
+                var_export($label, true),
                 $extra,
             );
 
@@ -173,21 +185,33 @@ final class MakePageCommand implements Command
             }
 
             $formLines[] = \sprintf(
-                "                    '%s' => ['type' => '%s', 'label' => '%s'],",
-                $column['name'],
+                '                    %s => [\'type\' => \'%s\', \'label\' => %s],',
+                var_export($column['name'], true),
                 $this->fieldType($column),
-                $label,
+                var_export($label, true),
             );
         }
 
         $grid = implode("\n", $gridLines);
         $form = implode("\n", $formLines);
         $title = $this->title($name);
+
+        // The page name is already known to match [a-z][a-z0-9_]*, and the
+        // table was checked above; the key comes from the server. All three
+        // are written as exported literals anyway, because a generator that
+        // builds source by concatenation is one bad column name away from
+        // writing something that runs.
+        $tableLiteral = var_export($table, true);
+        $keyLiteral = var_export($key, true);
+        $titleLiteral = var_export($title, true);
         $left = $skipped === [] ? '' : \sprintf(
             "\n *\n * Left out: %s. A column that looks like a secret is not drawn in a\n"
             . " * grid and not offered in a form -- the first would render a hash, and the\n"
             . ' * second would write a plaintext one. Add it deliberately if you mean to.',
-            implode(', ', $skipped),
+            implode(', ', array_map(
+                static fn (string $column): string => preg_replace('/[^A-Za-z0-9_]/', '', $column) ?? '',
+                $skipped,
+            )),
         );
 
         return <<<PHP
@@ -208,10 +232,10 @@ final class MakePageCommand implements Command
              */
 
             return [
-                'title' => '{$title}',
+                'title' => {$titleLiteral},
                 'layout' => 'single',
 
-                'entity' => ['table' => '{$table}', 'key' => '{$key}'],
+                'entity' => ['table' => {$tableLiteral}, 'key' => {$keyLiteral}],
 
                 // What a row offers. `edit` is a link to this page's own edit
                 // screen; `bin` posts the built-in delete, and asks first.

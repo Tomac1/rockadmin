@@ -7,6 +7,7 @@ namespace RockAdmin\Tests\Integration\Console;
 use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Console\ConsoleException;
 use RockAdmin\Console\DoctorCommand;
 use RockAdmin\Console\InitCommand;
 use RockAdmin\Console\Input;
@@ -144,6 +145,36 @@ final class CommandsTest extends TestCase
         $this->dropTables($connection);
     }
 
+    /**
+     * A generator writes code, so what reaches it is checked.
+     *
+     * `--table` is typed by a person and the column names come back from a
+     * server, and both are interpolated into PHP that the admin will later
+     * execute. A table name carrying a quote would close the string it was
+     * written into. The names are exported as literals and the table is
+     * refused unless it is the shape an identifier is.
+     */
+    #[DataProvider('servers')]
+    public function testATableNameThatCouldCloseAStringIsRefused(?string $prefix): void
+    {
+        $this->connect($prefix);
+
+        (new InitCommand())->run(new Input(['--path=' . $this->root]), $this->silent());
+        $this->writeBootstrap((string) $prefix);
+
+        $make = new Input([
+            'evil',
+            "--table=ra_users' . file_get_contents('/etc/passwd') . '",
+            '--bootstrap=' . $this->root . '/bootstrap-test.php',
+        ]);
+
+        [$code, $text] = $this->capture(static fn (Output $out): int => (new MakePageCommand())->run($make, $out));
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('not a table name', $text);
+        self::assertFileDoesNotExist($this->root . '/config/rockadmin/pages/evil.php');
+    }
+
     /** A bootstrap pointing at the test database, which is what the CLI loads. */
     private function writeBootstrap(string $prefix): void
     {
@@ -210,7 +241,16 @@ final class CommandsTest extends TestCase
         $stream = fopen('php://memory', 'r+');
         self::assertIsResource($stream);
 
-        $code = $run(new Output($stream, $stream, colour: false));
+        $output = new Output($stream, $stream, colour: false);
+
+        try {
+            $code = $run($output);
+        } catch (ConsoleException $refusal) {
+            // What `Application` does with one: the message, and a code that
+            // a deploy script stops on.
+            $output->error($refusal->getMessage());
+            $code = 1;
+        }
 
         rewind($stream);
         $text = stream_get_contents($stream);

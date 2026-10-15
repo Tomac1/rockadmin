@@ -21,7 +21,11 @@
 $items = [];
 
 foreach ($view->shell->menu as $item) {
-    $items[] = $item;
+    // Not the page being looked at: a card linking to the dashboard, drawn on
+    // the dashboard, is a button that does nothing.
+    if (!$item->active) {
+        $items[] = $item;
+    }
 
     foreach ($item->children as $child) {
         $items[] = $child;
