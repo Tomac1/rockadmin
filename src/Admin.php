@@ -91,11 +91,18 @@ use RockAdmin\View\ViewFactory;
  * to copy a demo and own it forever, and that every handler added to this SDK
  * afterwards was a line each project had to be told to write.
  *
- * **Boot once, handle many.** `boot()` reads the configuration, opens the
- * database and builds the handlers; `handle()` answers a request with what
- * was built. Nothing here touches a superglobal — `RockAdmin::handle()` does
- * that, and is six lines, so that this is testable and can run twice in one
- * process.
+ * **One admin belongs to one request.** `boot()` reads the configuration,
+ * opens the database and builds the handlers; `handle()` answers with what
+ * was built. Booting twice in a process is supported and is what the tests
+ * do — but an `Admin` must not be *kept* across requests, because the
+ * session, the flash bag, the CSRF token and the signed-in user all belong
+ * to the request it was built in. Where something must survive that anyway,
+ * it is passed as a question rather than an answer: the audit log is given a
+ * closure that asks who is writing, not the user who was signed in when the
+ * handlers were wired.
+ *
+ * Nothing here touches a superglobal — `RockAdmin::handle()` does that, and
+ * is short enough to read in one go.
  *
  * **An installation with no database still answers.** Every route that needs
  * rows is registered only when there is a connection, and the kernel's 404
@@ -496,7 +503,7 @@ final class Admin
             $flashes,
             $urls,
             self::bool($config, 'audit.enabled', true) ? new SqlAuditLog($connection) : null,
-            $identity->user(),
+            $identity->user(...),
             $operations,
             $rowWorkspace,
             null,
