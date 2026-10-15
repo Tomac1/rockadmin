@@ -29,6 +29,7 @@ use RockAdmin\Http\SessionStore;
 use RockAdmin\Http\UploadedFile;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\PageRepository;
+use RockAdmin\Storage\FileLink;
 use RockAdmin\Storage\LocalStorage;
 use RockAdmin\Tests\Support\Access;
 use RockAdmin\Tests\Support\DatabaseTestCase;
@@ -389,7 +390,7 @@ final class FileWriteFlowTest extends DatabaseTestCase
         $csrf = new Csrf($this->session);
         $flashes = new FlashBag($this->session);
         $reader = new RowReader(new SqlRowSource($connection));
-        $storage = new LocalStorage($this->storageRoot, $urls);
+        $storage = new LocalStorage($this->storageRoot, $urls, '', new FileLink($this->session));
         $renderer = new Renderer(new TemplateResolver([]), new Escaper(), $urls);
         $region = new FormRegion(
             $reader,

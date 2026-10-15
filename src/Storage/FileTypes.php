@@ -88,6 +88,35 @@ final class FileTypes
     }
 
     /**
+     * The type a stored key's extension says it is, for serving it back.
+     *
+     * The other direction of the same table, and it is a *lookup* rather than
+     * a guess: the extension was written by `keyFor()` from bytes this class
+     * had already identified, so a key ending in `.png` is a file whose first
+     * eight bytes were a PNG signature when it was stored. Nothing a browser
+     * or a person said is involved.
+     *
+     * Null for anything else, which a caller serves as a download rather than
+     * inventing a type for.
+     */
+    public static function typeOfExtension(string $extension): ?string
+    {
+        foreach (self::TYPES as $type => [, $known]) {
+            if ($known === strtolower($extension)) {
+                return $type;
+            }
+        }
+
+        return null;
+    }
+
+    /** Whether a browser should draw this in the page rather than save it. */
+    public static function isImage(string $type): bool
+    {
+        return str_starts_with($type, 'image/');
+    }
+
+    /**
      * A key for a file of this type, under this prefix.
      *
      * Dated, so a bucket that has been running for three years can still be

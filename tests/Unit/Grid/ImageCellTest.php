@@ -10,10 +10,12 @@ use PHPUnit\Framework\TestCase;
 use RockAdmin\Grid\CellFormatter;
 use RockAdmin\Grid\CellPartial;
 use RockAdmin\Grid\CellView;
+use RockAdmin\Http\ArraySessionStore;
 use RockAdmin\Http\UrlGenerator;
 use RockAdmin\Page\ColumnDefinition;
 use RockAdmin\Page\ColumnType;
 use RockAdmin\Page\Display;
+use RockAdmin\Storage\FileLink;
 use RockAdmin\Storage\LocalStorage;
 use RockAdmin\Storage\Storage;
 use RockAdmin\Storage\StorageException;
@@ -62,7 +64,12 @@ final class ImageCellTest extends TestCase
         // A real driver rather than a stand-in: `url()` is the method under
         // test here, and the one in `LocalStorage` is the one installations
         // without a bucket actually run.
-        return new LocalStorage(sys_get_temp_dir() . '/ra-image-cell', new UrlGenerator('/admin'));
+        return new LocalStorage(
+            sys_get_temp_dir() . '/ra-image-cell',
+            new UrlGenerator('/admin'),
+            '',
+            new FileLink(new ArraySessionStore()),
+        );
     }
 
     // -- the picture --------------------------------------------------
@@ -77,7 +84,9 @@ final class ImageCellTest extends TestCase
 
         self::assertIsString($source);
         self::assertNotSame(self::KEY, $source, 'The raw key must not be used as an address.');
-        self::assertSame('/admin/_file/' . self::KEY, $source);
+        // The signature is `FileRouteTest`'s subject; here what matters is
+        // that the address is the route's and the key is not the address.
+        self::assertStringStartsWith('/admin/_file/' . self::KEY . '?', $source);
     }
 
     public function testTheAlternativeTextIsTheFilesOwnName(): void
@@ -196,7 +205,7 @@ final class ImageCellTest extends TestCase
 
         self::assertStringContainsString('ra-grid-cell-image', $html);
         self::assertStringContainsString('<img', $html);
-        self::assertStringContainsString('src="/admin/', $html);
+        self::assertStringContainsString('src="/admin/_file/', $html);
         self::assertStringContainsString('alt="0123456789abcdef0123456789abcdef.png"', $html);
     }
 

@@ -24,11 +24,20 @@ final class Storages
         Config $config,
         ?UrlGenerator $urls = null,
         ?HttpClient $http = null,
+        /**
+         * What signs a local file's URL, which needs the session and so
+         * cannot be built from configuration alone.
+         *
+         * The S3 driver signs with the bucket's own credentials and has no
+         * use for this; the local driver cannot build a private URL without
+         * it, and says so.
+         */
+        ?FileLink $links = null,
     ): Storage {
         $driver = self::text($config->get('storage.driver', 'local'));
 
         return match ($driver) {
-            'local' => self::local($config, $urls),
+            'local' => self::local($config, $urls, $links),
             's3' => self::s3($config, $http),
             default => throw new StorageException(\sprintf(
                 "storage.driver is '%s', which is not a driver this admin has. It is 'local' (a "
@@ -40,7 +49,7 @@ final class Storages
         };
     }
 
-    private static function local(Config $config, ?UrlGenerator $urls): LocalStorage
+    private static function local(Config $config, ?UrlGenerator $urls, ?FileLink $links): LocalStorage
     {
         $path = self::text($config->get('storage.path', ''));
 
@@ -52,7 +61,12 @@ final class Storages
             );
         }
 
-        return new LocalStorage($path, $urls, self::text($config->get('storage.public_url', '')));
+        return new LocalStorage(
+            $path,
+            $urls,
+            self::text($config->get('storage.public_url', '')),
+            $links,
+        );
     }
 
     private static function s3(Config $config, ?HttpClient $http): S3Storage

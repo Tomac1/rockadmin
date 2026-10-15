@@ -49,6 +49,15 @@ final class LocalStorage implements Storage
          * the trade an installation makes knowingly when it configures this.
          */
         private readonly string $publicBaseUrl = '',
+        /**
+         * What signs a private URL.
+         *
+         * Without one there is no private URL to build either: a link that is
+         * only as good as the secrecy of its key is not access control, and
+         * `FileLink` explains at length why. `url()` says so rather than
+         * handing out an address that would work for anybody signed in.
+         */
+        private readonly ?FileLink $links = null,
     ) {
     }
 
@@ -115,16 +124,17 @@ final class LocalStorage implements Storage
             return rtrim($this->publicBaseUrl, '/') . '/' . $key;
         }
 
-        if ($this->urls === null) {
+        if ($this->urls === null || $this->links === null) {
             throw new StorageException(\sprintf(
-                "There is no way to build a URL for '%s': this storage was wired without a "
-                . 'UrlGenerator and without a public base URL, so the file can be written and never '
-                . 'shown. Pass one of the two.',
+                "There is no way to build a URL for '%s': a private link is served by the admin's "
+                . 'own route and signed for the session asking, so this storage needs both a '
+                . 'UrlGenerator and a FileLink. Pass them, or set storage.public_url if the '
+                . 'directory is deliberately served without PHP in the way.',
                 $key,
             ));
         }
 
-        return $this->urls->route('file', ['key' => $key]);
+        return $this->urls->route('file', ['key' => $key], $this->links->queryFor($key));
     }
 
     public function accepts(string $key): bool

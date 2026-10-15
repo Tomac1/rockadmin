@@ -7,7 +7,9 @@ namespace RockAdmin\Tests\Unit\Storage;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Http\ArraySessionStore;
 use RockAdmin\Http\UrlGenerator;
+use RockAdmin\Storage\FileLink;
 use RockAdmin\Storage\LocalStorage;
 use RockAdmin\Storage\StorageException;
 use RockAdmin\Storage\StorageKey;
@@ -168,10 +170,24 @@ final class LocalStorageTest extends TestCase
 
     public function testByDefaultAFileIsServedThroughTheAdminsOwnRoute(): void
     {
-        self::assertSame(
-            '/admin/_file/ads/2026/10/8f3a.jpg',
-            $this->storage()->url('ads/2026/10/8f3a.jpg'),
-        );
+        $url = $this->storage()->url('ads/2026/10/8f3a.jpg');
+
+        // The path is the route's; the query is the signature, which
+        // `FileRouteTest` is about. Here it is enough that a private URL is
+        // never handed out without one.
+        self::assertStringStartsWith('/admin/_file/ads/2026/10/8f3a.jpg?', $url);
+        self::assertMatchesRegularExpression('/[?&]s=[0-9a-f]{32}(&|$)/', $url);
+    }
+
+    public function testAStorageWithAUrlGeneratorAndNoSignerStillRefuses(): void
+    {
+        // A signature is not decoration: a private link that anybody signed
+        // in could follow is the hole the signer exists to close, so leaving
+        // the signer out is the same mistake as leaving the generator out.
+        $this->expectException(StorageException::class);
+        $this->expectExceptionMessage('no way to build a URL');
+
+        (new LocalStorage($this->root, new UrlGenerator('/admin')))->url('ads/8f3a.jpg');
     }
 
     public function testAPublicBaseUrlWinsAndIsUsedVerbatim(): void
@@ -193,7 +209,12 @@ final class LocalStorageTest extends TestCase
 
     private function storage(): LocalStorage
     {
-        return new LocalStorage($this->root, new UrlGenerator('/admin'));
+        return new LocalStorage(
+            $this->root,
+            new UrlGenerator('/admin'),
+            '',
+            new FileLink(new ArraySessionStore()),
+        );
     }
 
     private function remove(string $path): void
