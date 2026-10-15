@@ -35,6 +35,20 @@ final class FieldDefinition
         public readonly ?string $step = null,
         public readonly ?int $rows = null,
         public readonly ?string $pattern = null,
+        /**
+         * For a `file` field: the content types it takes, narrowing the
+         * installation's own list.
+         *
+         * Empty means "whatever `uploads.types` allows". It can only narrow:
+         * a page asking for a type the installation does not allow is refused
+         * when the page loads, because the alternative is a field that offers
+         * something and refuses it at the moment somebody uses it.
+         *
+         * @var list<string>
+         */
+        public readonly array $accept = [],
+        /** For a `file` field: a smaller limit than `uploads.max_bytes`, never a larger one. */
+        public readonly ?int $maxBytes = null,
     ) {
     }
 }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace RockAdmin\Form;
 
 use DateTimeImmutable;
+use RockAdmin\Http\UploadedFile;
 use RockAdmin\Page\FieldDefinition;
 use RockAdmin\Page\FieldType;
 use RockAdmin\Page\FormDefinition;
+use RockAdmin\Storage\FileTypes;
 
 /**
  * Checks a submission against the same definitions that drew the form, so a
@@ -65,6 +67,19 @@ final class FieldValidator
 
     /** An integral literal, for deciding whether a number stays an int. */
     private const string INTEGER = '~^[+-]?\d+$~D';
+
+    public function __construct(
+        /**
+         * What an upload may be, from `uploads.*`.
+         *
+         * Defaulted rather than required, because a great many tests build a
+         * validator to check one text field -- and because the defaults are
+         * the schema's own, so a host that passes nothing enforces exactly
+         * what the reference documents.
+         */
+        private readonly UploadLimits $uploads = new UploadLimits(),
+    ) {
+    }
 
     public function validate(FormDefinition $form, Submission $submission): ValidationResult
     {
@@ -126,6 +141,16 @@ final class FieldValidator
             return [];
         }
 
+        // A file field's value is not in the body at all: what was posted is
+        // a file, and what reaches the column is a storage key the write path
+        // decides on afterwards. `required` is checked there for the same
+        // reason -- only the write path knows whether the row already has
+        // one, and an edit that uploads nothing keeps what is stored rather
+        // than clearing it.
+        if ($field->type->isFile()) {
+            return $this->checkFile($field, $submission->file($field->key));
+        }
+
         $value = $submission->value($field->key);
 
         if ($this->isEmpty($value)) {
@@ -142,6 +167,8 @@ final class FieldValidator
             // value the form carries but does not show. It has no control to
             // constrain it, so only a declared pattern applies.
             FieldType::Hidden => [],
+            // Answered above, before a value was looked for: there is none.
+            FieldType::File => [],
         };
 
         return [...$messages, ...$this->checkPattern($field, $value)];
@@ -152,6 +179,59 @@ final class FieldValidator
      * `'0'` is a price, a count and an identifier, and `empty()` would throw
      * all three away.
      */
+    /**
+     * What an upload has to survive before anything is stored.
+     *
+     * Three checks in a deliberate order: whether it arrived at all, how
+     * large it is, and what it actually contains. The last one reads the
+     * bytes, which is why it is last -- there is no point hashing a file the
+     * size check has already refused.
+     *
+     * Nothing here looks at the uploaded filename or at the content type the
+     * browser claimed. Both are what the person's computer said.
+     *
+     * @return list<string>
+     */
+    private function checkFile(FieldDefinition $field, ?UploadedFile $file): array
+    {
+        if ($file === null || !$file->isPresent()) {
+            // Nobody chose one. Whether that is allowed depends on what is
+            // already stored, which this layer cannot see.
+            return [];
+        }
+
+        $failure = $file->failure();
+
+        if ($failure !== null) {
+            return [$failure];
+        }
+
+        if (!$file->succeeded()) {
+            return ["{$field->label} could not be received. Try again."];
+        }
+
+        $limits = $this->uploads->forField($field);
+
+        if ($file->bytes > $limits->maxBytes) {
+            return [\sprintf(
+                '%s is too large: %s at most.',
+                $field->label,
+                $limits->sizeInWords(),
+            )];
+        }
+
+        if (FileTypes::of($file->contents(), $limits->types) === null) {
+            return [\sprintf(
+                '%s is not a kind of file this page takes. It takes %s -- and what counts is what '
+                . 'the file is, not what it is called.',
+                $field->label,
+                $limits->typesInWords(),
+            )];
+        }
+
+        return [];
+    }
+
     private function isEmpty(mixed $value): bool
     {
         return $value === null || $value === '' || $value === [];

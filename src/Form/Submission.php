@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Form;
 
+use RockAdmin\Http\UploadedFile;
 use RockAdmin\Page\FormDefinition;
 
 /**
@@ -26,27 +27,40 @@ use RockAdmin\Page\FormDefinition;
 final class Submission
 {
     /**
-     * @param array<array-key, mixed> $values array-key, not string: PHP
-     *                                        normalises a numeric key such as
-     *                                        '123' to the integer 123 on the
-     *                                        way in, and no cast can undo it
+     * @param array<array-key, mixed>     $values array-key, not string: PHP normalises a numeric
+     *                                            key such as '123' to the integer 123 on the way
+     *                                            in, and no cast can undo it
+     * @param array<string, UploadedFile> $files  by field key, already narrowed to this form's own
      */
-    private function __construct(private readonly array $values)
-    {
+    private function __construct(
+        private readonly array $values,
+        private readonly array $files = [],
+    ) {
     }
 
-    /** @param array<array-key, mixed> $body the POST body, untrusted */
-    public static function fromBody(array $body, FormDefinition $form): self
+    /**
+     * @param array<array-key, mixed>     $body  the POST body, untrusted
+     * @param array<string, UploadedFile> $files normally `$request->files`, equally untrusted
+     */
+    public static function fromBody(array $body, FormDefinition $form, array $files = []): self
     {
         $values = [];
+        $uploads = [];
 
         foreach ($form->editable() as $key => $field) {
             if (\array_key_exists($key, $body)) {
                 $values[$key] = $body[$key];
             }
+
+            // Narrowed by the same rule the body is: a file posted under a
+            // name this form does not declare is a file nobody asked for, and
+            // storing one would mean a tampered form could fill a bucket.
+            if ($field->type->isFile() && ($files[$key] ?? null)?->isPresent() === true) {
+                $uploads[$key] = $files[$key];
+            }
         }
 
-        return new self($values);
+        return new self($values, $uploads);
     }
 
     /** @return array<array-key, mixed> only keys the form declares as editable */
@@ -58,6 +72,18 @@ final class Submission
     public function value(string $field): mixed
     {
         return $this->values[$field] ?? null;
+    }
+
+    /** The file chosen for this field, or null -- which on an edit means "leave the stored one". */
+    public function file(string $field): ?UploadedFile
+    {
+        return $this->files[$field] ?? null;
+    }
+
+    /** @return array<string, UploadedFile> */
+    public function files(): array
+    {
+        return $this->files;
     }
 
     public function has(string $field): bool

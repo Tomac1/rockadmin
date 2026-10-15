@@ -23,6 +23,7 @@ enum FieldType: string
     case Radio = 'radio';
     case Date = 'date';
     case Datetime = 'datetime';
+    case File = 'file';
     case Hidden = 'hidden';
     case Password = 'password';
 
@@ -66,7 +67,7 @@ enum FieldType: string
         return match ($this) {
             self::Select, self::Multiselect, self::Radio => true,
             self::Text, self::Textarea, self::Number, self::Checkbox,
-            self::Date, self::Datetime, self::Hidden, self::Password => false,
+            self::Date, self::Datetime, self::File, self::Hidden, self::Password => false,
         };
     }
 
@@ -74,6 +75,19 @@ enum FieldType: string
     public function isMultiple(): bool
     {
         return $this === self::Multiselect;
+    }
+
+    /**
+     * Whether this field's value arrives as an upload rather than in the body.
+     *
+     * The one type whose value is not in `$_POST` at all: what a `file` field
+     * posts is a file, and what ends up in the column is a storage key the
+     * write path decides on afterwards. Everything that walks a form's fields
+     * asks this before assuming the body has something to say about one.
+     */
+    public function isFile(): bool
+    {
+        return $this === self::File;
     }
 
     /** The template that renders this field's control, under `field/`. */

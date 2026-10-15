@@ -17,6 +17,7 @@ use RockAdmin\Page\FormDefinition;
 use RockAdmin\Page\PageDefinition;
 use RockAdmin\Page\PageException;
 use RockAdmin\Page\RegionDefinition;
+use RockAdmin\Storage\Storage;
 
 /**
  * Turns a described form, and a stored row when there is one, into the
@@ -67,6 +68,17 @@ final class FormRegion
          * no boundary, and null answers [].
          */
         private readonly ?RequestScope $scope = null,
+        /**
+         * Where uploaded files live, for turning a stored key into something
+         * a control can show.
+         *
+         * Optional: a form with no `file` field never asks, and a great many
+         * tests build this region to draw a text input. Without one a file
+         * control draws its input and no current file -- which is honest, and
+         * is also what a page sees the day somebody adds a file field and
+         * forgets to wire a storage.
+         */
+        private readonly ?Storage $files = null,
     ) {
     }
 
@@ -338,7 +350,34 @@ final class FormRegion
             step: $field->step,
             rows: $field->rows,
             pattern: $field->pattern,
+            file: $this->storedFile($field, $value),
+            removeField: $field->type->isFile() ? FormFields::removeFor($field->key) : '',
         );
+    }
+
+    /**
+     * The file this row already has, resolved into something showable.
+     *
+     * Null for every field that is not a `file`, for a row that has none, and
+     * for a key this storage will not own -- the last of which is a column
+     * holding something that is not one of our keys, which is a row to leave
+     * alone rather than a URL to invent.
+     *
+     * A storage that cannot build a URL is not caught here: it raises, and it
+     * should. Written and never showable is a wiring mistake somebody needs
+     * to be told about, not one to paper over with an empty control.
+     */
+    private function storedFile(FieldDefinition $field, mixed $value): ?StoredFileView
+    {
+        if (!$field->type->isFile() || $this->files === null || !\is_string($value) || $value === '') {
+            return null;
+        }
+
+        if (!$this->files->accepts($value)) {
+            return null;
+        }
+
+        return StoredFileView::of($value, $this->files->url($value));
     }
 
     /**

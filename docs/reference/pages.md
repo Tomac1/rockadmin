@@ -197,6 +197,8 @@ Every entry of `regions.*.form.fields`.
 | `max` | int | — | `100` | For a `number` field, the largest accepted value. For a text-like field, the longest accepted length. |
 | `step` | string | — | `0.01` | The HTML step attribute for a `number` field, e.g. `0.01` to allow cents. It is passed to the control and is not enforced server-side: a submission of `10.5` against a step of `1` is accepted here, and refused by the column it is written to. |
 | `rows` | int | — | `4` | How many rows tall a `textarea` control is. |
+| `accept` | array | `[]` | `['image/jpeg', 'image/png']` | For a `file` field: the content types this field takes, narrowing `uploads.types`. Empty means whatever the installation allows. It may only narrow -- a field naming a type the installation does not allow is refused when the page loads, rather than at the moment somebody uploads one. |
+| `max_bytes` | int or null | — | `1048576` | For a `file` field: the largest file this one takes, narrowing `uploads.max_bytes`. Null means the installation-wide limit, which is also the ceiling -- this may only lower it. |
 | `pattern` | string | — | `[A-Z]{2}\d{4}` | A regular expression the whole value must match, written without delimiters. It is anchored at both ends, exactly as the HTML `pattern` attribute is, so `[A-Z]{2}\d{4}` accepts `AB1234` and nothing that merely contains it. Not accepted on a `multiselect` or a `checkbox`, whose values a pattern could never be applied to. |
 
 ## `regions.*.form.copy`

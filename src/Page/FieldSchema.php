@@ -104,6 +104,23 @@ final class FieldSchema
                 description: 'How many rows tall a `textarea` control is.',
                 example: 4,
             ),
+            'accept' => new SchemaKey(
+                ValueType::Array,
+                default: [],
+                description: 'For a `file` field: the content types this field takes, narrowing '
+                    . '`uploads.types`. Empty means whatever the installation allows. It may only '
+                    . 'narrow -- a field naming a type the installation does not allow is refused '
+                    . 'when the page loads, rather than at the moment somebody uploads one.',
+                example: ['image/jpeg', 'image/png'],
+            ),
+            'max_bytes' => new SchemaKey(
+                ValueType::Int,
+                description: 'For a `file` field: the largest file this one takes, narrowing '
+                    . '`uploads.max_bytes`. Null means the installation-wide limit, which is also '
+                    . 'the ceiling -- this may only lower it.',
+                example: 1_048_576,
+                nullable: true,
+            ),
             'pattern' => new SchemaKey(
                 ValueType::String,
                 description: 'A regular expression the whole value must match, written without delimiters. '
