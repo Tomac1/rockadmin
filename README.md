@@ -3,10 +3,13 @@
 A dependency-free PHP administration SDK. Install it, mount it on a URL,
 describe your pages in configuration files, and get a working admin.
 
-> **Status: design stage.** The architecture is specified and agreed, but the
-> implementation has not started. Nothing is installable yet. Watch the
-> repository or read [the design specification][spec] if you want to follow
-> along or shape it.
+> **Status: 0.1.0, installable.** Grids, forms, actions, previews, bulk
+> writes, administrators, roles, workspaces, an audit log, mail and uploads
+> all work, on MySQL and PostgreSQL, behind 2900 tests. What 0.x means here:
+> the configuration format, the page schema and the public classes are
+> documented and in use, and may still change between 0.x releases where
+> using them teaches us something. [The design specification][spec] is the
+> agreed architecture and records why each decision was made.
 
 [spec]: docs/design/2026-09-21-rockadmin-design.md
 
