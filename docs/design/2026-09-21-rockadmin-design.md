@@ -1372,7 +1372,7 @@ have sent a link") so the admin list cannot be enumerated.
 ### 11.2 Installation
 
 ```bash
-composer require rockadmin/rockadmin
+composer require tomac1/rockadmin
 vendor/bin/rockadmin init          # creates config/rockadmin/* with comments
 vendor/bin/rockadmin doctor        # checks PHP, PDO, permissions, connection
 vendor/bin/rockadmin migrate       # creates ra_* tables

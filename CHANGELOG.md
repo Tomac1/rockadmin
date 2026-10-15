@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-15
+
+The first tagged version, and the first one a project can install. Everything
+below was built between 2026-09-21 and today; it is listed as Added because
+there was nothing before it.
+
+What a 0.x says here: the configuration format, the page schema and the
+public classes are in use and documented, and they may still change between
+0.x releases where using them teaches us something. The `ra_` tables change
+only through migrations, which are the one thing that cannot be re-run from
+scratch.
+
 ### Added
 
 - Design specification for v1: architecture, request lifecycle, configuration
@@ -71,4 +83,5 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   handlers were wired, so an installation that keeps one `Admin` cannot
   record every change under the first administrator to sign in.
 
-[Unreleased]: https://github.com/tomac1/rockadmin/commits/main
+[Unreleased]: https://github.com/tomac1/rockadmin/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/tomac1/rockadmin/releases/tag/v0.1.0
