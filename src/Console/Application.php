@@ -34,10 +34,27 @@ final class Application
         }
     }
 
-    /** @param list<string> $argv including the script name, as PHP supplies it */
+    /**
+     * Options may come before the command name as well as after it.
+     *
+     * `rockadmin --bootstrap=admin/bootstrap.php migrate` is what a Composer
+     * script of `rockadmin --bootstrap=...` produces once somebody runs
+     * `composer admin -- migrate`, so it has to mean the same thing as
+     * putting the option last. The name is the first token that is not an
+     * option; everything else, in its original order, is the command's input.
+     *
+     * @param list<string> $argv including the script name, as PHP supplies it
+     */
     public function run(array $argv, Output $output): int
     {
-        $name = $argv[1] ?? null;
+        $tokens = \array_slice($argv, 1);
+        $leading = [];
+
+        while ($tokens !== [] && str_starts_with($tokens[0], '--') && $tokens[0] !== '--' && $tokens[0] !== '--help') {
+            $leading[] = array_shift($tokens);
+        }
+
+        $name = $tokens[0] ?? null;
 
         if ($name === null || $name === '--help' || $name === '-h' || $name === 'help') {
             $this->listCommands($output);
@@ -62,7 +79,7 @@ final class Application
             return 1;
         }
 
-        $input = new Input(\array_slice($argv, 2));
+        $input = new Input([...$leading, ...\array_slice($tokens, 1)]);
 
         try {
             return $command->run($input, $output);
@@ -97,7 +114,10 @@ final class Application
         }
 
         $output->line();
-        $output->dim('Every command takes --bootstrap=path to point at a bootstrap file elsewhere.');
+        $output->dim(
+            'Every command takes --bootstrap=path, before or after its name, to point at a bootstrap file '
+            . 'elsewhere. RA_BOOTSTRAP or extra.rockadmin.bootstrap in composer.json says it once for good.',
+        );
     }
 
     /**

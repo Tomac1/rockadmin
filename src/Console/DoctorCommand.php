@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Console;
 
+use RockAdmin\Admin;
 use RockAdmin\Auth\AdminUsers;
 use RockAdmin\Db\Migrator;
 use RockAdmin\Http\Router;
@@ -66,7 +67,8 @@ final class DoctorCommand implements Command
         // that cannot be loaded ends the run: the remaining checks would all
         // fail for the same single reason and say so eight times.
         try {
-            $admin = Bootstrap::admin($input);
+            $setup = Bootstrap::setup($input);
+            $admin = Admin::boot($setup);
         } catch (Throwable $error) {
             $output->error('x The admin could not be started: ' . $error->getMessage());
 
@@ -74,6 +76,16 @@ final class DoctorCommand implements Command
         }
 
         $output->success('v Configuration loads and the roles match the pages');
+
+        if (self::insideLaravelConfig($setup->basePath, $setup->configDirectory())) {
+            $output->warning(
+                '! The configuration is under config/ in a Laravel project. Laravel loads every file '
+                . 'there as its own configuration, so it runs the bootstrap on every boot and '
+                . '`php artisan config:cache` fails on its closures. Move the directory out (rockadmin/ is '
+                . 'what `init` writes under Laravel), pass configPath: to the Setup, and name the bootstrap '
+                . 'in composer.json as extra.rockadmin.bootstrap.',
+            );
+        }
 
         foreach ($admin->warnings as $warning) {
             $output->warning('! ' . $warning);
@@ -184,6 +196,26 @@ final class DoctorCommand implements Command
         }
 
         return is_writable($path);
+    }
+
+    /**
+     * Whether this is a Laravel project (it has `artisan`) keeping the admin's
+     * configuration somewhere under its `config/`.
+     */
+    public static function insideLaravelConfig(string $basePath, string $configDirectory): bool
+    {
+        $base = rtrim(str_replace('\\', '/', $basePath), '/');
+
+        if (!is_file($base . '/artisan')) {
+            return false;
+        }
+
+        $real = realpath($configDirectory);
+        $directory = str_replace('\\', '/', $real === false ? $configDirectory : $real);
+        $realBase = realpath($base);
+        $config = str_replace('\\', '/', $realBase === false ? $base : $realBase) . '/config/';
+
+        return str_starts_with(strtolower($directory . '/'), strtolower($config));
     }
 
     /**

@@ -26,16 +26,20 @@ final class Bootstrap
 {
     private const string DEFAULT_PATH = 'config/rockadmin/bootstrap.php';
 
+    public const string ENVIRONMENT = 'RA_BOOTSTRAP';
+
     public static function setup(Input $input, ?string $workingDirectory = null): Setup
     {
         $root = $workingDirectory ?? (getcwd() ?: '.');
-        $option = $input->option('bootstrap');
-        $path = $option ?? $root . '/' . self::DEFAULT_PATH;
+        $env = getenv(self::ENVIRONMENT);
+        $path = self::locate($input, $root, \is_string($env) && $env !== '' ? $env : null);
 
         if (!is_file($path)) {
             throw new ConsoleException(
                 "No bootstrap file at {$path}. Run `rockadmin init` to write one, or point at an "
-                . 'existing one with --bootstrap=path.',
+                . 'existing one: --bootstrap=path on the command, ' . self::ENVIRONMENT . '=path in the '
+                . 'environment, or "extra": {"rockadmin": {"bootstrap": "path"}} in composer.json '
+                . '(extra.rockadmin.bootstrap).',
             );
         }
 
@@ -50,6 +54,79 @@ final class Bootstrap
         }
 
         return $setup;
+    }
+
+    /**
+     * Which bootstrap file this run means, first answer wins.
+     *
+     * 1. `--bootstrap=path`, for one run.
+     * 2. `RA_BOOTSTRAP`, for a shell or a deploy environment.
+     * 3. `extra.rockadmin.bootstrap` in the project's composer.json, which is
+     *    the one to use: committed, so every command on every machine finds
+     *    the file without being told.
+     * 4. `config/rockadmin/bootstrap.php`, which is where `init` writes
+     *    outside Laravel. Under Laravel it writes `rockadmin/` and names it in
+     *    composer.json, because Laravel loads everything under `config/`.
+     *
+     * A relative path from the environment or from composer.json resolves
+     * against the project root. The option is taken as typed, like any other
+     * path on a command line.
+     */
+    public static function locate(Input $input, string $root, ?string $environment): string
+    {
+        $root = rtrim($root, '/\\');
+        $option = $input->option('bootstrap');
+
+        if ($option !== null) {
+            return $option;
+        }
+
+        $declared = $environment ?? self::fromComposer($root);
+
+        if ($declared === null) {
+            return $root . '/' . self::DEFAULT_PATH;
+        }
+
+        return self::isAbsolute($declared) ? $declared : $root . '/' . $declared;
+    }
+
+    private static function fromComposer(string $root): ?string
+    {
+        $file = $root . '/composer.json';
+
+        if (!is_file($file)) {
+            return null;
+        }
+
+        $contents = file_get_contents($file);
+        $data = \is_string($contents) ? json_decode($contents, true) : null;
+
+        if (!\is_array($data)) {
+            return null;
+        }
+
+        $extra = $data['extra'] ?? null;
+        $ours = \is_array($extra) ? ($extra['rockadmin'] ?? null) : null;
+        $value = \is_array($ours) ? ($ours['bootstrap'] ?? null) : null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (!\is_string($value) || $value === '') {
+            throw new ConsoleException(
+                "{$file} has extra.rockadmin.bootstrap set to " . get_debug_type($value) . '. It is the path '
+                . 'to the bootstrap file, relative to the project: "admin/bootstrap.php".',
+            );
+        }
+
+        return $value;
+    }
+
+    private static function isAbsolute(string $path): bool
+    {
+        return str_starts_with($path, '/') || str_starts_with($path, '\\')
+            || preg_match('~^[A-Za-z]:[/\\\\]~', $path) === 1;
     }
 
     /**

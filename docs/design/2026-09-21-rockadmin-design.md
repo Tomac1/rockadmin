@@ -284,6 +284,13 @@ config/rockadmin/
 One page is one file, and it contains everything about that page. No jumping
 around the repository.
 
+Under Laravel the directory is `rockadmin/` at the project root instead.
+Laravel loads every file under `config/` as its own configuration, so it ran
+the bootstrap on every boot and `config:cache` failed on the closures in the
+`Setup`. The first Laravel project found this. `init` detects `artisan`, and
+the command line finds a moved bootstrap through
+`extra.rockadmin.bootstrap` in `composer.json`.
+
 A page is a layout holding **regions**: a region is one independently
 renderable part of a page — a grid, a form, a detail panel, a side menu —
 with its own definition, its own templates and its own URL, so it can be

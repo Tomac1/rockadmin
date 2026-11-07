@@ -30,13 +30,48 @@ final class InitCommand implements Command
 
     public function description(): string
     {
-        return 'Writes config/rockadmin/* and a bootstrap file. Run once, commit the result.';
+        return 'Writes the configuration and a bootstrap file (config/rockadmin/, or rockadmin/ under '
+            . 'Laravel; --dir= to choose). Run once, commit the result.';
     }
+
+    /**
+     * Where the files go, relative to the project root.
+     *
+     * `config/rockadmin` by default and `rockadmin` under Laravel, which is
+     * detected by its `artisan` file. Laravel loads every PHP file under
+     * `config/`, subdirectories included, as its own configuration: it would
+     * run the bootstrap on every boot, and `config:cache` would fail on the
+     * closures in the `Setup` it returns. `--dir=` overrides both.
+     */
+    public static function directoryFor(string $root, ?string $option): string
+    {
+        if ($option !== null) {
+            $slashed = str_replace('\\', '/', $option);
+            $dir = trim($slashed, '/');
+
+            if ($dir === '' || str_starts_with($slashed, '/') || preg_match('~^[A-Za-z]:~', $dir) === 1
+                || str_contains('/' . $dir . '/', '/../')) {
+                throw new ConsoleException(
+                    "--dir={$option} must be a directory inside the project, written relative to it: "
+                    . '--dir=admin/config.',
+                );
+            }
+
+            return $dir;
+        }
+
+        return is_file(rtrim($root, '/\\') . '/artisan') ? self::LARAVEL_DIRECTORY : self::DEFAULT_DIRECTORY;
+    }
+
+    private const string DEFAULT_DIRECTORY = 'config/rockadmin';
+
+    private const string LARAVEL_DIRECTORY = 'rockadmin';
 
     public function run(Input $input, Output $output): int
     {
         $root = $input->option('path') ?? (getcwd() ?: '.');
-        $directory = rtrim($root, '/\\') . '/config/rockadmin';
+        $relative = self::directoryFor($root, $input->option('dir'));
+        $directory = rtrim($root, '/\\') . '/' . $relative;
 
         if (!is_dir($directory . '/pages') && !mkdir($directory . '/pages', 0o775, true) && !is_dir($directory . '/pages')) {
             throw new ConsoleException("Cannot create {$directory}/pages.");
@@ -45,7 +80,7 @@ final class InitCommand implements Command
         $written = 0;
         $written += $this->write($output, $directory . '/rockadmin.php', $this->configuration());
         $written += $this->write($output, $directory . '/roles.php', $this->roles());
-        $written += $this->write($output, $directory . '/bootstrap.php', $this->bootstrap());
+        $written += $this->write($output, $directory . '/bootstrap.php', $this->bootstrap(substr_count($relative, '/') + 1));
 
         $output->line();
 
@@ -55,16 +90,31 @@ final class InitCommand implements Command
             return 0;
         }
 
+        $bootstrap = $relative . '/bootstrap.php';
+        $step = 1;
         $output->heading('Next:');
-        $output->line('  1. Set RA_DSN, RA_DB_USER and RA_DB_PASSWORD in your environment.');
-        $output->line('  2. rockadmin migrate       # creates the ra_ tables');
-        $output->line('  3. rockadmin user:create   # the first administrator');
-        $output->line('  4. rockadmin doctor        # checks the rest');
+
+        if ($relative !== self::DEFAULT_DIRECTORY) {
+            if ($input->option('dir') === null) {
+                $output->line("  This is a Laravel project, so the files are in {$relative}/ rather than");
+                $output->line('  config/rockadmin/: Laravel loads everything under config/ as its own');
+                $output->line('  configuration, and config:cache would fail on the bootstrap.');
+            }
+
+            $output->line("  {$step}. Tell the command line where the bootstrap is, in composer.json:");
+            $output->dim('       "extra": { "rockadmin": { "bootstrap": "' . $bootstrap . '" } }');
+            ++$step;
+        }
+
+        $output->line('  ' . $step++ . '. Set RA_DSN, RA_DB_USER and RA_DB_PASSWORD in your environment.');
+        $output->line('  ' . $step++ . '. rockadmin migrate       # creates the ra_ tables');
+        $output->line('  ' . $step++ . '. rockadmin user:create   # the first administrator');
+        $output->line('  ' . $step . '. rockadmin doctor        # checks the rest');
         $output->line();
         $output->line('Then mount it. With a framework router:');
-        $output->dim('  RockAdmin::handle($path, basePath: __DIR__, pdo: fn () => $yourPdo);');
+        $output->dim("  RockAdmin::handle(\$path, basePath: base_path(), setup: require base_path('{$bootstrap}'));");
         $output->line('Without one, an index.php of two lines:');
-        $output->dim("  RockAdmin::serve(require 'config/rockadmin/bootstrap.php');");
+        $output->dim("  RockAdmin::serve(require '{$bootstrap}');");
 
         return 0;
     }
@@ -192,9 +242,10 @@ final class InitCommand implements Command
             PHP;
     }
 
-    private function bootstrap(): string
+    /** @param int $depth how many directories below the project root the file sits */
+    private function bootstrap(int $depth): string
     {
-        return <<<'PHP'
+        return str_replace('{{depth}}', (string) $depth, <<<'PHP'
             <?php
 
             declare(strict_types=1);
@@ -212,7 +263,7 @@ final class InitCommand implements Command
 
             use RockAdmin\Setup;
 
-            $root = dirname(__DIR__, 2);
+            $root = dirname(__DIR__, {{depth}});
             $autoloader = $root . '/vendor/autoload.php';
 
             // Required here for a plain project, and already loaded under a
@@ -225,6 +276,9 @@ final class InitCommand implements Command
 
             return new Setup(
                 basePath: $root,
+
+                // The directory holding rockadmin.php, roles.php and pages/: this one.
+                configPath: __DIR__,
 
                 // Where the admin is mounted, as a URL path.
                 baseUrl: '/admin',
@@ -241,6 +295,6 @@ final class InitCommand implements Command
                 // pdo: fn () => DB::connection()->getPdo(),
             );
 
-            PHP;
+            PHP);
     }
 }

@@ -78,6 +78,27 @@ final class ConsoleTest extends TestCase
     }
 
     /**
+     * `composer admin -- migrate` with a script of
+     * `rockadmin --bootstrap=admin/bootstrap.php` puts the option before the
+     * command, and that must mean the same as putting it after.
+     */
+    public function testAnOptionBeforeTheCommandNameReachesTheCommand(): void
+    {
+        [$code, $text] = $this->execute(['rockadmin', '--bootstrap=admin/bootstrap.php', 'echo', 'x']);
+
+        self::assertSame(0, $code);
+        self::assertStringContainsString('bootstrap=admin/bootstrap.php arguments=x', $text);
+    }
+
+    public function testOnlyOptionsAndNoCommandPrintsTheList(): void
+    {
+        [$code, $text] = $this->execute(['rockadmin', '--bootstrap=admin/bootstrap.php']);
+
+        self::assertSame(0, $code);
+        self::assertStringContainsString('Usage: rockadmin', $text);
+    }
+
+    /**
      * A failure is a sentence and a non-zero code, never a stack trace.
      *
      * Everything below a command can throw -- a configuration typo, a
@@ -140,6 +161,25 @@ final class ConsoleTest extends TestCase
                 public function run(Input $input, Output $output): int
                 {
                     throw new ConsoleException('There is nowhere to put an administrator.');
+                }
+            },
+            new class () implements Command {
+                public function name(): string
+                {
+                    return 'echo';
+                }
+
+                public function description(): string
+                {
+                    return 'Says what it was given.';
+                }
+
+                public function run(Input $input, Output $output): int
+                {
+                    $output->line('bootstrap=' . ($input->option('bootstrap') ?? '') . ' arguments='
+                        . implode(',', $input->arguments()));
+
+                    return 0;
                 }
             },
         ]);

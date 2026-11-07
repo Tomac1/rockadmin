@@ -57,7 +57,7 @@ The installation is four commands, and
 
 ```bash
 composer require tomac1/rockadmin
-vendor/bin/rockadmin init          # writes config/rockadmin/*, commit it
+vendor/bin/rockadmin init          # writes config/rockadmin/* (rockadmin/* under Laravel), commit it
 vendor/bin/rockadmin migrate       # creates the ra_ tables
 vendor/bin/rockadmin user:create   # the first administrator
 vendor/bin/rockadmin doctor        # checks everything else

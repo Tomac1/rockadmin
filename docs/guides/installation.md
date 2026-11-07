@@ -8,7 +8,7 @@ change for a project that already has a framework, a connection and a session.
 
 ```bash
 composer require tomac1/rockadmin
-vendor/bin/rockadmin init          # writes config/rockadmin/*, commit it
+vendor/bin/rockadmin init          # writes config/rockadmin/* (rockadmin/* under Laravel), commit it
 vendor/bin/rockadmin migrate       # creates the ra_ tables
 vendor/bin/rockadmin user:create   # the first administrator
 vendor/bin/rockadmin doctor        # checks everything else
@@ -20,9 +20,31 @@ Then mount it. With a framework's router:
 Route::any('/admin/{path?}', fn ($path = '') => RockAdmin::handle(
     $path,
     basePath: base_path(),
-    pdo: fn () => DB::connection()->getPdo(),
+    setup: require base_path('rockadmin/bootstrap.php'),
 )->body)->where('path', '.*');
 ```
+
+### Under Laravel: not in `config/`
+
+Laravel loads every PHP file under `config/`, subdirectories included, as its
+own configuration. A bootstrap in `config/rockadmin/` would run on every
+Laravel boot, and `php artisan config:cache` would fail with "Your
+configuration files could not be serialized" on the closures in its `Setup`.
+
+So when the project has an `artisan` file, `init` writes `rockadmin/` at the
+project root instead, and the bootstrap it writes says so with `configPath:
+__DIR__`. Tell the command line where the bootstrap went, once, in
+`composer.json`:
+
+```json
+"extra": {
+    "rockadmin": { "bootstrap": "rockadmin/bootstrap.php" }
+}
+```
+
+After that `vendor/bin/rockadmin migrate` finds it on every machine without
+being told. `--dir=admin/config` puts the files anywhere else inside the
+project, and `doctor` warns about an installation already under `config/`.
 
 Without one, a `public/admin/index.php` of two lines:
 
@@ -80,7 +102,9 @@ ignoring it, and suggests the nearest declared one when it looks like a typo.
 ### `config/rockadmin/roles.php` — who may do what
 
 Permission names are generated from your pages: a page `ads` with a form
-region produces `ads.view`, `ads.create`, `ads.update` and `ads.delete`.
+region produces `ads.view`, `ads.create`, `ads.update` and `ads.delete`, and
+each `post` action adds one named after its verb, so `@action:archive` makes
+`ads.archive`.
 Naming a permission no page produces is refused when the admin starts, which
 is how a typo stops being a silent loss of access.
 
@@ -155,8 +179,16 @@ needed before the configuration has been read.
 | `schema [config\|pages\|roles]` | Prints the reference for that file. |
 | `cache:build`, `cache:clear` | The compiled configuration. |
 
-Every one of them takes `--bootstrap=path` when the bootstrap file is not at
-`config/rockadmin/bootstrap.php`, and `--trace` to see where a failure came
+The bootstrap file is looked for in this order, first answer wins:
+
+1. `--bootstrap=path`, before or after the command's name, for one run;
+2. `RA_BOOTSTRAP=path` in the environment;
+3. `extra.rockadmin.bootstrap` in the project's `composer.json`, which is the
+   one to use, because it is committed;
+4. `config/rockadmin/bootstrap.php`.
+
+A relative path from the environment or `composer.json` is read against the
+project root. Every command also takes `--trace` to see where a failure came
 from.
 
 `migrate` is safe to run on every deploy: a migration already recorded in

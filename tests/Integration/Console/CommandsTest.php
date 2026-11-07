@@ -69,6 +69,56 @@ final class CommandsTest extends TestCase
         self::assertSame('<?php return [];', file_get_contents($config . '/roles.php'));
     }
 
+    /**
+     * Laravel loads every file under `config/` as its own configuration, so a
+     * bootstrap there runs on every Laravel boot and breaks `config:cache` on
+     * the closures in the `Setup`. Under Laravel `init` writes elsewhere.
+     */
+    public function testInitUnderLaravelWritesOutsideConfig(): void
+    {
+        touch($this->root . '/artisan');
+        $output = $this->silent();
+
+        self::assertSame(0, (new InitCommand())->run(new Input(['--path=' . $this->root]), $output));
+
+        self::assertDirectoryDoesNotExist($this->root . '/config/rockadmin');
+        self::assertFileExists($this->root . '/rockadmin/bootstrap.php');
+        self::assertDirectoryExists($this->root . '/rockadmin/pages');
+
+        $setup = require $this->root . '/rockadmin/bootstrap.php';
+        self::assertInstanceOf(Setup::class, $setup);
+        self::assertSame(realpath($this->root), realpath($setup->basePath));
+        self::assertSame(realpath($this->root . '/rockadmin'), realpath($setup->configDirectory()));
+    }
+
+    public function testDoctorKnowsAConfigurationUnderLaravelsConfigIsAProblem(): void
+    {
+        mkdir($this->root . '/config/rockadmin', 0o777, true);
+        mkdir($this->root . '/rockadmin', 0o777, true);
+
+        self::assertFalse(DoctorCommand::insideLaravelConfig($this->root, $this->root . '/config/rockadmin'));
+
+        touch($this->root . '/artisan');
+
+        self::assertTrue(DoctorCommand::insideLaravelConfig($this->root, $this->root . '/config/rockadmin'));
+        self::assertFalse(DoctorCommand::insideLaravelConfig($this->root, $this->root . '/rockadmin'));
+    }
+
+    public function testInitTakesADirectoryOfItsOwn(): void
+    {
+        $output = $this->silent();
+
+        self::assertSame(
+            0,
+            (new InitCommand())->run(new Input(['--path=' . $this->root, '--dir=admin/config']), $output),
+        );
+
+        $setup = require $this->root . '/admin/config/bootstrap.php';
+        self::assertInstanceOf(Setup::class, $setup);
+        self::assertSame(realpath($this->root), realpath($setup->basePath));
+        self::assertSame(realpath($this->root . '/admin/config'), realpath($setup->configDirectory()));
+    }
+
     #[DataProvider('servers')]
     public function testTheFirstInstallWalksInitMigrateUserCreateDoctor(?string $prefix): void
     {

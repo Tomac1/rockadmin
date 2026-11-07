@@ -14,6 +14,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `formats.*` or by name and subtract it with `!formats.approve`; `*.view`
   does not include it. A read-only page can now protect a write without
   borrowing `view` or needing a form region for `update`.
+- The command line finds the bootstrap file through `RA_BOOTSTRAP` or
+  `extra.rockadmin.bootstrap` in `composer.json` when `--bootstrap` is not
+  given, and accepts options before the command name, so a Composer script
+  `rockadmin --bootstrap=...` works with `composer admin -- migrate`.
+- `init --dir=` writes the files to a directory of your choice.
+- `doctor` warns when a Laravel project keeps the configuration under
+  `config/`.
 
 ### Changed
 
@@ -22,6 +29,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   that should keep it needs `{page}.*`, `*`, or the permission by name.
 - A `post` to `@action:view` is refused at load, because its permission
   would be the read permission every viewer holds.
+- Under Laravel (an `artisan` file in the project), `init` writes
+  `rockadmin/` instead of `config/rockadmin/`: Laravel loads everything under
+  `config/` as its own configuration, which ran the bootstrap on every boot
+  and broke `php artisan config:cache`. The bootstrap `init` writes now passes
+  `configPath: __DIR__`.
 
 ## [0.1.0] - 2026-10-15
 
