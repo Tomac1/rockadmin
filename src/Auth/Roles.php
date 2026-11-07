@@ -326,10 +326,13 @@ final class Roles
             );
         }
 
-        if ($action !== '*' && !\in_array($action, Permission::ACTIONS, true)) {
+        $actions = self::actionsOf($catalogue);
+
+        if ($action !== '*' && !\in_array($action, $actions, true)) {
             throw new ConfigException(
                 "Role '{$role}' has the permission '{$pattern}', but '{$action}' is not an action. "
-                . "The actions are '" . implode("', '", Permission::ACTIONS) . "'.",
+                . "The actions are '" . implode("', '", $actions) . "'; a page's own 'post' action adds "
+                . "one named after its verb, so '@action:approve' generates '{page}.approve'.",
             );
         }
 
@@ -339,14 +342,42 @@ final class Roles
         // is somebody expecting a permission that will never be checked, and
         // saying so at load is the difference between a typo and a hole.
         if ($page !== '*' && $action !== '*' && !\in_array("{$page}.{$action}", $catalogue, true)) {
+            $its = array_values(array_filter(
+                $catalogue,
+                static fn (string $name): bool => str_starts_with($name, $page . '.'),
+            ));
+
             throw new ConfigException(
-                "Role '{$role}' has the permission '{$pattern}', but the page '{$page}' declares no form "
-                . "region, so it generates only '{$page}.view'. Give the page a form region, or drop the "
-                . 'permission.',
+                "Role '{$role}' has the permission '{$pattern}', which the page '{$page}' does not generate. "
+                . "It generates '" . implode("', '", $its) . "'. 'create', 'update' and 'delete' come from a "
+                . "form region; any other action comes from a 'post' action with that verb.",
             );
         }
 
         return [$page, $action];
+    }
+
+    /**
+     * Every action name the catalogue contains: the four built-in ones, then
+     * whatever the pages' own `post` actions added, so a typo is told the
+     * whole list rather than only the half that is always there.
+     *
+     * @param  list<string> $catalogue
+     * @return list<string>
+     */
+    private static function actionsOf(array $catalogue): array
+    {
+        $actions = Permission::ACTIONS;
+
+        foreach ($catalogue as $name) {
+            $dot = strrpos($name, '.');
+
+            if ($dot !== false && !\in_array(substr($name, $dot + 1), $actions, true)) {
+                $actions[] = substr($name, $dot + 1);
+            }
+        }
+
+        return $actions;
     }
 
     /**

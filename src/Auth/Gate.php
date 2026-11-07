@@ -143,11 +143,14 @@ final class Gate
      *
      * A closed set for the reason above. Milestone 8 lets a page add verbs of
      * its own — `POST /a/ads/archive` — and that does **not** open this set:
-     * a configured action declares its own `permission`, so the gate asks the
-     * page what the verb needs rather than deriving `ads.archive` from the
-     * URL. A verb no action declares is still refused, which is the property
-     * the comment above is protecting. What changed is that the set is now
-     * closed over configuration rather than over three literals.
+     * the gate asks the page's action what the verb needs rather than
+     * deriving a name from the URL. That action either names a permission or
+     * needs the `{page}.{verb}` its page generates for it, and that name
+     * exists because the page file declares the verb, not because somebody
+     * typed it into a URL. A verb no action declares is still refused, which
+     * is the property the comment above is protecting. What changed is that
+     * the set is now closed over configuration rather than over three
+     * literals.
      *
      * @var array<string, string>
      */
@@ -272,15 +275,13 @@ final class Gate
      * The same question, with the page's own actions included.
      *
      * A page may declare `archive`, and `POST /a/ads/archive` then needs
-     * whatever that action's `permission` says — not `ads.archive`, which is
-     * derived from the URL and would mean a verb granted itself by being
-     * spelled. The action is the only thing that may say what it costs.
+     * whatever that action's `permission` says. The action is the only thing
+     * that may say what it costs; the URL never does.
      *
-     * An action that declares no permission at all returns null, which means
-     * "a signed-in user is enough". That is the schema's own default and it is
-     * deliberate: `permission` is described as the thing to set on every
-     * action that changes data, and an admin that refused every action without
-     * one would make the key mandatory in fact while optional in the schema.
+     * A `post` that names no permission was given its generated
+     * `{page}.{verb}` when the page loaded (`PageRepository`), so this reads
+     * one value and the button reads the same one. The null branch below is
+     * for an action with no permission at all, which a `post` no longer is.
      *
      * @throws ForbiddenException when no action of that page declares the verb
      */

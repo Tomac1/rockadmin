@@ -109,8 +109,11 @@ final class ActionSchema
                 ValueType::String,
                 description: 'The permission a reader needs before the action is drawn for them at all, and '
                     . 'before a `post` to it is accepted. One of the generated `page.action` names; anything '
-                    . 'outside that catalogue is refused when the gate is built. Set it on every action that '
-                    . 'changes data.',
+                    . 'outside that catalogue is refused when the gate is built. Every `post` generates one '
+                    . 'named after its verb — `@action:approve` on `formats` generates `formats.approve` — and '
+                    . 'a `post` that leaves this unset needs exactly that, so a read-only page can carry a '
+                    . 'write that `*.view` does not grant. Set it to share one, such as `ads.update`. Unset on '
+                    . 'a `link` or an `open`, the action is drawn to anybody who can see the page.',
                 example: 'ads.update',
             ),
             'confirm' => new SchemaKey(

@@ -824,7 +824,8 @@ An action is defined once and referenced wherever it should appear:
 
 Common keys: `type` (`link`, `open`, `post`), `label`, `icon`, `permission`,
 `confirm`, `when` (row conditions deciding whether the action is offered),
-and `refresh` (which regions re-render after it completes).
+and `refresh` (which regions re-render after it completes). A `post` without
+a `permission` needs the `{page}.{verb}` it generates (9.2).
 
 #### How pages, regions and actions are addressed
 
@@ -1252,6 +1253,17 @@ Roles are configuration (git); assignment is data (database).
 Permissions are named `page.action` and are generated automatically from the
 page configuration, so a new page brings its own permissions. `*` widens, `!`
 subtracts.
+
+Every page generates `view`; a form region adds `create`, `update` and
+`delete`; and each `post` action adds one named after its verb, so
+`@action:approve` on `formats` generates `formats.approve`. A `post` that
+names no `permission` needs that generated one. This was added after the
+first real project (a read-only admin with approve/ban buttons) found that
+its only choices were `view`, which every `*.view` reader holds, or `update`,
+which a page without a form does not generate. The name still comes from the
+page file and never from the URL, so a verb nobody declared grants nothing,
+and `@action:view` is refused because it would collide with the read
+permission.
 
 **Checks happen in one place.** `Gate::allows($user, 'ads.delete')` runs at
 step 7 of the lifecycle, before anything executes, for full pages, fragments

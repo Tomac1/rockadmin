@@ -6,7 +6,9 @@ namespace RockAdmin\Tests\Unit\Http;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use RockAdmin\Auth\AuthUser;
 use RockAdmin\Auth\Gate;
+use RockAdmin\Auth\Permission;
 use RockAdmin\Config\Enums;
 use RockAdmin\Db\Result;
 use RockAdmin\Db\RowReader;
@@ -46,8 +48,9 @@ use RockAdmin\View\TemplateResolver;
  *
  * A page may now declare verbs of its own and that property has to survive.
  * It does, because the set is still closed — over configuration instead of
- * over three literals. An action says what permission it needs; a verb no
- * action declares is still refused; and nothing is derived from the URL.
+ * over three literals. A `post` generates `{page}.{verb}` from the page file
+ * and needs it unless it names another permission; a verb no action declares
+ * is still refused; and nothing is derived from the URL.
  *
  * The other half of the milestone's own brief is here too: `when` decides
  * whether an action is *offered*, which is a statement about a control drawn
@@ -216,6 +219,91 @@ final class CustomActionTest extends TestCase
         ]);
 
         $this->assertFalse($gate->allows(Access::identity()->user(), 'ads.update'));
+    }
+
+    // --- a post's own permission ---
+
+    public function testAPostOnAPageWithNoFormGeneratesItsOwnPermission(): void
+    {
+        // A read-only page with an `approve` button. Before, the only write
+        // permissions came from a form region, so the action had to borrow
+        // `ads.view` -- and every `*.view` reader could then approve.
+        $this->writeReadOnlyPageWithApprove(permission: null);
+
+        $catalogue = Permission::catalogue($this->repository());
+
+        $this->assertContains('ads.approve', $catalogue);
+        $this->assertNotContains('ads.update', $catalogue);
+    }
+
+    public function testAPostWithNoPermissionNeedsTheOneItGenerates(): void
+    {
+        $this->writeReadOnlyPageWithApprove(permission: null);
+
+        $gate = Access::gateFor($this->repository());
+
+        $this->assertSame('ads.approve', $gate->permissionForRequest($this->route('approve')));
+        $this->assertSame(
+            'ads.approve',
+            $this->repository()->get('ads')->actions['approve']->permission,
+            'Rendering reads the action\'s permission; it must be the one the gate asks for.',
+        );
+    }
+
+    public function testAPostMayNameItsOwnPermissionExplicitly(): void
+    {
+        $this->writeReadOnlyPageWithApprove(permission: 'ads.approve');
+
+        Permission::assertActionsAreGrantable($this->repository(), Permission::catalogue($this->repository()));
+
+        $this->assertSame(
+            'ads.approve',
+            Access::gateFor($this->repository())->permissionForRequest($this->route('approve')),
+        );
+    }
+
+    public function testAReaderRoleIsNotGrantedAPostsPermission(): void
+    {
+        $this->writeReadOnlyPageWithApprove(permission: null);
+
+        $gate = Access::gateFor($this->repository(), [
+            'viewer' => ['permissions' => ['*.view']],
+            'moderator' => ['permissions' => ['ads.*']],
+            'clerk' => ['permissions' => ['ads.*', '!ads.approve']],
+        ]);
+
+        $this->assertFalse($gate->allows($this->userWith('viewer'), 'ads.approve'));
+        $this->assertTrue($gate->allows($this->userWith('moderator'), 'ads.approve'));
+        $this->assertFalse($gate->allows($this->userWith('clerk'), 'ads.approve'));
+        $this->assertTrue($gate->allows($this->userWith('clerk'), 'ads.view'));
+    }
+
+    public function testAPostToTheVerbViewIsRefusedAtLoad(): void
+    {
+        // Its generated permission would be `ads.view`, which every reader
+        // holds: a write that looks gated and is not.
+        $this->writePage('ads', <<<'PHP'
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ra_test_ads'],
+                'actions' => [
+                    'look' => [
+                        'type' => 'post',
+                        'to' => '@action:view',
+                        'confirm' => 'Sure?',
+                        'set' => ['state' => 'seen'],
+                    ],
+                ],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => [], 'state' => []]],
+                ],
+            ]
+            PHP);
+
+        $this->expectException(PageException::class);
+        $this->expectExceptionMessage("'@action:view'");
+
+        $this->repository()->get('ads');
     }
 
     public function testTheBuiltInVerbsStillCostWhatTheyAlwaysDid(): void
@@ -507,6 +595,35 @@ final class CustomActionTest extends TestCase
                 ],
             ]
             PHP);
+    }
+
+    private function writeReadOnlyPageWithApprove(?string $permission): void
+    {
+        $line = $permission === null ? '' : "'permission' => '{$permission}',";
+
+        $this->writePage('ads', <<<PHP
+            [
+                'title' => 'Ads',
+                'entity' => ['table' => 'ra_test_ads'],
+                'actions' => [
+                    'approve' => [
+                        'type' => 'post',
+                        'to' => '@action:approve',
+                        'confirm' => 'Approve this ad?',
+                        {$line}
+                        'set' => ['state' => 'approved'],
+                    ],
+                ],
+                'regions' => [
+                    'grid' => ['type' => 'list', 'columns' => ['title' => [], 'state' => []]],
+                ],
+            ]
+            PHP);
+    }
+
+    private function userWith(string $role): AuthUser
+    {
+        return new AuthUser('1', 'someone@example.com', 'Someone', [$role]);
     }
 
     private function writePage(string $name, string $body): void

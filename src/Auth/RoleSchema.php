@@ -33,9 +33,11 @@ final class RoleSchema
                 description: 'What this role may do, as a list of `page.action` patterns. `*` stands for '
                     . 'every page or every action, and a leading `!` subtracts. Every subtraction is applied '
                     . 'after every widening, so the order the patterns are written in does not change what '
-                    . 'the role means. The actions are `view`, `create`, `update` and `delete`; a page with '
-                    . 'no form region has only `view`, so `!*` and a pattern naming a page or an action that '
-                    . 'does not exist are refused at load rather than silently granting nothing.',
+                    . 'the role means. Every page has `view`; a form region adds `create`, `update` and '
+                    . '`delete`; each `post` action adds one named after its verb, so `@action:approve` on '
+                    . '`formats` makes `formats.approve`, which `formats.*` grants and `*.view` does not. '
+                    . '`!*` and a pattern naming a page or an action that does not exist are refused at load '
+                    . 'rather than silently granting nothing.',
                 example: ['ads.*', 'users.view', '!ads.delete'],
             ),
         ]);

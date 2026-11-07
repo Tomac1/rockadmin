@@ -653,6 +653,25 @@ final class PageRepository
         }
 
         $to = $this->actionTarget($where, $type, $actionConfig, $rowless);
+
+        if ($type->isWrite() && $to instanceof ActionReference && $to->action === 'view') {
+            throw new PageException(
+                "{$where} is a 'post' to '@action:view'. Its permission would be '{$pageName}.view', which "
+                . 'every reader of the page holds, so it would be a write that looks gated and is not. '
+                . "Give the verb a name of its own, such as '@action:approve'.",
+            );
+        }
+
+        // A `post` that names no permission needs the one its verb generates
+        // (`Permission::forPage()`): `@action:approve` on `formats` costs
+        // `formats.approve`. Filled in here, once, so the gate and the button
+        // read the same value. For `@action:delete` this is `{page}.delete`,
+        // the same name the gate's own table asks for that verb.
+        $permission = \is_string($actionConfig['permission'] ?? null) ? $actionConfig['permission'] : '';
+
+        if ($permission === '' && $type->isWrite() && $to instanceof ActionReference) {
+            $permission = $pageName . '.' . $to->action;
+        }
         $confirm = \is_string($actionConfig['confirm'] ?? null) ? $actionConfig['confirm'] : '';
 
         if ($type->isWrite() && $confirm === '') {
@@ -707,7 +726,7 @@ final class PageRepository
             type: $type,
             to: $to,
             icon: \is_string($actionConfig['icon'] ?? null) ? $actionConfig['icon'] : '',
-            permission: \is_string($actionConfig['permission'] ?? null) ? $actionConfig['permission'] : '',
+            permission: $permission,
             confirm: $confirm,
             when: $this->actionConditions($where, $actionConfig, $context, $rowless),
             set: $set,

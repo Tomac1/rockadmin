@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Every `post` action generates its own permission, `{page}.{verb}`:
+  `@action:approve` on `formats` makes `formats.approve`. Roles grant it with
+  `formats.*` or by name and subtract it with `!formats.approve`; `*.view`
+  does not include it. A read-only page can now protect a write without
+  borrowing `view` or needing a form region for `update`.
+
+### Changed
+
+- A `post` action with no `permission` now needs its generated
+  `{page}.{verb}` instead of being allowed for every signed-in user. A role
+  that should keep it needs `{page}.*`, `*`, or the permission by name.
+- A `post` to `@action:view` is refused at load, because its permission
+  would be the read permission every viewer holds.
+
 ## [0.1.0] - 2026-10-15
 
 The first tagged version, and the first one a project can install. Everything

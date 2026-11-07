@@ -547,11 +547,11 @@ final class ActionSchemaTest extends TestCase
     }
 
     /**
-     * The gate's own closed set of verbs is `create`, `update` and `delete`,
-     * so a page generates no `publish` permission however much configuration
-     * asks for one. That is refused here rather than silently denied at every
-     * request, which is what Task 5 has to keep true when a configured verb
-     * reaches `POST /a/{page}/{action}`.
+     * A page's own `post` generates `{page}.{verb}` and nothing else, so a
+     * permission naming a verb no `post` on the page declares is still
+     * outside the catalogue. The name comes from configuration, never from
+     * the URL: `@action:publish` generates `ads.publish`, and `ads.release`
+     * stays refused because nothing posts to `release`.
      */
     public function testAPermissionNamingAVerbNoPageGeneratesIsRefused(): void
     {
@@ -561,11 +561,13 @@ final class ActionSchemaTest extends TestCase
                 'to' => '@action:publish',
                 'set' => ['state' => 'archived'],
                 'confirm' => 'Publish?',
-                'permission' => 'ads.publish',
+                'permission' => 'ads.release',
             ],
             PHP);
 
         $pages = $this->repository();
+
+        $this->assertContains('ads.publish', Permission::catalogue($pages));
 
         try {
             Permission::assertActionsAreGrantable($pages, Permission::catalogue($pages));
@@ -573,7 +575,7 @@ final class ActionSchemaTest extends TestCase
         } catch (ConfigException $e) {
             $this->assertStringContainsString("Page 'ads'", $e->getMessage());
             $this->assertStringContainsString("action 'publish'", $e->getMessage());
-            $this->assertStringContainsString('ads.publish', $e->getMessage());
+            $this->assertStringContainsString('ads.release', $e->getMessage());
         }
     }
 

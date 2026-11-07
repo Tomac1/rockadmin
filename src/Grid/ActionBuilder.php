@@ -209,10 +209,10 @@ final class ActionBuilder
     /**
      * An action with no `permission` is drawn to anyone who can see the page.
      *
-     * That is the loader's decision rather than this one's: the schema tells
-     * whoever writes an action to set `permission` on every action that changes
-     * data, and refusing an unset one here would make every `link` action need
-     * a permission to navigate to a page that gates itself.
+     * Only a `link` or an `open` reaches that branch: the loader gives every
+     * `post` that names none its generated `{page}.{verb}`, the same value the
+     * gate asks for. Refusing an unset one here would make every `link` need a
+     * permission to navigate to a page that gates itself.
      */
     private function allowed(ActionDefinition $action): bool
     {

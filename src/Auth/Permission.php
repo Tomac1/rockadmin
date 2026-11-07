@@ -19,10 +19,12 @@ use RockAdmin\Page\PageRepository;
 final class Permission
 {
     /**
-     * The only actions a permission may name.
+     * The actions every page may have, whatever it declares.
      *
-     * A closed set, so `ads.publish` is refused at load with the alternatives
-     * rather than silently denied forever at request time.
+     * Not the whole set: a page's own `post` actions add one each (see
+     * `forPage()`). What stays closed is that the set is generated from the
+     * page files, so `ads.publish` is refused at load with the alternatives
+     * unless a page actually declares `@action:publish`.
      *
      * @var list<string>
      */
@@ -113,10 +115,18 @@ final class Permission
     /**
      * The permissions one page generates.
      *
-     * A page with no form region generates `view` and nothing else. That is
-     * the same fact `ListRegion` reads to decide whether a row draws an edit
-     * link and whether the create button appears — one fact, read from the
-     * page definition, never two conditions that have to be kept in agreement.
+     * Every page generates `view`. A form region adds `create`, `update`
+     * and `delete` — the same fact `ListRegion` reads to decide whether a row
+     * draws an edit link and whether the create button appears.
+     *
+     * Each `post` action in the page's `actions` block adds one more, named
+     * after its verb: `@action:approve` on `formats` generates
+     * `formats.approve`. That is what lets a read-only page carry a write
+     * without borrowing `view`, which every reader holds, or `update`, which
+     * a page without a form does not have. The name comes from the page file,
+     * never from the URL, so a verb nobody declared still grants nothing. The
+     * built-in verbs are skipped: `@action:delete` reaches the delete the form
+     * region already accounts for, and `@action:view` is refused at load.
      *
      * @return list<self>
      */
@@ -124,12 +134,21 @@ final class Permission
     {
         $permissions = [new self($page->name, 'view')];
 
-        if ($page->firstFormRegion() === null) {
-            return $permissions;
+        if ($page->firstFormRegion() !== null) {
+            foreach (self::WRITE_ACTIONS as $action) {
+                $permissions[] = new self($page->name, $action);
+            }
         }
 
-        foreach (self::WRITE_ACTIONS as $action) {
-            $permissions[] = new self($page->name, $action);
+        $own = [];
+
+        foreach ($page->actions as $action) {
+            $verb = $action->type->isWrite() ? $action->verb() : null;
+
+            if ($verb !== null && !\in_array($verb, self::ACTIONS, true) && !isset($own[$verb])) {
+                $own[$verb] = true;
+                $permissions[] = new self($page->name, $verb);
+            }
         }
 
         return $permissions;
