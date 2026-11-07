@@ -130,6 +130,45 @@ final class RootSchema
                     ),
                 ]),
             ),
+            'session' => new SchemaKey(
+                ValueType::Array,
+                description: 'The sign-in cookie and how long a sign-in lasts. Applies to the default '
+                    . 'session store only; a host passing its own `session:` to the Setup owns its '
+                    . 'cookie. The cookie is always HttpOnly, limited to the path the admin is mounted '
+                    . 'on, Secure whenever the request came over HTTPS, and refused if PHP did not '
+                    . 'issue its id.',
+                children: new Schema([
+                    'name' => new SchemaKey(
+                        ValueType::String,
+                        default: 'rockadmin',
+                        description: 'The cookie name. Its own name keeps the admin out of whatever session '
+                            . 'the site it is mounted on uses under `PHPSESSID`. Letters, digits and '
+                            . 'underscores.',
+                        example: 'cyklobazar_admin',
+                    ),
+                    'same_site' => new SchemaKey(
+                        ValueType::String,
+                        default: 'Lax',
+                        description: '`Lax` or `Strict`. `Strict` also withholds the cookie when somebody '
+                            . 'follows a link into the admin from another site or a mail client, so they '
+                            . 'land signed out once. `None` is refused.',
+                        example: 'Strict',
+                    ),
+                    'idle_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 120,
+                        description: 'Signed out after this long with no request. 0 turns it off.',
+                        example: 30,
+                    ),
+                    'lifetime_minutes' => new SchemaKey(
+                        ValueType::Int,
+                        default: 720,
+                        description: 'Signed out this long after signing in, however busy the session was, so '
+                            . 'a stolen cookie stops working within a working day. 0 turns it off.',
+                        example: 480,
+                    ),
+                ]),
+            ),
             'storage' => new SchemaKey(
                 ValueType::Array,
                 description: 'Where uploaded files are kept. The default driver writes them to a '

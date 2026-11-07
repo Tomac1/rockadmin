@@ -25,6 +25,7 @@ use RockAdmin\Auth\Throttle;
 use RockAdmin\Auth\Workspaces;
 use RockAdmin\Config\Cache;
 use RockAdmin\Config\Config;
+use RockAdmin\Config\ConfigException;
 use RockAdmin\Config\Loader;
 use RockAdmin\Data\Operation;
 use RockAdmin\Data\Operations;
@@ -129,7 +130,7 @@ final class Admin
 
         [$config, $warnings] = self::configuration($setup, $env);
 
-        $session = $setup->session ?? new NativeSessionStore();
+        $session = $setup->session ?? self::nativeSession($setup, $config);
         $urlMode = self::str($config, 'url_mode', 'path');
         $urls = new UrlGenerator($setup->baseUrl, $urlMode);
 
@@ -158,7 +159,12 @@ final class Admin
         $roles = Roles::fromConfig($config->roles(), Permission::catalogue($pages));
 
         $authenticator = $setup->authenticator ?? self::authenticator($connection);
-        $identity = new Identity($session, $authenticator);
+        $identity = new Identity(
+            $session,
+            $authenticator,
+            idleSeconds: max(0, self::int($config, 'session.idle_minutes', 120)) * 60,
+            lifetimeSeconds: max(0, self::int($config, 'session.lifetime_minutes', 720)) * 60,
+        );
         $csrf = new Csrf($session);
 
         // Nothing configured is the single-tenant case, and it is meant to
@@ -393,9 +399,13 @@ final class Admin
         }
 
         // How a freshly migrated installation gets its first administrator
-        // without writing an Argon2id hash into the database by hand. It 404s
-        // the moment one exists, so it is reachable for about a minute in the
-        // life of an installation.
+        // without writing an Argon2id hash into the database by hand. It is a
+        // 404 unless RA_SETUP_TOKEN is set and the URL carries it (spec 11.4),
+        // and a 404 again the moment an administrator exists. Without the
+        // token, whoever found the URL between `migrate` and `user:create`
+        // would be the superadmin.
+        $setupToken = ($setup->env ?? self::environment(...))(SetupHandler::TOKEN_ENVIRONMENT) ?? '';
+
         $setupHandler = new SetupHandler(
             new AdminUsers($connection),
             $identity,
@@ -408,6 +418,7 @@ final class Admin
             $urls,
             $brand,
             $darkMode,
+            $setupToken,
         );
 
         $handlers->register('setup.form', $setupHandler);
@@ -651,6 +662,27 @@ final class Admin
 
         /** @var array<string, mixed> $menu the schema guarantees an array; this narrows it */
         return \is_array($menu) ? $menu : [];
+    }
+
+    /**
+     * The default session store, with the cookie limited to where the admin
+     * is mounted. `session.same_site` and `session.name` are checked by the
+     * store itself, and a bad value stops the boot with the key's name.
+     */
+    private static function nativeSession(Setup $setup, Config $config): NativeSessionStore
+    {
+        $path = parse_url($setup->baseUrl, PHP_URL_PATH);
+
+        try {
+            return new NativeSessionStore(
+                name: self::str($config, 'session.name', 'rockadmin'),
+                path: \is_string($path) && $path !== '' ? rtrim($path, '/') : '/',
+                sameSite: self::str($config, 'session.same_site', 'Lax'),
+                secure: NativeSessionStore::isHttps($_SERVER),
+            );
+        } catch (\InvalidArgumentException $e) {
+            throw new ConfigException($e->getMessage(), previous: $e);
+        }
     }
 
     private static function environment(string $name): ?string

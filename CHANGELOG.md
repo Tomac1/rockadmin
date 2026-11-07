@@ -22,6 +22,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `doctor` warns when a Laravel project keeps the configuration under
   `config/`.
 
+### Security
+
+- `/_setup` now requires `RA_SETUP_TOKEN` (at least 16 characters) in the
+  environment and the same value as `?token=` in the URL, as specification
+  11.4 always said; otherwise it is a 404. Before, on a fresh installation
+  anybody who found the page between `migrate` and `user:create` could create
+  the superadmin. `doctor` says how to switch it on, and reminds you to remove
+  the variable once an administrator exists.
+- The default session cookie is hardened: its own name (`session.name`,
+  default `rockadmin`), the path the admin is mounted on, `HttpOnly`,
+  `Secure` over HTTPS (including behind a proxy sending `X-Forwarded-Proto`),
+  `SameSite=Lax` (`session.same_site` may be `Strict`), and
+  `use_strict_mode`, so a session id PHP did not issue is replaced. Before it
+  was a bare `session_start()`: `PHPSESSID` on `/`, readable by script, sent
+  over HTTP.
+- A sign-in now ends after `session.idle_minutes` (default 120) without a
+  request and `session.lifetime_minutes` (default 720) after signing in.
+  Either can be 0 to turn it off.
+
 ### Fixed
 
 - An `actions` column with `'label' => ''` drew its key ("TOOLS") as the

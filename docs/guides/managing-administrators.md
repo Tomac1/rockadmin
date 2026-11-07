@@ -11,14 +11,21 @@ to make the first one:
 vendor/bin/rockadmin migrate     # creates the ra_* tables
 ```
 
-- **`/_setup`** — a form that creates one superadmin and signs you in. It
-  exists *only* while `ra_users` is empty and answers 404 the moment it is not;
-  the account it creates carries `founder`, a column a unique index permits one
-  row to hold, so two people doing this at the same moment end with one
-  administrator rather than two.
-- **the CLI** — `vendor/bin/rockadmin user:create`, when the CLI milestone
-  ships. A host with shell access and a host with only FTP and a browser are
-  different hosts, so both ways stay.
+- **the CLI** — `vendor/bin/rockadmin user:create`. Use this whenever you
+  have a shell.
+- **`/_setup`** — a form that creates one superadmin and signs you in, for a
+  host with only FTP and a browser. It is **off unless you switch it on**: set
+  `RA_SETUP_TOKEN` in the environment to a long random value (at least 16
+  characters; `php -r "echo bin2hex(random_bytes(16));"` makes one) and open
+  `/admin/_setup?token=<that value>`. Without the variable, or with the wrong
+  token, the page is a 404. It also exists *only* while `ra_users` is empty
+  and answers 404 the moment it is not. The account it creates carries
+  `founder`, a column a unique index permits one row to hold, so two people
+  doing this at the same moment end with one administrator rather than two.
+  Remove the variable afterwards; `doctor` reminds you.
+
+  The token is there because without it, anybody who found the page between
+  `migrate` and the first account would become the superadmin.
 
 Nothing else in the admin is reachable until that account exists: every page
 redirects to the login form, and the login form has nobody to let in.

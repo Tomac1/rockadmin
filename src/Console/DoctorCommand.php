@@ -8,6 +8,7 @@ use RockAdmin\Admin;
 use RockAdmin\Auth\AdminUsers;
 use RockAdmin\Db\Migrator;
 use RockAdmin\Http\Router;
+use RockAdmin\Http\SetupHandler;
 use Throwable;
 
 /**
@@ -118,6 +119,10 @@ final class DoctorCommand implements Command
         }
 
         $connection = $services->connection;
+        $tokenValue = ($setup->env ?? static fn (string $n): ?string => getenv($n) === false ? null : (string) getenv($n))(
+            SetupHandler::TOKEN_ENVIRONMENT,
+        );
+        $setupToken = $tokenValue ?? '';
 
         if ($connection === null) {
             $output->error(
@@ -146,11 +151,26 @@ final class DoctorCommand implements Command
                 $output->dim('  - Skipping the administrator check until the migrations have run.');
             } elseif ((new AdminUsers($connection))->none()) {
                 $output->warning(
-                    '! There are no administrators yet. Run `rockadmin user:create`, or open /_setup, '
-                    . 'which is reachable only while this is true.',
+                    '! There are no administrators yet. Run `rockadmin user:create`. Without a shell, set '
+                    . SetupHandler::TOKEN_ENVIRONMENT . ' to a long random value and open '
+                    . '/_setup?token=<that value>; the page is a 404 without it.',
                 );
             } else {
                 $output->success('v At least one administrator exists');
+
+                if ($setupToken !== '') {
+                    $output->warning(
+                        '! ' . SetupHandler::TOKEN_ENVIRONMENT . ' is still set. /_setup is closed now that an '
+                        . 'administrator exists, but remove the variable: it has no further use.',
+                    );
+                }
+            }
+
+            if ($setupToken !== '' && !SetupHandler::tokenIsUsable($setupToken)) {
+                $output->warning(
+                    '! ' . SetupHandler::TOKEN_ENVIRONMENT . ' is shorter than '
+                    . SetupHandler::TOKEN_MINIMUM_LENGTH . ' characters, so /_setup ignores it and stays a 404.',
+                );
             }
         }
 

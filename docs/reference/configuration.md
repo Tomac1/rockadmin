@@ -44,6 +44,17 @@ How hard it is to guess a password, and how long a reset link lasts. The default
 | `reset_lifetime_minutes` | int | `60` | `30` | How long a password-reset link works for, from specification 10. It is single-use whatever this says -- the lifetime is the second limit, for a link that was never used and is sitting in a mailbox. |
 | `invite_lifetime_minutes` | int | `2880` | `10080` | How long an invitation link works for. Longer than a reset, because nobody asked for it and it waits for somebody to read their mail: two days covers a weekend, and an invitation that expired unseen is a second message somebody has to send by hand. |
 
+## `session`
+
+The sign-in cookie and how long a sign-in lasts. Applies to the default session store only; a host passing its own `session:` to the Setup owns its cookie. The cookie is always HttpOnly, limited to the path the admin is mounted on, Secure whenever the request came over HTTPS, and refused if PHP did not issue its id.
+
+| Key | Type | Default | Example | What it does |
+| --- | --- | --- | --- | --- |
+| `name` | string | `rockadmin` | `cyklobazar_admin` | The cookie name. Its own name keeps the admin out of whatever session the site it is mounted on uses under `PHPSESSID`. Letters, digits and underscores. |
+| `same_site` | string | `Lax` | `Strict` | `Lax` or `Strict`. `Strict` also withholds the cookie when somebody follows a link into the admin from another site or a mail client, so they land signed out once. `None` is refused. |
+| `idle_minutes` | int | `120` | `30` | Signed out after this long with no request. 0 turns it off. |
+| `lifetime_minutes` | int | `720` | `480` | Signed out this long after signing in, however busy the session was, so a stolen cookie stops working within a working day. 0 turns it off. |
+
 ## `storage`
 
 Where uploaded files are kept. The default driver writes them to a directory and the admin serves them, which needs nothing configured but a path; the s3 driver talks to Cloudflare R2 or anything else speaking the same API, with no library installed.

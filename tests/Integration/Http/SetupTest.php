@@ -250,13 +250,13 @@ final class SetupTest extends DatabaseTestCase
     }
 
     #[DataProvider('connections')]
-    public function testAPostWithNoTokenCreatesNobody(?Connection $connection): void
+    public function testAPostWithNoCsrfTokenCreatesNobody(?Connection $connection): void
     {
         $connection = $this->requireConnection($connection);
 
         $response = $this->handler($connection)->handle(
             new Route('setup.submit', []),
-            new Request('POST', '_setup', body: [
+            new Request('POST', '_setup', query: [SetupHandler::TOKEN_PARAMETER => self::TOKEN], body: [
                 SetupHandler::NAME_FIELD => 'Jana',
                 SetupHandler::EMAIL_FIELD => 'jana@example.com',
                 SetupHandler::PASSWORD_FIELD => 'the-first-password',
@@ -312,23 +312,105 @@ final class SetupTest extends DatabaseTestCase
         self::assertStringNotContainsString('a-perfectly-good-password', $response->body);
     }
 
-    // --- harness ---
+    // --- the token (specification 11.4) ---
 
-    private function get(Connection $connection): Response
+    /** @return iterable<string, array{?string, string}> given, configured */
+    public static function refusedTokens(): iterable
     {
-        return $this->handler($connection)->handle(new Route('setup.form', []), new Request('GET', '_setup'));
+        yield 'no token is configured' => [null, ''];
+        yield 'no token is configured, one is given anyway' => ['anything-at-all-here-123', ''];
+        yield 'the configured token is too short to count' => ['short', 'short'];
+        yield 'the URL carries no token' => [null, self::TOKEN];
+        yield 'the URL carries the wrong token' => ['a-long-random-setup-token-WRONG', self::TOKEN];
     }
 
-    /** @param array<string, mixed> $body */
-    private function post(Connection $connection, array $body): Response
+    /**
+     * On a fresh installation, the window between `migrate` and
+     * `user:create` is open to whoever finds the URL first. Without the token
+     * the page does not exist -- a 404 for the form and for its POST alike,
+     * and nobody is created.
+     */
+    #[DataProvider('refusedTokensOnEveryServer')]
+    public function testWithoutTheRightTokenThePageDoesNotExist(
+        ?Connection $connection,
+        ?string $given,
+        string $configured,
+    ): void {
+        $connection = $this->requireConnection($connection);
+
+        try {
+            $this->get($connection, $given, $configured);
+            self::fail('The form was drawn without the right token.');
+        } catch (NotFoundException) {
+            // expected
+        }
+
+        try {
+            $this->post($connection, [
+                SetupHandler::NAME_FIELD => 'Mallory',
+                SetupHandler::EMAIL_FIELD => 'mallory@example.com',
+                SetupHandler::PASSWORD_FIELD => 'mallory-was-here-first',
+                SetupHandler::CONFIRM_FIELD => 'mallory-was-here-first',
+            ], $given, $configured);
+            self::fail('The POST was accepted without the right token.');
+        } catch (NotFoundException) {
+            // expected
+        }
+
+        self::assertTrue((new AdminUsers($connection))->none(), 'An account was created without the token.');
+    }
+
+    /** @return iterable<string, array{?Connection, ?string, string}> */
+    public static function refusedTokensOnEveryServer(): iterable
     {
-        return $this->handler($connection)->handle(
-            new Route('setup.submit', []),
-            new Request('POST', '_setup', body: [Csrf::FIELD => (new Csrf($this->session))->token()] + $body),
+        foreach (self::connections() as $server => [$connection]) {
+            foreach (self::refusedTokens() as $case => [$given, $configured]) {
+                yield "{$server}: {$case}" => [$connection, $given, $configured];
+            }
+        }
+    }
+
+    #[DataProvider('connections')]
+    public function testTheFormPostsBackWithItsToken(?Connection $connection): void
+    {
+        $connection = $this->requireConnection($connection);
+
+        $body = $this->get($connection)->body;
+
+        self::assertStringContainsString(SetupHandler::TOKEN_PARAMETER . '=' . self::TOKEN, $body);
+    }
+
+    // --- harness ---
+
+    private const string TOKEN = 'a-long-random-setup-token-0123456789';
+
+    private function get(Connection $connection, ?string $token = self::TOKEN, string $configured = self::TOKEN): Response
+    {
+        return $this->handler($connection, $configured)->handle(
+            new Route('setup.form', []),
+            new Request('GET', '_setup', query: $token === null ? [] : [SetupHandler::TOKEN_PARAMETER => $token]),
         );
     }
 
-    private function handler(Connection $connection): SetupHandler
+    /** @param array<string, mixed> $body */
+    private function post(
+        Connection $connection,
+        array $body,
+        ?string $token = self::TOKEN,
+        string $configured = self::TOKEN,
+    ): Response {
+        return $this->handler($connection, $configured)->handle(
+            new Route('setup.submit', []),
+            new Request(
+                'POST',
+                '_setup',
+                query: $token === null ? [] : [SetupHandler::TOKEN_PARAMETER => $token],
+                body: [Csrf::FIELD => (new Csrf($this->session))->token()] + $body,
+            ),
+        );
+    }
+
+    private function handler(Connection $connection, string $token = self::TOKEN): SetupHandler
     {
         $urls = new UrlGenerator('/admin');
         $pages = new PageRepository(
@@ -357,6 +439,8 @@ final class SetupTest extends DatabaseTestCase
             new Assets($urls),
             $urls,
             'RockAdmin',
+            'auto',
+            $token,
         );
     }
 

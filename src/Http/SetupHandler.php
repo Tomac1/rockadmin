@@ -26,6 +26,12 @@ use RockAdmin\View\ShellView;
  * remain: a host with shell access uses the command, a host with only FTP and
  * a browser uses this.
  *
+ * **It exists only when `RA_SETUP_TOKEN` is set and the URL carries it**
+ * (`/_setup?token=...`), as specification 11.4 says. The first version left
+ * the token out, so on a production server anyone who found the page between
+ * `migrate` and `user:create` became the superadmin. Without a usable token
+ * the page is a 404, the same as a page that does not exist.
+ *
  * **It exists only while `ra_users` is empty.** The moment one account exists
  * there is somebody who can create the rest, and this becomes a 404 -- not a
  * 403. A 403 tells whoever found the URL that the installation is live and
@@ -60,6 +66,19 @@ final class SetupHandler implements Handler
 
     private const string GONE = 'This installation already has an administrator.';
 
+    /** The environment variable that switches the page on (specification 11.4). */
+    public const string TOKEN_ENVIRONMENT = 'RA_SETUP_TOKEN';
+
+    /** The query parameter the token travels in, on the form and on its POST. */
+    public const string TOKEN_PARAMETER = 'token';
+
+    /**
+     * Shorter than this and the token is treated as unset. It is the only
+     * thing between a stranger and a superadmin account, so a value somebody
+     * could guess is no protection.
+     */
+    public const int TOKEN_MINIMUM_LENGTH = 16;
+
     public function __construct(
         private readonly AdminUsers $users,
         private readonly Identity $identity,
@@ -72,11 +91,29 @@ final class SetupHandler implements Handler
         private readonly UrlGenerator $urls,
         private readonly string $brand,
         private readonly string $darkMode = 'auto',
+        /** `RA_SETUP_TOKEN`, or '' when it is not set: then the page does not exist. */
+        private readonly string $setupToken = '',
     ) {
+    }
+
+    /** Whether a configured token is long enough to switch the page on at all. */
+    public static function tokenIsUsable(string $token): bool
+    {
+        return \strlen($token) >= self::TOKEN_MINIMUM_LENGTH;
     }
 
     public function handle(Route $route, Request $request): Response
     {
+        // The token is checked before anything else, the emptiness of
+        // `ra_users` included, so a request without it learns nothing --
+        // not even whether this installation has administrators.
+        $given = $request->query(self::TOKEN_PARAMETER);
+
+        if (!self::tokenIsUsable($this->setupToken) || !\is_string($given)
+            || !hash_equals($this->setupToken, $given)) {
+            throw new NotFoundException('Not found.');
+        }
+
         if (!$this->users->none()) {
             throw new NotFoundException(self::GONE);
         }
@@ -178,7 +215,7 @@ final class SetupHandler implements Handler
 
         $view = new SetupView(
             shell: new ShellView($this->brand, styles: $this->assets->styles(), darkMode: $this->darkMode),
-            action: $this->urls->route('setup.submit'),
+            action: $this->urls->route('setup.submit', [], [self::TOKEN_PARAMETER => $this->setupToken]),
             token: $this->csrf->token(),
             role: $role === '' ? 'no role at all, because none is configured' : $this->roles->label($role),
             workspaces: \count($this->workspaces->names()),

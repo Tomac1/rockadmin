@@ -1520,6 +1520,9 @@ vendor/bin/rockadmin cache:build
    when `RA_SETUP_TOKEN` is set in the environment and the token matches the
    URL. Without a valid token it returns 404 rather than 403, so it cannot be
    discovered. It locks itself after the first user is created.
+   (The first implementation left the token out, which made the page open to
+   anyone on a fresh installation. The first production project's security
+   review found it, and the token is now enforced as written here.)
 3. **The cache builds itself** on the first request when the file is missing
    and the directory is writable; `cache:build` only accelerates deployment.
 

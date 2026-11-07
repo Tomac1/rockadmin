@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RockAdmin\Auth;
 
+use Closure;
 use RockAdmin\Http\SessionStore;
 
 /**
@@ -63,14 +64,32 @@ final class Identity
      */
     public const string INTENDED_KEY = 'ra.intended';
 
+    /** When this session signed in, as a Unix timestamp. */
+    public const string SIGNED_IN_AT_KEY = 'ra.signed_in_at';
+
+    /** When this session last made a request, as a Unix timestamp. */
+    public const string SEEN_AT_KEY = 'ra.seen_at';
+
     private ?AuthUser $user = null;
 
     private bool $resolved = false;
 
+    /** @var Closure(): int */
+    private readonly Closure $clock;
+
+    /**
+     * @param int                  $idleSeconds     signed out after this long with no request; 0 never
+     * @param int                  $lifetimeSeconds signed out this long after signing in; 0 never
+     * @param (Closure(): int)|null $clock          the time, for tests
+     */
     public function __construct(
         private readonly SessionStore $session,
         private readonly Authenticator $authenticator,
+        private readonly int $idleSeconds = 0,
+        private readonly int $lifetimeSeconds = 0,
+        ?Closure $clock = null,
     ) {
+        $this->clock = $clock ?? time(...);
     }
 
     /** Whoever this request is, or null. */
@@ -104,6 +123,9 @@ final class Identity
     {
         $this->session->regenerate();
         $this->session->set(self::SESSION_KEY, $user->id);
+        $now = ($this->clock)();
+        $this->session->set(self::SIGNED_IN_AT_KEY, $now);
+        $this->session->set(self::SEEN_AT_KEY, $now);
 
         $this->resolved = true;
         $this->user = $user;
@@ -126,7 +148,7 @@ final class Identity
             $this->authenticator->logout($user);
         }
 
-        $this->session->forget(self::SESSION_KEY);
+        $this->forgetSignIn();
         $this->session->regenerate();
 
         $this->resolved = true;
@@ -179,12 +201,64 @@ final class Identity
             return null;
         }
 
+        if ($this->expired()) {
+            // Signed out the way logout() does it, minus the authenticator:
+            // the person did not ask, so there is nothing of theirs to tell
+            // it about. The id is reissued so the expired one is worth
+            // nothing even to whoever might be holding a copy.
+            $this->forgetSignIn();
+            $this->session->regenerate();
+
+            return null;
+        }
+
         $user = $this->authenticator->byId($id);
 
         if ($user === null) {
-            $this->session->forget(self::SESSION_KEY);
+            $this->forgetSignIn();
+
+            return null;
         }
 
+        $this->session->set(self::SEEN_AT_KEY, ($this->clock)());
+
         return $user;
+    }
+
+    /**
+     * Whether the sign-in is older than its lifetime, or idle longer than
+     * allowed.
+     *
+     * A session signed in before these keys existed has neither timestamp.
+     * It is given them now rather than signed out, so an upgrade does not
+     * sign everybody out at once; the limits apply from here on.
+     */
+    private function expired(): bool
+    {
+        $now = ($this->clock)();
+        $signedIn = $this->session->get(self::SIGNED_IN_AT_KEY);
+        $seen = $this->session->get(self::SEEN_AT_KEY);
+
+        if (!\is_int($signedIn)) {
+            $this->session->set(self::SIGNED_IN_AT_KEY, $now);
+            $signedIn = $now;
+        }
+
+        if (!\is_int($seen)) {
+            $seen = $now;
+        }
+
+        if ($this->lifetimeSeconds > 0 && $now - $signedIn >= $this->lifetimeSeconds) {
+            return true;
+        }
+
+        return $this->idleSeconds > 0 && $now - $seen >= $this->idleSeconds;
+    }
+
+    private function forgetSignIn(): void
+    {
+        $this->session->forget(self::SESSION_KEY);
+        $this->session->forget(self::SIGNED_IN_AT_KEY);
+        $this->session->forget(self::SEEN_AT_KEY);
     }
 }
