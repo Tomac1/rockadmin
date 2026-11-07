@@ -254,6 +254,25 @@ final class ActionColumnTest extends TestCase
 
     // ------------------------------------------------------- a dead key is refused
 
+    /**
+     * A row of buttons usually wants no visible header, and `'label' => ''`
+     * used to fall back to the key, so the header read "TOOLS". On every other
+     * column an empty label still means the default, because values need one.
+     */
+    public function testAnEmptyLabelOnAnActionsColumnMeansNoVisibleHeader(): void
+    {
+        $this->writePage(
+            actions: "'edit' => ['type' => 'link', 'to' => '@page:ads/{id}/edit'],",
+            columns: "'title' => ['label' => ''],\n"
+                . "'tools' => ['type' => 'actions', 'label' => '', 'items' => ['edit']],",
+        );
+
+        $grid = $this->repository()->get('ads')->region('grid');
+
+        $this->assertSame('', $grid->column('tools')->label);
+        $this->assertSame('Title', $grid->column('title')->label);
+    }
+
     public function testAnActionsColumnWithNoItemsIsRefused(): void
     {
         $message = $this->refusal(actions: '', columns: "'tools' => ['type' => 'actions'],");

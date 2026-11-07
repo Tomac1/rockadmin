@@ -54,6 +54,8 @@
                     <a class="ra-grid-sort" href="<?= $href($column->sortUrl) ?>" data-ra-action="sort" data-ra-sort-column="<?= $e($column->key) ?>">
                         <span class="ra-grid-sort-label"><?= $e($column->label) ?></span>
                     </a>
+                <?php } elseif ($column->label === '') { ?>
+                    <span class="ra-grid-head-label ra-visually-hidden">Actions</span>
                 <?php } else { ?>
                     <span class="ra-grid-head-label"><?= $e($column->label) ?></span>
                 <?php } ?>

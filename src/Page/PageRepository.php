@@ -2051,9 +2051,17 @@ final class PageRepository
             ));
         }
 
+        // An actions column may ask for no visible header with `'label' => ''`:
+        // a row of buttons usually needs none, and showing its key ("TOOLS")
+        // there instead is what nobody wrote. The header still carries a
+        // visually hidden name, so a screen reader can tell what the column is.
+        // Every other column has values that need a header, so for those an
+        // empty label means the default, as before.
+        $explicitlyEmpty = $type->isActions() && ($columnConfig['label'] ?? null) === '';
+
         $label = \is_string($columnConfig['label'] ?? null) && $columnConfig['label'] !== ''
             ? $columnConfig['label']
-            : $this->labelFromKey($columnKey);
+            : ($explicitlyEmpty ? '' : $this->labelFromKey($columnKey));
 
         $where = "Page '{$pageName}': column '{$columnKey}'";
         $align = \is_string($columnConfig['align'] ?? null) && $columnConfig['align'] !== ''

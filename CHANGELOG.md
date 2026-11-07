@@ -22,6 +22,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `doctor` warns when a Laravel project keeps the configuration under
   `config/`.
 
+### Fixed
+
+- An `actions` column with `'label' => ''` drew its key ("TOOLS") as the
+  header. It now draws no visible header, with a hidden "Actions" for screen
+  readers.
+
 ### Changed
 
 - A `post` action with no `permission` now needs its generated

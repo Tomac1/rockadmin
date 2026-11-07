@@ -31,7 +31,9 @@ final class ColumnSchema
             ),
             'label' => new SchemaKey(
                 ValueType::String,
-                description: 'The column header, shown above the values. Defaults at load to the key, title-cased.',
+                description: 'The column header, shown above the values. Defaults at load to the key, title-cased. '
+                    . "On an `actions` column, `''` means no visible header; a screen reader still hears "
+                    . '"Actions".',
                 example: 'First Name',
             ),
             'source' => new SchemaKey(

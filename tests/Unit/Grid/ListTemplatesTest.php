@@ -184,6 +184,16 @@ final class ListTemplatesTest extends TestCase
         $this->assertStringNotContainsString('<a', $html);
     }
 
+    public function testAHeaderWithAnEmptyLabelStillHasANameForAScreenReader(): void
+    {
+        $view = $this->listView(columns: [$this->column(key: 'tools', label: '')]);
+
+        $html = $this->renderer()->render('region/list/head', $view);
+
+        $this->assertStringContainsString('ra-visually-hidden">Actions</span>', $html);
+        $this->assertStringNotContainsString('ra-grid-head-label"></span>', $html);
+    }
+
     public function testTheCurrentSortColumnCarriesAriaSort(): void
     {
         $view = $this->listView(columns: [
