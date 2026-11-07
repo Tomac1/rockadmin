@@ -32,6 +32,15 @@ final class CacheTest extends TestCase
         foreach (glob($this->file . '.*.tmp') ?: [] as $leftover) {
             unlink($leftover);
         }
+
+        foreach ($this->directories as $directory) {
+            foreach (array_merge(glob($directory . '/pages/*') ?: [], glob($directory . '/*.php') ?: []) as $file) {
+                unlink($file);
+            }
+
+            @rmdir($directory . '/pages');
+            @rmdir($directory);
+        }
     }
 
     private function config(mixed $extra = null): Config
@@ -188,6 +197,71 @@ final class CacheTest extends TestCase
 
         $this->assertFileDoesNotExist($this->file);
         $this->assertNull($cache->read());
+    }
+
+    // --- going stale on its own ---
+
+    /** @return array{Cache, string} the cache, and a configuration directory it watches */
+    private function watched(): array
+    {
+        $directory = str_replace('\\', '/', sys_get_temp_dir()) . '/rockadmin-watched-' . bin2hex(random_bytes(6));
+        mkdir($directory . '/pages', 0o777, true);
+        file_put_contents($directory . '/rockadmin.php', "<?php return ['debug' => true];\n");
+        file_put_contents($directory . '/pages/ads.php', "<?php return [];\n");
+        $this->directories[] = $directory;
+
+        $cache = new Cache($this->file);
+        $cache->write($this->config(), Cache::directoriesOf($directory, $this->config()));
+
+        return [$cache, $directory];
+    }
+
+    /** @var list<string> */
+    private array $directories = [];
+
+    public function testACacheOverUnchangedFilesIsRead(): void
+    {
+        [$cache] = $this->watched();
+
+        $this->assertNotNull($cache->read());
+    }
+
+    public function testEditingAConfigurationFileMakesTheCacheStale(): void
+    {
+        [$cache, $directory] = $this->watched();
+
+        file_put_contents($directory . '/rockadmin.php', "<?php return ['debug' => false, 'per_page' => 10];\n");
+        touch($directory . '/rockadmin.php', time() + 10);
+        clearstatcache();
+
+        $this->assertNull($cache->read(), 'An edited rockadmin.php was served from the old cache.');
+    }
+
+    public function testAddingAPageMakesTheCacheStale(): void
+    {
+        [$cache, $directory] = $this->watched();
+
+        file_put_contents($directory . '/pages/users.php', "<?php return [];\n");
+        clearstatcache();
+
+        $this->assertNull($cache->read(), 'A new page file was not noticed.');
+    }
+
+    public function testDeletingAPageMakesTheCacheStale(): void
+    {
+        [$cache, $directory] = $this->watched();
+
+        unlink($directory . '/pages/ads.php');
+        clearstatcache();
+
+        $this->assertNull($cache->read());
+    }
+
+    public function testACacheFromBeforeTheFingerprintIsRebuilt(): void
+    {
+        file_put_contents($this->file, '<?php return ' . var_export($this->config(), true) . ';');
+
+        $this->assertNull((new Cache($this->file))->read());
     }
 
     public function testClearingAnAbsentCacheIsNotAnError(): void

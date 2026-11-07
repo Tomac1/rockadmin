@@ -74,7 +74,7 @@ final class CacheCommand implements Command
             $output->warning('! ' . $warning);
         }
 
-        $cache->write($config);
+        $cache->write($config, Cache::directoriesOf($setup->configDirectory(), $config));
         $output->success('Wrote ' . $path);
 
         return 0;

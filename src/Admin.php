@@ -554,7 +554,7 @@ final class Admin
         // Written on the first request that finds it missing, so an
         // installation that forgot `cache:build` is slow once rather than
         // slow always -- and a deployment that cleared it heals itself.
-        $cache?->write($config);
+        $cache?->write($config, Cache::directoriesOf($setup->configDirectory(), $config));
 
         return [$config, $loader->warnings()];
     }

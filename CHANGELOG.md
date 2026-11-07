@@ -43,6 +43,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The compiled configuration rebuilds itself when a file under the
+  configuration or pages directory is edited, added or removed. Before, the
+  cache written on the first request kept serving the old configuration
+  until `cache:clear`. Changed `{{env.*}}` values still need `cache:clear`.
 - An `actions` column with `'label' => ''` drew its key ("TOOLS") as the
   header. It now draws no visible header, with a hidden "Actions" for screen
   readers.

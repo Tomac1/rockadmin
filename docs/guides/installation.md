@@ -157,7 +157,15 @@ vendor/bin/rockadmin cache:build    # after
 ```
 
 It is written on the first request that finds it missing, so forgetting
-`cache:build` makes one request slow rather than every request slow. The file
+`cache:build` makes one request slow rather than every request slow.
+
+It rebuilds itself when a configuration file changes: the file records the
+listing of the configuration and pages directories and each file's
+modification time and size, and a request that finds any of it different
+reads the files again. Editing `rockadmin.php` or adding a page during
+development therefore needs nothing. **A changed environment variable does
+need `cache:clear`**, because `{{env.*}}` values are resolved into the file
+and no file changed. The file
 holds resolved `{{env.*}}` values — which is to say secrets — and absolute
 paths for one machine, so it lives outside the document root and is never
 committed.
