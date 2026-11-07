@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-07
+
+What the first production installation needed: a permission for every
+`post` action, an installation layout that stays out of Laravel's `config/`,
+the security of `/_setup` and the session cookie, and a compiled
+configuration that notices its own files changing.
+
 ### Added
 
 - Every `post` action generates its own permission, `{page}.{verb}`:
@@ -140,5 +147,6 @@ scratch.
   handlers were wired, so an installation that keeps one `Admin` cannot
   record every change under the first administrator to sign in.
 
-[Unreleased]: https://github.com/tomac1/rockadmin/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/tomac1/rockadmin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tomac1/rockadmin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tomac1/rockadmin/releases/tag/v0.1.0
